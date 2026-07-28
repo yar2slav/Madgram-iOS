@@ -22,7 +22,22 @@ func addMessageMediaResourceIdsToRemove(message: Message, resourceIds: inout [Me
     }
 }
 
-public func _internal_deleteMessages(transaction: Transaction, mediaBox: MediaBox, ids: [MessageId], deleteMedia: Bool = true, manualAddMessageThreadStatsDifference: ((MessageThreadKey, Int, Int) -> Void)? = nil) {
+public func _internal_deleteMessages(
+    transaction: Transaction,
+    mediaBox: MediaBox,
+    ids: [MessageId],
+    deleteMedia: Bool = true,
+    archiveCloudMessages: Bool = false,
+    manualAddMessageThreadStatsDifference: ((MessageThreadKey, Int, Int) -> Void)? = nil
+) {
+    if archiveCloudMessages {
+        let archivedIds = archiveMessagesBeforeCloudDeletion(transaction: transaction, ids: ids, mediaBox: mediaBox)
+        if archivedIds.isEmpty {
+            removeDeletedMessageArchiveForLocalDeletion(transaction: transaction, mediaBox: mediaBox, ids: ids)
+        }
+    } else {
+        removeDeletedMessageArchiveForLocalDeletion(transaction: transaction, mediaBox: mediaBox, ids: ids)
+    }
     var resourceIds: [MediaResourceId] = []
     if deleteMedia {
         for id in ids {
@@ -57,6 +72,14 @@ public func _internal_deleteMessages(transaction: Transaction, mediaBox: MediaBo
 }
 
 func _internal_deleteAllMessagesWithAuthor(transaction: Transaction, mediaBox: MediaBox, peerId: PeerId, authorId: PeerId, namespace: MessageId.Namespace) {
+    var archiveIds: [MessageId] = []
+    transaction.withAllMessages(peerId: peerId, namespace: namespace, { message in
+        if message.author?.id == authorId {
+            archiveIds.append(message.id)
+        }
+        return true
+    })
+    removeDeletedMessageArchiveForLocalDeletion(transaction: transaction, mediaBox: mediaBox, ids: archiveIds)
     var resourceIds: [MediaResourceId] = []
     transaction.removeAllMessagesWithAuthor(peerId, authorId: authorId, namespace: namespace, forEachMedia: { media in
         addMessageMediaResourceIdsToRemove(media: media, resourceIds: &resourceIds)
@@ -67,6 +90,14 @@ func _internal_deleteAllMessagesWithAuthor(transaction: Transaction, mediaBox: M
 }
 
 func _internal_deleteAllMessagesWithForwardAuthor(transaction: Transaction, mediaBox: MediaBox, peerId: PeerId, forwardAuthorId: PeerId, namespace: MessageId.Namespace) {
+    var archiveIds: [MessageId] = []
+    transaction.withAllMessages(peerId: peerId, namespace: namespace, { message in
+        if message.forwardInfo?.author?.id == forwardAuthorId {
+            archiveIds.append(message.id)
+        }
+        return true
+    })
+    removeDeletedMessageArchiveForLocalDeletion(transaction: transaction, mediaBox: mediaBox, ids: archiveIds)
     var resourceIds: [MediaResourceId] = []
     transaction.removeAllMessagesWithForwardAuthor(peerId, forwardAuthorId: forwardAuthorId, namespace: namespace, forEachMedia: { media in
         addMessageMediaResourceIdsToRemove(media: media, resourceIds: &resourceIds)

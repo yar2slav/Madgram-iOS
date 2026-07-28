@@ -4440,16 +4440,21 @@ func replayFinalState(
                     }
                 }
             case let .DeleteMessagesWithGlobalIds(ids):
+                let messageIds = transaction.messageIdsForGlobalIds(ids)
+                let archivedIds = archiveMessagesBeforeCloudDeletion(transaction: transaction, ids: messageIds, mediaBox: mediaBox)
+                if archivedIds.isEmpty {
+                    removeDeletedMessageArchiveForLocalDeletion(transaction: transaction, mediaBox: mediaBox, ids: messageIds)
+                }
                 var resourceIds: [MediaResourceId] = []
                 transaction.deleteMessagesWithGlobalIds(ids, forEachMedia: { media in
                     addMessageMediaResourceIdsToRemove(media: media, resourceIds: &resourceIds)
                 })
-                if !resourceIds.isEmpty {
+                if archivedIds.isEmpty && !resourceIds.isEmpty {
                     let _ = mediaBox.removeCachedResources(Array(Set(resourceIds)), force: true).start()
                 }
                 deletedMessageIds.append(contentsOf: ids.map { .global($0) })
             case let .DeleteMessages(ids):
-                _internal_deleteMessages(transaction: transaction, mediaBox: mediaBox, ids: ids, manualAddMessageThreadStatsDifference: { id, add, remove in
+                _internal_deleteMessages(transaction: transaction, mediaBox: mediaBox, ids: ids, archiveCloudMessages: true, manualAddMessageThreadStatsDifference: { id, add, remove in
                     addMessageThreadStatsDifference(threadKey: id, remove: remove, addedMessagePeer: nil, addedMessageId: nil, isOutgoing: false)
                 })
                 deletedMessageIds.append(contentsOf: ids.map { .messageId($0) })
@@ -4457,11 +4462,25 @@ func replayFinalState(
                 if let message = transaction.getMessage(id) {
                     updatePeerChatInclusionWithMinTimestamp(transaction: transaction, id: id.peerId, minTimestamp: message.timestamp, forceRootGroupIfNotExists: false)
                 }
+                var archiveIds: [MessageId] = []
+                var archivedIds: [MessageId] = []
+                if id.namespace == Namespaces.Message.Cloud {
+                    transaction.withAllMessages(peerId: id.peerId, { message in
+                        if message.id.namespace == id.namespace && message.id.id >= 1 && message.id.id <= id.id {
+                            archiveIds.append(message.id)
+                        }
+                        return true
+                    })
+                    archivedIds = archiveMessagesBeforeCloudDeletion(transaction: transaction, ids: archiveIds, mediaBox: mediaBox)
+                    if archivedIds.isEmpty {
+                        removeDeletedMessageArchiveForLocalDeletion(transaction: transaction, mediaBox: mediaBox, ids: archiveIds)
+                    }
+                }
                 var resourceIds: [MediaResourceId] = []
                 transaction.deleteMessagesInRange(peerId: id.peerId, namespace: id.namespace, minId: 1, maxId: id.id, forEachMedia: { media in
                     addMessageMediaResourceIdsToRemove(media: media, resourceIds: &resourceIds)
                 })
-                if !resourceIds.isEmpty {
+                if archivedIds.isEmpty && !resourceIds.isEmpty {
                     let _ = mediaBox.removeCachedResources(Array(Set(resourceIds)), force: true).start()
                 }
             case let .UpdatePeerChatInclusion(peerId, groupId, changedGroup):
@@ -4485,7 +4504,13 @@ func replayFinalState(
                 if changedGroup {
                     invalidateGroupStats.insert(Namespaces.PeerGroup.archive)
                 }
-            case let .EditMessage(id, message):
+            case let .EditMessage(id, messageValue):
+                let message = archivePreviousMessageVersionIfNeeded(
+                    transaction: transaction,
+                    id: id,
+                    updatedMessage: messageValue,
+                    mediaBox: mediaBox
+                )
                 var generatedEvent: (reactionAuthor: Peer, reaction: MessageReaction.Reaction, message: Message, timestamp: Int32)?
                 transaction.updateMessage(id, update: { previousMessage in
                     var updatedFlags = message.flags
@@ -4591,6 +4616,7 @@ func replayFinalState(
                 updateMessageMedia(transaction: transaction, id: id, media: media)
             case let .ReadInbox(messageId):
                 transaction.applyIncomingReadMaxId(messageId)
+                updateGhostModeReadStateVersion(transaction: transaction)
             case let .ReadOutbox(messageId, timestamp):
                 transaction.applyOutgoingReadMaxId(messageId)
                 if messageId.peerId != accountPeerId, messageId.peerId.namespace == Namespaces.Peer.CloudUser, let timestamp = timestamp {
@@ -4762,6 +4788,7 @@ func replayFinalState(
                     transaction.resetIncomingReadStates([peerId: stateDict])
                 } else {
                     transaction.applyIncomingReadMaxId(MessageId(peerId: peerId, namespace: namespace, id: maxIncomingReadId))
+                    updateGhostModeReadStateVersion(transaction: transaction)
                     transaction.setNeedsIncomingReadStateSynchronization(peerId)
                     invalidateGroupStats.insert(groupId)
                 }

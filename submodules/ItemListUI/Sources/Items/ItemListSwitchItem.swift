@@ -26,6 +26,7 @@ public class ItemListSwitchItem: ListViewItem, ItemListItem {
     let text: String?
     let textColor: TextColor
     let titleBadgeComponent: AnyComponent<Empty>?
+    let titleBadgeAction: ((UIView) -> Void)?
     let value: Bool
     let type: ItemListSwitchItemNodeType
     let enableInteractiveChanges: Bool
@@ -41,7 +42,7 @@ public class ItemListSwitchItem: ListViewItem, ItemListItem {
     let action: (() -> Void)?
     public let tag: ItemListItemTag?
     
-    public init(presentationData: ItemListPresentationData, systemStyle: ItemListSystemStyle = .legacy, icon: UIImage? = nil, title: String, text: String? = nil, textColor: TextColor = .primary, titleBadgeComponent: AnyComponent<Empty>? = nil, value: Bool, type: ItemListSwitchItemNodeType = .regular, enableInteractiveChanges: Bool = true, enabled: Bool = true, displayLocked: Bool = false, disableLeadingInset: Bool = false, maximumNumberOfLines: Int = 1, noCorners: Bool = false, sectionId: ItemListSectionId, style: ItemListStyle, updated: @escaping (Bool) -> Void, activatedWhileDisabled: @escaping () -> Void = {}, action: (() -> Void)? = nil, tag: ItemListItemTag? = nil) {
+    public init(presentationData: ItemListPresentationData, systemStyle: ItemListSystemStyle = .legacy, icon: UIImage? = nil, title: String, text: String? = nil, textColor: TextColor = .primary, titleBadgeComponent: AnyComponent<Empty>? = nil, titleBadgeAction: ((UIView) -> Void)? = nil, value: Bool, type: ItemListSwitchItemNodeType = .regular, enableInteractiveChanges: Bool = true, enabled: Bool = true, displayLocked: Bool = false, disableLeadingInset: Bool = false, maximumNumberOfLines: Int = 1, noCorners: Bool = false, sectionId: ItemListSectionId, style: ItemListStyle, updated: @escaping (Bool) -> Void, activatedWhileDisabled: @escaping () -> Void = {}, action: (() -> Void)? = nil, tag: ItemListItemTag? = nil) {
         self.presentationData = presentationData
         self.systemStyle = systemStyle
         self.icon = icon
@@ -49,6 +50,7 @@ public class ItemListSwitchItem: ListViewItem, ItemListItem {
         self.text = text
         self.textColor = textColor
         self.titleBadgeComponent = titleBadgeComponent
+        self.titleBadgeAction = titleBadgeAction
         self.value = value
         self.type = type
         self.enableInteractiveChanges = enableInteractiveChanges
@@ -161,6 +163,7 @@ public class ItemListSwitchItemNode: ListViewItemNode, ItemListItemNode {
     private var disabledOverlayNode: ASDisplayNode?
     
     private var titleBadgeComponentView: ComponentView<Empty>?
+    private var titleBadgeTapGestureRecognizer: UITapGestureRecognizer?
     
     private var lockedIconNode: ASImageNode?
     
@@ -240,6 +243,13 @@ public class ItemListSwitchItemNode: ListViewItemNode, ItemListItemNode {
         
         (self.switchNode.view as? UISwitch)?.addTarget(self, action: #selector(self.switchValueChanged(_:)), for: .valueChanged)
         self.switchGestureNode.view.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(self.tapGesture(_:))))
+    }
+
+    @objc private func titleBadgePressed(_ recognizer: UITapGestureRecognizer) {
+        guard recognizer.state == .ended, let view = recognizer.view else {
+            return
+        }
+        self.item?.titleBadgeAction?(view)
     }
     
     public func displayHighlight() {
@@ -340,7 +350,8 @@ public class ItemListSwitchItemNode: ListViewItemNode, ItemListItemNode {
                 insets.bottom = 0.0
             }
             
-            let (titleLayout, titleApply) = makeTitleLayout(TextNodeLayoutArguments(attributedString: NSAttributedString(string: item.title, font: titleFont, textColor: item.presentationData.theme.list.itemPrimaryTextColor), backgroundColor: nil, maximumNumberOfLines: item.maximumNumberOfLines, truncationType: .end, constrainedSize: CGSize(width: params.width - leftInset - params.rightInset - 64.0, height: CGFloat.greatestFiniteMagnitude), alignment: .natural, cutout: nil, insets: UIEdgeInsets()))
+            let titleBadgeInset: CGFloat = item.titleBadgeComponent == nil ? 0.0 : 37.0
+            let (titleLayout, titleApply) = makeTitleLayout(TextNodeLayoutArguments(attributedString: NSAttributedString(string: item.title, font: titleFont, textColor: item.presentationData.theme.list.itemPrimaryTextColor), backgroundColor: nil, maximumNumberOfLines: item.maximumNumberOfLines, truncationType: .end, constrainedSize: CGSize(width: params.width - leftInset - params.rightInset - 64.0 - titleBadgeInset, height: CGFloat.greatestFiniteMagnitude), alignment: .natural, cutout: nil, insets: UIEdgeInsets()))
             
             contentSize.height = max(contentSize.height, titleLayout.size.height + topInset * 2.0)
             
@@ -624,10 +635,32 @@ public class ItemListSwitchItemNode: ListViewItemNode, ItemListItemNode {
                                 strongSelf.view.addSubview(view)
                             }
                             titleBadgeTransition.updateFrame(view: view, frame: CGRect(origin: CGPoint(x: strongSelf.titleNode.frame.maxX + 7.0, y: floor((contentSize.height - badgeSize.height) / 2.0)), size: badgeSize))
+
+                            if item.titleBadgeAction != nil {
+                                let recognizer: UITapGestureRecognizer
+                                if let current = strongSelf.titleBadgeTapGestureRecognizer, current.view === view {
+                                    recognizer = current
+                                } else {
+                                    if let current = strongSelf.titleBadgeTapGestureRecognizer {
+                                        current.view?.removeGestureRecognizer(current)
+                                    }
+                                    recognizer = UITapGestureRecognizer(target: strongSelf, action: #selector(ItemListSwitchItemNode.titleBadgePressed(_:)))
+                                    strongSelf.titleBadgeTapGestureRecognizer = recognizer
+                                    view.addGestureRecognizer(recognizer)
+                                }
+                                recognizer.isEnabled = true
+                                view.isUserInteractionEnabled = true
+                                view.accessibilityLabel = item.presentationData.strings.Conversation_Info
+                                view.accessibilityTraits = .button
+                            } else if let recognizer = strongSelf.titleBadgeTapGestureRecognizer {
+                                recognizer.isEnabled = false
+                                view.isUserInteractionEnabled = false
+                            }
                         }
                     } else if let componentView = strongSelf.titleBadgeComponentView {
                         strongSelf.titleBadgeComponentView = nil
                         componentView.view?.removeFromSuperview()
+                        strongSelf.titleBadgeTapGestureRecognizer = nil
                     }
                     
                     transition.updateFrame(node: strongSelf.highlightedBackgroundNode, frame: CGRect(origin: CGPoint(x: 0.0, y: -UIScreenPixel), size: CGSize(width: params.width, height: layoutSize.height + UIScreenPixel + UIScreenPixel)))

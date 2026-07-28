@@ -19,6 +19,7 @@ import CheckNode
 import AnimationCache
 import MultiAnimationRenderer
 import TextNodeWithEntities
+import PeerBadgeUI
 
 private final class ShimmerEffectNode: ASDisplayNode {
     private var currentBackgroundColor: UIColor?
@@ -739,6 +740,7 @@ public class ItemListPeerItemNode: ItemListRevealOptionsItemNode, ItemListItemNo
     private var credibilityIconView: ComponentHostView<Empty>?
     private var verifiedIconComponent: EmojiStatusComponent?
     private var verifiedIconView: ComponentHostView<Empty>?
+    private var peerBadgeView: ComponentHostView<Empty>?
     private var switchNode: SwitchNode?
     private var checkNode: ASImageNode?
     private var leftCheckNode: CheckNode?
@@ -931,9 +933,13 @@ public class ItemListPeerItemNode: ItemListRevealOptionsItemNode, ItemListItemNo
             var credibilityIcon: EmojiStatusComponent.Content?
             var credibilityParticleColor: UIColor?
             var verifiedIcon: EmojiStatusComponent.Content?
+            var peerBadgeData: (badge: PeerBadge, context: AccountContext)?
             
             if case .threatSelfAsSaved = item.aliasHandling, item.peer.id == item.context.accountPeerId {
             } else {
+                if case let .account(accountContext) = item.context, let peerBadge = PeerBadgeRegistryStore.shared.badge(peerId: item.peer.id) {
+                    peerBadgeData = (peerBadge, accountContext)
+                }
                 if item.peer.isScam {
                     credibilityIcon = .text(color: item.presentationData.theme.chat.message.incoming.scamColor, string: item.presentationData.strings.Message_ScamAccount.uppercased())
                 } else if item.peer.isFake {
@@ -978,6 +984,9 @@ public class ItemListPeerItemNode: ItemListRevealOptionsItemNode, ItemListItemNo
                 default:
                     titleIconsWidth += 16.0
                 }
+            }
+            if peerBadgeData != nil {
+                titleIconsWidth += 4.0 + 18.0
             }
             
             var badgeColor: UIColor?
@@ -1566,9 +1575,44 @@ public class ItemListPeerItemNode: ItemListRevealOptionsItemNode, ItemListItemNo
                         
                         nextIconX += 4.0
                         creditibilityIconTransition.updateFrame(view: credibilityIconView, frame: CGRect(origin: CGPoint(x: nextIconX, y: floorToScreenPixels(titleFrame.midY - iconSize.height / 2.0)), size: iconSize))
+                        nextIconX += iconSize.width
                     } else if let credibilityIconView = strongSelf.credibilityIconView {
                         strongSelf.credibilityIconView = nil
                         credibilityIconView.removeFromSuperview()
+                    }
+
+                    if let peerBadgeData {
+                        let peerBadgeView: ComponentHostView<Empty>
+                        if let current = strongSelf.peerBadgeView {
+                            peerBadgeView = current
+                        } else {
+                            peerBadgeView = ComponentHostView<Empty>()
+                            strongSelf.containerNode.view.addSubview(peerBadgeView)
+                            strongSelf.peerBadgeView = peerBadgeView
+                        }
+                        let badgeSize = peerBadgeView.update(
+                            transition: .immediate,
+                            component: AnyComponent(PeerBadgeComponent(
+                                context: peerBadgeData.context,
+                                badge: peerBadgeData.badge,
+                                size: CGSize(width: 18.0, height: 18.0),
+                                isVisibleForAnimations: strongSelf.visibilityStatus
+                            )),
+                            environment: {},
+                            containerSize: CGSize(width: 18.0, height: 18.0)
+                        )
+                        nextIconX += 4.0
+                        transition.updateFrame(
+                            view: peerBadgeView,
+                            frame: CGRect(
+                                origin: CGPoint(x: nextIconX, y: floorToScreenPixels(titleFrame.midY - badgeSize.height / 2.0)),
+                                size: badgeSize
+                            )
+                        )
+                        nextIconX += badgeSize.width
+                    } else if let peerBadgeView = strongSelf.peerBadgeView {
+                        strongSelf.peerBadgeView = nil
+                        peerBadgeView.removeFromSuperview()
                     }
                     
                     if let currentSwitchNode = currentSwitchNode {

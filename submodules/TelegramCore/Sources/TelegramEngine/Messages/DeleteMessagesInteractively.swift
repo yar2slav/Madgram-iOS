@@ -151,7 +151,12 @@ func deleteMessagesInteractively(transaction: Transaction, stateManager: Account
             }
         }
     }
-    _internal_deleteMessages(transaction: transaction, mediaBox: postbox.mediaBox, ids: messageIds.map(\.messageId))
+    _internal_deleteMessages(
+        transaction: transaction,
+        mediaBox: postbox.mediaBox,
+        ids: messageIds.map(\.messageId),
+        archiveCloudMessages: false
+    )
     
     stateManager?.notifyDeletedMessages(messageIds: messageIds.map(\.messageId))
     
@@ -166,7 +171,15 @@ func _internal_clearHistoryInRangeInteractively(postbox: Postbox, peerId: PeerId
             cloudChatAddClearHistoryOperation(transaction: transaction, peerId: peerId, threadId: threadId, explicitTopMessageId: nil, minTimestamp: minTimestamp, maxTimestamp: maxTimestamp, type: CloudChatClearHistoryType(type))
             if type == .scheduledMessages {
             } else {
-                _internal_clearHistoryInRange(transaction: transaction, mediaBox: postbox.mediaBox, peerId: peerId, threadId: threadId, minTimestamp: minTimestamp, maxTimestamp: maxTimestamp, namespaces: .not(Namespaces.Message.allNonRegular))
+                var archiveIds: [MessageId] = []
+                transaction.withAllMessages(peerId: peerId, namespace: Namespaces.Message.Cloud, { message in
+                    if (threadId == nil || message.threadId == threadId) && message.timestamp >= minTimestamp && message.timestamp <= maxTimestamp {
+                        archiveIds.append(message.id)
+                    }
+                    return true
+                })
+                removeDeletedMessageArchiveForLocalDeletion(transaction: transaction, mediaBox: postbox.mediaBox, ids: archiveIds)
+                _internal_clearHistoryInRange(transaction: transaction, mediaBox: postbox.mediaBox, peerId: peerId, threadId: threadId, minTimestamp: minTimestamp, maxTimestamp: maxTimestamp, namespaces: .just(Set([Namespaces.Message.Cloud])))
             }
         } else if peerId.namespace == Namespaces.Peer.SecretChat {
             /*_internal_clearHistory(transaction: transaction, mediaBox: postbox.mediaBox, peerId: peerId, namespaces: .all)
@@ -200,15 +213,31 @@ func _internal_clearHistoryInteractively(postbox: Postbox, peerId: PeerId, threa
             if type == .scheduledMessages {
                 _internal_clearHistory(transaction: transaction, mediaBox: postbox.mediaBox, peerId: peerId, threadId: threadId, namespaces: .just(Namespaces.Message.allScheduled))
             } else {
+                var archiveIds: [MessageId] = []
+                transaction.withAllMessages(peerId: peerId, namespace: Namespaces.Message.Cloud, { message in
+                    if threadId == nil || message.threadId == threadId {
+                        archiveIds.append(message.id)
+                    }
+                    return true
+                })
+                removeDeletedMessageArchiveForLocalDeletion(transaction: transaction, mediaBox: postbox.mediaBox, ids: archiveIds)
                 var topIndex: MessageIndex?
                 if let topMessageId = transaction.getTopPeerMessageId(peerId: peerId, namespace: Namespaces.Message.Cloud), let topMessage = transaction.getMessage(topMessageId) {
                     topIndex = topMessage.index
                 }
             
-                _internal_clearHistory(transaction: transaction, mediaBox: postbox.mediaBox, peerId: peerId, threadId: threadId, namespaces: .not(Namespaces.Message.allNonRegular))
+                _internal_clearHistory(transaction: transaction, mediaBox: postbox.mediaBox, peerId: peerId, threadId: threadId, namespaces: .just(Set([Namespaces.Message.Cloud])))
                 if let cachedData = transaction.getPeerCachedData(peerId: peerId) as? CachedChannelData, let migrationReference = cachedData.migrationReference {
                     cloudChatAddClearHistoryOperation(transaction: transaction, peerId: migrationReference.maxMessageId.peerId, threadId: threadId, explicitTopMessageId: MessageId(peerId: migrationReference.maxMessageId.peerId, namespace: migrationReference.maxMessageId.namespace, id: migrationReference.maxMessageId.id + 1), minTimestamp: nil, maxTimestamp: nil, type: CloudChatClearHistoryType(type))
-                    _internal_clearHistory(transaction: transaction, mediaBox: postbox.mediaBox, peerId: migrationReference.maxMessageId.peerId, threadId: threadId, namespaces: .all)
+                    var migrationArchiveIds: [MessageId] = []
+                    transaction.withAllMessages(peerId: migrationReference.maxMessageId.peerId, namespace: Namespaces.Message.Cloud, { message in
+                        if threadId == nil || message.threadId == threadId {
+                            migrationArchiveIds.append(message.id)
+                        }
+                        return true
+                    })
+                    removeDeletedMessageArchiveForLocalDeletion(transaction: transaction, mediaBox: postbox.mediaBox, ids: migrationArchiveIds)
+                    _internal_clearHistory(transaction: transaction, mediaBox: postbox.mediaBox, peerId: migrationReference.maxMessageId.peerId, threadId: threadId, namespaces: .just(Set([Namespaces.Message.Cloud])))
                 }
                 if let topIndex = topIndex {
                     if peerId.namespace == Namespaces.Peer.CloudUser {

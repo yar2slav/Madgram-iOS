@@ -1843,6 +1843,9 @@ extension ChatControllerImpl {
                     switch customChatContents.kind {
                     case .hashTagSearch:
                         break
+                    case let .messageVersionHistory(_, versionCount):
+                        let archiveStrings = strings.localFeatures.localMessageArchive
+                        self.state.chatTitleContent = .custom(title: [ChatTitleContent.TitleTextItem(id: AnyHashable(0), content: .text(archiveStrings.historyTitle))], subtitle: archiveStrings.versionCount(versionCount), isEnabled: false)
                     case let .quickReplyMessageInput(shortcut, shortcutType):
                         switch shortcutType {
                         case .generic:

@@ -5,6 +5,7 @@ import AsyncDisplayKit
 import TelegramCore
 import SwiftSignalKit
 import TelegramPresentationData
+import TelegramUIPreferences
 import AccountContext
 import ContactListUI
 import CallListUI
@@ -88,6 +89,8 @@ public final class TelegramRootController: NavigationController, TelegramRootCon
     
     private var applicationInFocusDisposable: Disposable?
     private var storyUploadEventsDisposable: Disposable?
+    private var interfaceTuningDisposable: Disposable?
+    private var showCallsTab: Bool = true
     
     override public var minimizedContainer: MinimizedContainer? {
         didSet {
@@ -104,6 +107,8 @@ public final class TelegramRootController: NavigationController, TelegramRootCon
         self.presentationData = context.sharedContext.currentPresentationData.with { $0 }
         
         super.init(mode: .automaticMasterDetail, theme: NavigationControllerTheme(presentationTheme: self.presentationData.theme))
+
+        PeerBadgeRegistryStore.shared.start()
         
         self.presentationDataDisposable = (context.sharedContext.presentationData
         |> deliverOnMainQueue).startStrict(next: { [weak self] presentationData in
@@ -117,6 +122,15 @@ public final class TelegramRootController: NavigationController, TelegramRootCon
                     strongSelf.rootTabController?.statusBar.statusBarStyle = presentationData.theme.rootController.statusBarStyle.style
                 }
             }
+        })
+
+        self.interfaceTuningDisposable = (interfaceTuningSettingsSignal()
+        |> deliverOnMainQueue).startStrict(next: { [weak self] settings in
+            guard let self else {
+                return
+            }
+            self.updateRootControllers(showCallsTab: self.showCallsTab)
+            (self.rootTabController as? TabBarControllerImpl)?.updateIsTabBarHidden(settings.concealBottomBar, transition: .animated(duration: 0.25, curve: .easeInOut))
         })
         
         if context.sharedContext.applicationBindings.isMainApp {
@@ -146,6 +160,7 @@ public final class TelegramRootController: NavigationController, TelegramRootCon
         self.presentationDataDisposable?.dispose()
         self.applicationInFocusDisposable?.dispose()
         self.storyUploadEventsDisposable?.dispose()
+        self.interfaceTuningDisposable?.dispose()
     }
     
     public func getContactsController() -> ViewController? {
@@ -199,6 +214,8 @@ public final class TelegramRootController: NavigationController, TelegramRootCon
     }
     
     public func addRootControllers(showCallsTab: Bool) {
+        self.showCallsTab = showCallsTab
+        let interfaceSettings = InterfaceTuningSettingsStore.shared.current
         let tabBarController = TabBarControllerImpl(theme: self.presentationData.theme, strings: self.presentationData.strings)
         tabBarController.navigationPresentation = .master
         let chatListController = self.context.sharedContext.makeChatListController(context: self.context, location: .chatList(groupId: .root), controlsHistoryPreload: true, hideNetworkActivityStatus: false, previewing: false, enableDebugActions: !GlobalExperimentalSettings.isAppStoreBuild)
@@ -213,9 +230,11 @@ public final class TelegramRootController: NavigationController, TelegramRootCon
         contactsController.switchToChatsController = {  [weak self] in
             self?.openChatsController(activateSearch: false)
         }
-        controllers.append(contactsController)
+        if interfaceSettings.showContactsShortcut {
+            controllers.append(contactsController)
+        }
         
-        if showCallsTab {
+        if showCallsTab && interfaceSettings.showCallsShortcut {
             controllers.append(callListController)
         }
         controllers.append(chatListController)
@@ -247,15 +266,22 @@ public final class TelegramRootController: NavigationController, TelegramRootCon
         self.accountSettingsController = accountSettingsController
         self.rootTabController = tabBarController
         self.pushViewController(tabBarController, animated: false)
+        if interfaceSettings.concealBottomBar {
+            tabBarController.updateIsTabBarHidden(true, transition: .immediate)
+        }
     }
         
     public func updateRootControllers(showCallsTab: Bool) {
+        self.showCallsTab = showCallsTab
         guard let rootTabController = self.rootTabController as? TabBarControllerImpl else {
             return
         }
+        let interfaceSettings = InterfaceTuningSettingsStore.shared.current
         var controllers: [ViewController] = []
-        controllers.append(self.contactsController!)
-        if showCallsTab {
+        if interfaceSettings.showContactsShortcut {
+            controllers.append(self.contactsController!)
+        }
+        if showCallsTab && interfaceSettings.showCallsShortcut {
             controllers.append(self.callListController!)
         }
         controllers.append(self.chatListController!)

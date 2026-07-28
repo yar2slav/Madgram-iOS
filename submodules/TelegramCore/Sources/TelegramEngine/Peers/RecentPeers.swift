@@ -164,7 +164,7 @@ func _internal_managedRecentlyUsedInlineBots(postbox: Postbox, network: Network,
             let (categories, users) = (topPeersData.categories, topPeersData.users)
             let parsedPeers = AccumulatedPeers(users: users)
             
-            var peersWithRating: [(PeerId, Double)] = []
+            var ratingsByPeerId: [PeerId: Double] = [:]
             for category in categories {
                 switch category {
                 case let .topPeerCategoryPeers(topPeerCategoryPeersData):
@@ -173,10 +173,18 @@ func _internal_managedRecentlyUsedInlineBots(postbox: Postbox, network: Network,
                         switch topPeer {
                         case let .topPeer(topPeerData):
                             let (apiPeer, rating) = (topPeerData.peer, topPeerData.rating)
-                            peersWithRating.append((apiPeer.peerId, rating))
+                            let peerId = apiPeer.peerId
+                            if let currentRating = ratingsByPeerId[peerId] {
+                                ratingsByPeerId[peerId] = max(currentRating, rating)
+                            } else {
+                                ratingsByPeerId[peerId] = rating
+                            }
                         }
                     }
                 }
+            }
+            let peersWithRating = ratingsByPeerId.map { peerId, rating in
+                return (peerId, rating)
             }
             return (parsedPeers, peersWithRating)
         case .topPeersNotModified:

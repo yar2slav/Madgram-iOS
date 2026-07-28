@@ -46,6 +46,9 @@ extension ChatControllerImpl {
         }
 
         var rightBarButtons: [UIBarButtonItem] = []
+        if let ghostModeReadButtonItem = self.ghostModeReadButtonItem {
+            rightBarButtons.append(ghostModeReadButtonItem)
+        }
         if let rightNavigationButton = self.rightNavigationButton {
             rightBarButtons.append(rightNavigationButton.buttonItem)
         }
@@ -287,7 +290,7 @@ func updateChatPresentationInterfaceStateImpl(
     var canHaveUrlPreview = true
     if case let .customChatContents(customChatContents) = updatedChatPresentationInterfaceState.subject {
         switch customChatContents.kind {
-        case .hashTagSearch:
+        case .hashTagSearch, .messageVersionHistory:
             break
         case .quickReplyMessageInput:
             break

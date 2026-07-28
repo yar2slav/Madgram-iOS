@@ -68,6 +68,7 @@ public final class ChatMessageItemAssociatedData: Equatable {
     public let accountCountry: String?
     public let isParticipant: Bool
     public let invitedOn: Int32?
+    public let deletedMessageMarker: String
     
     public init(
         automaticDownloadPeerType: MediaAutoDownloadPeerType,
@@ -107,7 +108,8 @@ public final class ChatMessageItemAssociatedData: Equatable {
         showTextAsPlaceholder: Bool = false,
         accountCountry: String? = nil,
         isParticipant: Bool = false,
-        invitedOn: Int32? = nil
+        invitedOn: Int32? = nil,
+        deletedMessageMarker: String = DeletedMessageArchiveSettings.defaultDeletedMessageMarker
     ) {
         self.automaticDownloadPeerType = automaticDownloadPeerType
         self.automaticDownloadPeerId = automaticDownloadPeerId
@@ -147,6 +149,7 @@ public final class ChatMessageItemAssociatedData: Equatable {
         self.accountCountry = accountCountry
         self.isParticipant = isParticipant
         self.invitedOn = invitedOn
+        self.deletedMessageMarker = deletedMessageMarker
     }
     
     public static func == (lhs: ChatMessageItemAssociatedData, rhs: ChatMessageItemAssociatedData) -> Bool {
@@ -250,6 +253,9 @@ public final class ChatMessageItemAssociatedData: Equatable {
             return false
         }
         if lhs.invitedOn != rhs.invitedOn {
+            return false
+        }
+        if lhs.deletedMessageMarker != rhs.deletedMessageMarker {
             return false
         }
         return true
@@ -1289,6 +1295,7 @@ public enum ChatCustomContentsKind: Equatable {
     case quickReplyMessageInput(shortcut: String, shortcutType: ChatQuickReplyShortcutType)
     case businessLinkSetup(link: TelegramBusinessChatLinks.Link)
     case hashTagSearch(publicPosts: Bool)
+    case messageVersionHistory(originalMessageId: EngineMessage.Id, versionCount: Int)
 }
 
 public protocol ChatCustomContentsProtocol: AnyObject {

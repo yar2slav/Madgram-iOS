@@ -217,6 +217,14 @@ public struct PresentationResourcesSettings {
     })
     
     public static let ton = renderSettingsIcon(name: "Item List/Icons/Gram", backgroundColors: [colorBlue])
+
+    public static let madgram = generateImage(CGSize(width: 30.0, height: 30.0), contextGenerator: { size, context in
+        let bounds = CGRect(origin: CGPoint(), size: size)
+        context.clear(bounds)
+        if let image = UIImage(bundleImageName: "Item List/Icons/Madgram"), let cgImage = image.cgImage {
+            context.draw(cgImage, in: bounds)
+        }
+    })
  
     public static let stars = generateImage(CGSize(width: 30.0, height: 30.0), contextGenerator: { size, context in
         let bounds = CGRect(origin: CGPoint(), size: size)

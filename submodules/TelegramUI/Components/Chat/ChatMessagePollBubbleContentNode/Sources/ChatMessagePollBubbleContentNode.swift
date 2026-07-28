@@ -891,7 +891,7 @@ private final class ChatMessagePollOptionNode: ASDisplayNode {
 
             let shouldHaveRadioNode = optionResult == nil
             let isSelectable: Bool
-            if shouldHaveRadioNode, poll.kind.multipleAnswers, forceSelected == nil, !Namespaces.Message.allNonRegular.contains(message.id.namespace) {
+            if shouldHaveRadioNode, poll.kind.multipleAnswers, forceSelected == nil, !Namespaces.Message.allNonRegular.contains(message.id.namespace), message.id.namespace != Namespaces.Message.Archived {
                 isSelectable = true
             } else {
                 isSelectable = false
@@ -2619,7 +2619,7 @@ public class ChatMessagePollBubbleContentNode: ChatMessageBubbleContentNode {
         
         let canAlwaysViewResults = poll.isCreator
         if !hasSelection || (canAlwaysViewResults && selectedOpaqueIdentifiers.isEmpty) {
-            if !Namespaces.Message.allNonRegular.contains(item.message.id.namespace) {
+            if !Namespaces.Message.allNonRegular.contains(item.message.id.namespace) && item.message.id.namespace != Namespaces.Message.Archived {
                 switch poll.publicity {
                 case .public:
                     item.controllerInteraction.requestOpenMessagePollResults(item.message.id, pollId)
@@ -3632,7 +3632,7 @@ public class ChatMessagePollBubbleContentNode: ChatMessageBubbleContentNode {
                     self.buttonNode.isHidden = false
                 }
 
-                if Namespaces.Message.allNonRegular.contains(item.message.id.namespace) {
+                if Namespaces.Message.allNonRegular.contains(item.message.id.namespace) || item.message.id.namespace == Namespaces.Message.Archived {
                     self.buttonNode.isUserInteractionEnabled = false
                 } else {
                     self.buttonNode.isUserInteractionEnabled = !isPollActionInProgress
@@ -3730,7 +3730,7 @@ public class ChatMessagePollBubbleContentNode: ChatMessageBubbleContentNode {
                     if case .tap = gesture {
                         if optionNode.isUserInteractionEnabled {
                             return ChatMessageBubbleContentTapAction(content: .ignore)
-                        } else if let item = self.item, !Namespaces.Message.allNonRegular.contains(item.message.id.namespace), !Namespaces.Message.allEphemeral.contains(item.message.id.namespace), let poll = self.poll, let option = optionNode.option, !isBotChat {
+                        } else if let item = self.item, !Namespaces.Message.allNonRegular.contains(item.message.id.namespace), item.message.id.namespace != Namespaces.Message.Archived, !Namespaces.Message.allEphemeral.contains(item.message.id.namespace), let poll = self.poll, let option = optionNode.option, !isBotChat {
                             switch poll.publicity {
                             case .anonymous:
                                 return ChatMessageBubbleContentTapAction(content: .none)

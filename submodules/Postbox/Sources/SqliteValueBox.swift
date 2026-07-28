@@ -454,8 +454,15 @@ public final class SqliteValueBox: ValueBox {
         assert(resultCode)
         resultCode = database.execute("PRAGMA temp_store=MEMORY")
         assert(resultCode)
-        resultCode = database.execute("PRAGMA journal_mode=WAL")
-        assert(resultCode)
+        let currentJournalMode = self.runPragma(database, "journal_mode")
+        if currentJournalMode.lowercased() != "wal" {
+            resultCode = database.execute("PRAGMA journal_mode=WAL")
+            if !resultCode {
+                postboxLog("Couldn't enable WAL journal mode at \(path), current mode: \(currentJournalMode)")
+                postboxLogSync()
+                preconditionFailure("Couldn't enable WAL journal mode")
+            }
+        }
         resultCode = database.execute("PRAGMA cipher_memory_security = OFF")
         assert(resultCode)
         

@@ -95,12 +95,18 @@ public func stringForMessageTimestampStatus(
         }
     }
     
+    let isMessageShotPreview = message.attributes.contains(where: { $0 is MessagePreviewForceIncomingAttribute })
+    if isMessageShotPreview && message.timestamp == 0 {
+        return ""
+    }
     var displayFullDate = false
-    if case .full = format, timestamp > 100000 {
-        displayFullDate = true
-    } else if let forwardInfo = message.forwardInfo, message.id.peerId == context.account.peerId {
-        displayFullDate = true
-        timestamp = forwardInfo.date
+    if !isMessageShotPreview {
+        if case .full = format, timestamp > 100000 {
+            displayFullDate = true
+        } else if let forwardInfo = message.forwardInfo, message.id.peerId == context.account.peerId {
+            displayFullDate = true
+            timestamp = forwardInfo.date
+        }
     }
     
     if let sourceAuthorInfo = message.sourceAuthorInfo, let orignalDate = sourceAuthorInfo.orignalDate {
@@ -178,7 +184,7 @@ public func stringForMessageTimestampStatus(
         } else {
             dateText = strings.Message_FullDateFormat(dayText, stringForMessageTimestamp(timestamp: timestamp, dateTimeFormat: dateTimeFormat)).string
         }
-    } else if let forwardInfo = message.forwardInfo, forwardInfo.flags.contains(.isImported) {
+    } else if !isMessageShotPreview, let forwardInfo = message.forwardInfo, forwardInfo.flags.contains(.isImported) {
         dateText = strings.Message_ImportedDateFormat(dateStringForDay(strings: strings, dateTimeFormat: dateTimeFormat, timestamp: forwardInfo.date), stringForMessageTimestamp(timestamp: forwardInfo.date, dateTimeFormat: dateTimeFormat), dateText).string
     }
     
@@ -246,6 +252,10 @@ public func stringForMessageTimestampStatus(
         if let authorTitle = authorTitle, !authorTitle.isEmpty {
             dateText = "\(authorTitle), \(dateText)"
         }
+    }
+
+    if message._asMessage().isArchivedDeletedMessage {
+        dateText = "\(associatedData.deletedMessageMarker) • \(dateText)"
     }
     
     return dateText

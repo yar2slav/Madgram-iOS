@@ -160,8 +160,8 @@ typedef enum {
         }
         _englishStrings = englishStrings;
         
-        _headlines = @[ _englishStrings[@"Tour.Title1"], _englishStrings[@"Tour.Title2"],  _englishStrings[@"Tour.Title6"], _englishStrings[@"Tour.Title3"], _englishStrings[@"Tour.Title4"], _englishStrings[@"Tour.Title5"]];
-        _descriptions = @[_englishStrings[@"Tour.Text1"], _englishStrings[@"Tour.Text2"],  _englishStrings[@"Tour.Text6"], _englishStrings[@"Tour.Text3"], _englishStrings[@"Tour.Text4"], _englishStrings[@"Tour.Text5"]];
+        _headlines = @[_englishStrings[@"Tour.Title1"], _englishStrings[@"Tour.Title2"], _englishStrings[@"Tour.Title3"], _englishStrings[@"Tour.Title4"], _englishStrings[@"Tour.Title5"]];
+        _descriptions = @[_englishStrings[@"Tour.Text1"], _englishStrings[@"Tour.Text2"], _englishStrings[@"Tour.Text3"], _englishStrings[@"Tour.Text4"], _englishStrings[@"Tour.Text5"]];
         
         __weak RMIntroViewController *weakSelf = self;
         _didEnterBackgroundObserver = [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidEnterBackgroundNotification object:nil queue:nil usingBlock:^(__unused NSNotification *notification)
@@ -383,7 +383,7 @@ typedef enum {
     _pageControl = [[UIPageControl alloc] init];
     _pageControl.autoresizingMask = UIViewAutoresizingFlexibleBottomMargin;
     _pageControl.userInteractionEnabled = false;
-    [_pageControl setNumberOfPages:6];
+    [_pageControl setNumberOfPages:_headlines.count];
     _pageControl.pageIndicatorTintColor = _regularDotColor;
     _pageControl.currentPageIndicatorTintColor = _highlightedDotColor;
     [_wrapperView addSubview:_pageControl];
@@ -638,6 +638,7 @@ typedef enum {
     
     on_surface_created();
     on_surface_changed(200, 200, 1, 0,0,0,0,0);
+    set_page_immediately(1);
 }
 
 #pragma mark - GLKView delegate methods
@@ -646,7 +647,7 @@ typedef enum {
 {
     double time = CFAbsoluteTimeGetCurrent();
     
-    set_page((int)_currentPage);
+    set_page((int)_currentPage + 1);
     set_date(time);
     
     on_draw_frame();
@@ -688,7 +689,7 @@ NSInteger _current_page_end;
                 _currentPage--;
         }
         
-        _currentPage = MAX(0, MIN(5, _currentPage));
+        _currentPage = MAX(0, MIN((NSInteger)_headlines.count - 1, _currentPage));
         _current_page_end = _currentPage;
     }
     else

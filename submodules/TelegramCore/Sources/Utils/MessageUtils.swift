@@ -346,6 +346,9 @@ func locallyRenderedMessage(message: StoreMessage, peers: AccumulatedPeers, asso
 
 public extension Message {
     func effectivelyIncoming(_ accountPeerId: PeerId) -> Bool {
+        if self.attributes.contains(where: { $0 is MessagePreviewForceIncomingAttribute }) {
+            return true
+        }
         if self.id.peerId == accountPeerId {
             if let sourceAuthorInfo = self.sourceAuthorInfo {
                 if sourceAuthorInfo.originalOutgoing {

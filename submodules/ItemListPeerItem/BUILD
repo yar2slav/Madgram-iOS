@@ -20,6 +20,7 @@ swift_library(
         "//submodules/PeerPresenceStatusManager:PeerPresenceStatusManager",
         "//submodules/ItemListUI:ItemListUI",
         "//submodules/TelegramUIPreferences:TelegramUIPreferences",
+        "//submodules/PeerBadgeUI:PeerBadgeUI",
         "//submodules/ContextUI:ContextUI",
         "//submodules/PresentationDataUtils:PresentationDataUtils",
         "//submodules/AccountContext:AccountContext",

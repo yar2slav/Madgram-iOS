@@ -266,6 +266,7 @@ public func galleryItemForEntry(
     hideControls: Bool = false,
     fromPlayingVideo: Bool = false,
     isSecret: Bool = false,
+    allowCaptureOfViewOnceMedia: Bool = false,
     landscape: Bool = false,
     timecode: Double? = nil,
     playbackRate: @escaping () -> Double?,
@@ -291,7 +292,10 @@ public func galleryItemForEntry(
     
     if let image = media as? TelegramMediaImage {
         if let file = image.video {
-            let captureProtected = message.isCopyProtected() || message.containsSecretMedia || message.minAutoremoveOrClearTimeout == viewOnceTimeout || message.paidContent != nil || peerIsCopyProtected
+            let captureProtected = message.isCopyProtected()
+                || message.paidContent != nil
+                || peerIsCopyProtected
+                || (!allowCaptureOfViewOnceMedia && (message.containsSecretMedia || message.minAutoremoveOrClearTimeout == viewOnceTimeout))
             
             var originData = GalleryItemOriginData(title: message.effectiveAuthor.flatMap(EnginePeer.init)?.displayTitle(strings: presentationData.strings, displayOrder: presentationData.nameDisplayOrder), timestamp: message.timestamp)
             if Namespaces.Message.allNonRegular.contains(message.id.namespace) {
@@ -338,6 +342,7 @@ public func galleryItemForEntry(
                 translateToLanguage: translateToLanguage,
                 peerIsCopyProtected: peerIsCopyProtected,
                 isSecret: isSecret,
+                allowCaptureOfViewOnceMedia: allowCaptureOfViewOnceMedia,
                 displayInfoOnTop: displayInfoOnTop,
                 performAction: performAction,
                 openActionOptions: openActionOptions,
@@ -348,7 +353,10 @@ public func galleryItemForEntry(
     } else if let file = media as? TelegramMediaFile {
         if file.isVideo {
             let content: UniversalVideoContent
-            let captureProtected = message.isCopyProtected() || message.containsSecretMedia || message.minAutoremoveOrClearTimeout == viewOnceTimeout || message.paidContent != nil || peerIsCopyProtected
+            let captureProtected = message.isCopyProtected()
+                || message.paidContent != nil
+                || peerIsCopyProtected
+                || (!allowCaptureOfViewOnceMedia && (message.containsSecretMedia || message.minAutoremoveOrClearTimeout == viewOnceTimeout))
             if file.isAnimated {
                 content = NativeVideoContent(id: .message(message.stableId, file.fileId), userLocation: .peer(message.id.peerId), fileReference: .message(message: MessageReference(message), media: file), imageReference: mediaImage.flatMap({ ImageMediaReference.message(message: MessageReference(message), media: $0) }), loopVideo: true, enableSound: false, tempFilePath: tempFilePath, captureProtected: captureProtected, storeAfterDownload: generateStoreAfterDownload?(message, file))
             } else {
@@ -444,6 +452,7 @@ public func galleryItemForEntry(
                         translateToLanguage: translateToLanguage,
                         peerIsCopyProtected: peerIsCopyProtected,
                         isSecret: isSecret,
+                        allowCaptureOfViewOnceMedia: allowCaptureOfViewOnceMedia,
                         displayInfoOnTop: displayInfoOnTop,
                         performAction: performAction,
                         openActionOptions: openActionOptions,

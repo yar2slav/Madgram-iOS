@@ -401,23 +401,23 @@
 "Date.ChatDateHeaderYear" = "%1$@ %2$@, %3$@";
 
 // Tour
-"Tour.Title1" = "Telegram";
-"Tour.Text1" = "The world's **fastest** messaging app.\nIt is **free** and **secure**.";
+"Tour.Title1" = "MadGram";
+"Tour.Text1" = "More control over **privacy**, messages\nand the way the app looks.";
 
-"Tour.Title2" = "Fast";
-"Tour.Text2" = "**Telegram** delivers messages\nfaster than any other application.";
+"Tour.Title2" = "Ghost Mode";
+"Tour.Text2" = "Read chats and stories while keeping\nyour **online status** private.";
 
-"Tour.Title3" = "Powerful";
-"Tour.Text3" = "**Telegram** has no limits on\nthe size of your media and chats.";
+"Tour.Title3" = "Message Archive";
+"Tour.Text3" = "Keep local copies of **deleted messages**\nand previous edited versions.";
 
-"Tour.Title4" = "Secure";
-"Tour.Text4" = "**Telegram** keeps your messages\nsafe from hacker attacks.";
+"Tour.Title4" = "Message Shot";
+"Tour.Text4" = "Create clean, customizable screenshots\nof message chains.";
 
-"Tour.Title5" = "Cloud-Based";
-"Tour.Text5" = "**Telegram** lets you access your\nmessages from multiple devices.";
+"Tour.Title5" = "Message Filters";
+"Tour.Text5" = "Hide messages from selected accounts\nwithout deleting them.";
 
-"Tour.Title6" = "Free";
-"Tour.Text6" = "**Telegram** provides free unlimited\ncloud storage for chats and media.";
+"Tour.Title6" = "More Control";
+"Tour.Text6" = "Forward without sender and customize\nthe interface around you.";
 
 "Tour.StartButton" = "Start Messaging";
 

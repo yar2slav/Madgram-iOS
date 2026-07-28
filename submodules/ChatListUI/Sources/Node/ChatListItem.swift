@@ -5,6 +5,7 @@ import Display
 import SwiftSignalKit
 import TelegramCore
 import TelegramPresentationData
+import TelegramUIPreferences
 import ItemListUI
 import PresentationDataUtils
 import AvatarNode
@@ -29,6 +30,7 @@ import MultilineTextComponent
 import MultilineTextWithEntitiesComponent
 import ShimmerEffect
 import GlassBackgroundComponent
+import PeerBadgeUI
 
 public enum ChatListItemContent {
     public final class ThreadInfo: Equatable {
@@ -1432,6 +1434,7 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
     var credibilityIconComponent: EmojiStatusComponent?
     var statusIconView: ComponentHostView<Empty>?
     var statusIconComponent: EmojiStatusComponent?
+    var peerBadgeView: ComponentHostView<Empty>?
     let hiddenPeerIconNode: ASImageNode
     let mutedIconNode: ASImageNode
     var itemTagList: ComponentView<Empty>?
@@ -2509,6 +2512,7 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
             var currentVerifiedIconContent: EmojiStatusComponent.Content?
             var currentStatusIconContent: EmojiStatusComponent.Content?
             var currentStatusIconParticleColor: UIColor?
+            var currentPeerBadge: PeerBadge?
             var currentSecretIconImage: UIImage?
             var currentMessageTypeIcon: UIImage?
             var currentMessageTypeIconOffset: CGPoint = .zero
@@ -2603,6 +2607,21 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                     if case let .psa(_, maybePsaText) = promoInfo, let psaText = maybePsaText {
                         initialHideAuthor = true
                         messageText = psaText
+                        richTextPreview = nil
+                    }
+
+                    let messageFilterSettings = MessageFilterSettingsStore.shared.current
+                    if messageFilterSettings.isActive, messages.contains(where: { message in
+                        guard let author = message.author else {
+                            return false
+                        }
+                        return messageFilterSettings.hidesMessages(fromAuthorId: author.id.toInt64())
+                    }) {
+                        initialHideAuthor = true
+                        messageText = ""
+                        messageEntities = []
+                        spoilers = nil
+                        customEmojiRanges = nil
                         richTextPreview = nil
                     }
                 
@@ -3549,6 +3568,7 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                         }
                         
                         if let peer = iconPeer {
+                            currentPeerBadge = PeerBadgeRegistryStore.shared.badge(peerId: peer.id)
                             if case let .peer(peerData) = item.content, peerData.customMessageListData != nil {
                                 currentCredibilityIconContent = nil
                             } else if case .savedMessagesChats = item.chatListLocation, peer.id == item.context.account.peerId {
@@ -3577,6 +3597,7 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                         break
                     }
                 } else if case let .chat(itemPeer) = contentPeer, let peer = itemPeer.chatOrMonoforumMainPeer {
+                    currentPeerBadge = PeerBadgeRegistryStore.shared.badge(peerId: peer.id)
                     if peer.isSubscription {
                         isSubscription = true
                     }
@@ -3660,6 +3681,14 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                 default:
                     titleIconsWidth += 8.0
                 }
+            }
+            if currentPeerBadge != nil {
+                if titleIconsWidth.isZero {
+                    titleIconsWidth += 4.0
+                } else {
+                    titleIconsWidth += 2.0
+                }
+                titleIconsWidth += 18.0
             }
             
             let layoutOffset: CGFloat = 0.0
@@ -5305,6 +5334,42 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                     } else if let verifiedIconView = strongSelf.verifiedIconView {
                         strongSelf.verifiedIconView = nil
                         verifiedIconView.removeFromSuperview()
+                    }
+
+                    if let currentPeerBadge {
+                        let peerBadgeView: ComponentHostView<Empty>
+                        if let current = strongSelf.peerBadgeView {
+                            peerBadgeView = current
+                        } else {
+                            peerBadgeView = ComponentHostView<Empty>()
+                            strongSelf.peerBadgeView = peerBadgeView
+                            strongSelf.mainContentContainerNode.view.addSubview(peerBadgeView)
+                        }
+                        let badgeSize = peerBadgeView.update(
+                            transition: .immediate,
+                            component: AnyComponent(PeerBadgeComponent(
+                                context: item.context,
+                                badge: currentPeerBadge,
+                                size: CGSize(width: 18.0, height: 18.0),
+                                isVisibleForAnimations: strongSelf.visibilityStatus
+                            )),
+                            environment: {},
+                            containerSize: CGSize(width: 18.0, height: 18.0)
+                        )
+                        transition.updateFrame(
+                            view: peerBadgeView,
+                            frame: CGRect(
+                                origin: CGPoint(
+                                    x: nextTitleIconOrigin,
+                                    y: floorToScreenPixels(titleFrame.maxY - lastLineRect.height * 0.5 - badgeSize.height / 2.0) - UIScreenPixel
+                                ),
+                                size: badgeSize
+                            )
+                        )
+                        nextTitleIconOrigin += badgeSize.width + 4.0
+                    } else if let peerBadgeView = strongSelf.peerBadgeView {
+                        strongSelf.peerBadgeView = nil
+                        peerBadgeView.removeFromSuperview()
                     }
                     
                     if let currentHiddenIconImage = currentHiddenIconImage {

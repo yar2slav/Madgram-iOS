@@ -33,6 +33,7 @@ public final class ChatPresentationData {
     public let chatBubbleCorners: PresentationChatBubbleCorners
     public let animatedEmojiScale: CGFloat
     public let isPreview: Bool
+    public let alwaysDisplayAuthorInfo: Bool
     
     public let messageFont: UIFont
     public let messageEmojiFont: UIFont
@@ -42,7 +43,7 @@ public final class ChatPresentationData {
     public let messageFixedFont: UIFont
     public let messageBlockQuoteFont: UIFont
     
-    public init(theme: ChatPresentationThemeData, fontSize: PresentationFontSize, strings: PresentationStrings, dateTimeFormat: PresentationDateTimeFormat, nameDisplayOrder: PresentationPersonNameOrder, disableAnimations: Bool, largeEmoji: Bool, chatBubbleCorners: PresentationChatBubbleCorners, animatedEmojiScale: CGFloat = 1.0, isPreview: Bool = false) {
+    public init(theme: ChatPresentationThemeData, fontSize: PresentationFontSize, strings: PresentationStrings, dateTimeFormat: PresentationDateTimeFormat, nameDisplayOrder: PresentationPersonNameOrder, disableAnimations: Bool, largeEmoji: Bool, chatBubbleCorners: PresentationChatBubbleCorners, animatedEmojiScale: CGFloat = 1.0, isPreview: Bool = false, alwaysDisplayAuthorInfo: Bool = false) {
         self.theme = theme
         self.fontSize = fontSize
         self.strings = strings
@@ -52,6 +53,7 @@ public final class ChatPresentationData {
         self.chatBubbleCorners = chatBubbleCorners
         self.largeEmoji = largeEmoji
         self.isPreview = isPreview
+        self.alwaysDisplayAuthorInfo = alwaysDisplayAuthorInfo
         
         let baseFontSize = fontSize.baseDisplaySize
         self.messageFont = Font.regular(baseFontSize)
@@ -76,7 +78,8 @@ public final class ChatPresentationData {
             largeEmoji: self.largeEmoji,
             chatBubbleCorners: self.chatBubbleCorners,
             animatedEmojiScale: self.animatedEmojiScale,
-            isPreview: self.isPreview
+            isPreview: self.isPreview,
+            alwaysDisplayAuthorInfo: self.alwaysDisplayAuthorInfo
         )
     }
 }

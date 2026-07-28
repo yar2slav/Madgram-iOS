@@ -81,13 +81,14 @@ public final class ChatPanelInterfaceInteraction {
     public let deleteMessages: ([EngineRawMessage], ContextControllerProtocol?, @escaping (ContextMenuActionResult) -> Void) -> Void
     public let forwardSelectedMessages: () -> Void
     public let forwardCurrentForwardMessages: () -> Void
-    public let forwardMessages: ([EngineRawMessage]) -> Void
+    public let forwardMessages: ([EngineRawMessage], ChatInterfaceForwardOptionsState?) -> Void
     public let updateForwardOptionsState: ((ChatInterfaceForwardOptionsState) -> ChatInterfaceForwardOptionsState) -> Void
     public let presentForwardOptions: (UIView) -> Void
     public let presentReplyOptions: (UIView) -> Void
     public let presentLinkOptions: (UIView) -> Void
     public let presentSuggestPostOptions: () -> Void
     public let shareSelectedMessages: () -> Void
+    public var screenshotSelectedMessages: (() -> Void)?
     public let updateTextInputStateAndMode: (@escaping (ChatTextInputState, ChatInputMode) -> (ChatTextInputState, ChatInputMode)) -> Void
     public let updateInputModeAndDismissedButtonKeyboardMessageId: ((ChatPresentationInterfaceState) -> (ChatInputMode, EngineMessage.Id?)) -> Void
     public let openStickers: () -> Void
@@ -214,7 +215,7 @@ public final class ChatPanelInterfaceInteraction {
         deleteMessages: @escaping ([EngineRawMessage], ContextControllerProtocol?, @escaping (ContextMenuActionResult) -> Void) -> Void,
         forwardSelectedMessages: @escaping () -> Void,
         forwardCurrentForwardMessages: @escaping () -> Void,
-        forwardMessages: @escaping ([EngineRawMessage]) -> Void,
+        forwardMessages: @escaping ([EngineRawMessage], ChatInterfaceForwardOptionsState?) -> Void,
         updateForwardOptionsState: @escaping ((ChatInterfaceForwardOptionsState) -> ChatInterfaceForwardOptionsState) -> Void,
         presentForwardOptions: @escaping (UIView) -> Void,
         presentReplyOptions: @escaping (UIView) -> Void,
@@ -486,7 +487,7 @@ public final class ChatPanelInterfaceInteraction {
             f(.default)
         }, forwardSelectedMessages: {
         }, forwardCurrentForwardMessages: {
-        }, forwardMessages: { _ in
+        }, forwardMessages: { _, _ in
         }, updateForwardOptionsState: { _ in
         }, presentForwardOptions: { _ in
         }, presentReplyOptions: { _ in

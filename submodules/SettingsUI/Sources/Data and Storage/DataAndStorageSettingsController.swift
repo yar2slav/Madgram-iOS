@@ -23,6 +23,7 @@ public enum AutomaticSaveIncomingPeerType {
 private final class DataAndStorageControllerArguments {
     let openStorageUsage: () -> Void
     let openNetworkUsage: () -> Void
+    let openLocalMessageArchive: () -> Void
     let openProxy: () -> Void
     let openAutomaticDownloadConnectionType: (AutomaticDownloadConnectionType) -> Void
     let resetAutomaticDownload: () -> Void
@@ -38,6 +39,7 @@ private final class DataAndStorageControllerArguments {
     init(
         openStorageUsage: @escaping () -> Void,
         openNetworkUsage: @escaping () -> Void,
+        openLocalMessageArchive: @escaping () -> Void,
         openProxy: @escaping () -> Void,
         openAutomaticDownloadConnectionType: @escaping (AutomaticDownloadConnectionType) -> Void,
         resetAutomaticDownload: @escaping () -> Void,
@@ -52,6 +54,7 @@ private final class DataAndStorageControllerArguments {
     ) {
         self.openStorageUsage = openStorageUsage
         self.openNetworkUsage = openNetworkUsage
+        self.openLocalMessageArchive = openLocalMessageArchive
         self.openProxy = openProxy
         self.openAutomaticDownloadConnectionType = openAutomaticDownloadConnectionType
         self.resetAutomaticDownload = resetAutomaticDownload
@@ -75,6 +78,7 @@ private enum DataAndStorageSection: Int32 {
     case other
     case connection
     case sensitiveContent
+    case localMessageArchive
 }
 
 public enum DataAndStorageEntryTag: ItemListItemTag, Equatable {
@@ -99,6 +103,7 @@ public enum DataAndStorageEntryTag: ItemListItemTag, Equatable {
 private enum DataAndStorageEntry: ItemListNodeEntry {
     case storageUsage(PresentationTheme, String, String)
     case networkUsage(PresentationTheme, String, String)
+    case localMessageArchive(PresentationTheme, String)
     case automaticDownloadHeader(PresentationTheme, String)
     case automaticDownloadCellular(PresentationTheme, String, String)
     case automaticDownloadWifi(PresentationTheme, String, String)
@@ -130,6 +135,8 @@ private enum DataAndStorageEntry: ItemListNodeEntry {
         switch self {
             case .storageUsage, .networkUsage:
                 return DataAndStorageSection.usage.rawValue
+            case .localMessageArchive:
+                return DataAndStorageSection.localMessageArchive.rawValue
             case .automaticDownloadHeader, .automaticDownloadCellular, .automaticDownloadWifi, .automaticDownloadReset:
                 return DataAndStorageSection.autoDownload.rawValue
             case .autoSaveHeader, .autoSaveItem, .autoSaveInfo:
@@ -153,6 +160,8 @@ private enum DataAndStorageEntry: ItemListNodeEntry {
                 return 0
             case .networkUsage:
                 return 1
+            case .localMessageArchive:
+                return 40
             case .automaticDownloadHeader:
                 return 2
             case .automaticDownloadCellular:
@@ -208,6 +217,12 @@ private enum DataAndStorageEntry: ItemListNodeEntry {
                 }
             case let .networkUsage(lhsTheme, lhsText, lhsValue):
                 if case let .networkUsage(rhsTheme, rhsText, rhsValue) = rhs, lhsTheme === rhsTheme, lhsText == rhsText, lhsValue == rhsValue {
+                    return true
+                } else {
+                    return false
+                }
+            case let .localMessageArchive(lhsTheme, lhsText):
+                if case let .localMessageArchive(rhsTheme, rhsText) = rhs, lhsTheme === rhsTheme, lhsText == rhsText {
                     return true
                 } else {
                     return false
@@ -355,6 +370,10 @@ private enum DataAndStorageEntry: ItemListNodeEntry {
             case let .networkUsage(_, text, value):
                 return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, icon: PresentationResourcesSettings.dataUsage, title: text, label: value, sectionId: self.section, style: .blocks, action: {
                     arguments.openNetworkUsage()
+                })
+            case let .localMessageArchive(_, text):
+                return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: text, label: "", sectionId: self.section, style: .blocks, action: {
+                    arguments.openLocalMessageArchive()
                 })
             case let .automaticDownloadHeader(_, text):
                 return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
@@ -659,6 +678,7 @@ private func dataAndStorageControllerEntries(context: AccountContext, state: Dat
     }
     entries.append(.connectionHeader(presentationData.theme, presentationData.strings.ChatSettings_ConnectionType_Title.uppercased()))
     entries.append(.connectionProxy(presentationData.theme, presentationData.strings.SocksProxySetup_Title, proxyValue))
+    entries.append(.localMessageArchive(presentationData.theme, presentationData.strings.localFeatures.localMessageArchive.title))
         
     return entries
 }
@@ -828,6 +848,8 @@ public func dataAndStorageController(context: AccountContext, focusOnItemTag: Da
                 return autodownloadMediaConnectionTypeController(context: context, connectionType: isCellular ? .cellular : .wifi)
             }))
         })
+    }, openLocalMessageArchive: {
+        pushControllerImpl?(localMessageArchiveSettingsController(context: context))
     }, openProxy: {
         pushControllerImpl?(proxySettingsController(context: context))
     }, openAutomaticDownloadConnectionType: { connectionType in

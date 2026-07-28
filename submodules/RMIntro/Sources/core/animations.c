@@ -163,6 +163,15 @@ void set_page(int page)
     }
 }
 
+void set_page_immediately(int page)
+{
+    current_page = page;
+    prev_page = page;
+    direct = 1;
+    date0 = date;
+    time = 0;
+}
+
 
 void set_date(double a)
 {

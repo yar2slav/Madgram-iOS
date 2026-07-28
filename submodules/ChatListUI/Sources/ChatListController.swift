@@ -2163,12 +2163,21 @@ public class ChatListControllerImpl: TelegramBaseController, ChatListController 
             if self.previewing {
                 self.storiesReady.set(.single(true))
             } else {
-                self.storySubscriptionsDisposable = (self.context.engine.messages.storySubscriptions(isHidden: self.location == .chatList(groupId: .archive))
-                |> deliverOnMainQueue).startStrict(next: { [weak self] rawStorySubscriptions in
+                self.storySubscriptionsDisposable = (combineLatest(
+                    self.context.engine.messages.storySubscriptions(isHidden: self.location == .chatList(groupId: .archive)),
+                    interfaceTuningSettingsSignal()
+                )
+                |> deliverOnMainQueue).startStrict(next: { [weak self] serverStorySubscriptions, interfaceSettings in
                     guard let self else {
                         return
                     }
                     
+                    let rawStorySubscriptions: EngineStorySubscriptions
+                    if interfaceSettings.hideStoryStrip {
+                        rawStorySubscriptions = EngineStorySubscriptions(accountItem: nil, items: [], hasMoreToken: nil)
+                    } else {
+                        rawStorySubscriptions = serverStorySubscriptions
+                    }
                     self.rawStorySubscriptions = rawStorySubscriptions
                     var items: [EngineStorySubscriptions.Item] = []
                     if self.shouldFixStorySubscriptionOrder {
@@ -7258,7 +7267,7 @@ private final class ChatListLocationContext {
                     }
                 }
                 
-                if storyPostingAvailable {
+                if storyPostingAvailable && !InterfaceTuningSettingsStore.shared.current.hideStoryStrip {
                     self.storyButton = AnyComponentWithIdentity(id: "story", component: AnyComponent(NavigationButtonComponent(
                         content: .icon(imageName: "Chat List/AddStoryIcon"),
                         pressed: { [weak self] _ in

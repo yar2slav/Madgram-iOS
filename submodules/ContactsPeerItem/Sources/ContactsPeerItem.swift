@@ -23,6 +23,7 @@ import EmojiStatusComponent
 import MoreButtonNode
 import TextFormat
 import TextNodeWithEntities
+import PeerBadgeUI
 
 public final class ContactItemHighlighting {
     public var chatLocation: ChatLocation?
@@ -478,6 +479,7 @@ public class ContactsPeerItemNode: ItemListRevealOptionsItemNode {
     private var verifiedIconComponent: EmojiStatusComponent?
     private var emojiStatusIconView: ComponentHostView<Empty>?
     private var emojiStatusIconComponent: EmojiStatusComponent?
+    private var peerBadgeView: ComponentHostView<Empty>?
     public let statusNode: TextNodeWithEntities
     private var statusIconNode: ASImageNode?
     private var badgeBackgroundNode: ASImageNode?
@@ -859,10 +861,12 @@ public class ContactsPeerItemNode: ItemListRevealOptionsItemNode {
             var verifiedIcon: EmojiStatusComponent.Content?
             var emojiStatusIcon: EmojiStatusComponent.Content?
             var emojiStatusParticleColor: UIColor?
+            var peerBadge: PeerBadge?
             
             switch item.peer {
             case let .peer(peer, _):
                 if let peer = peer, (peer.id != item.context.account.peerId || item.peerMode == .memberList || item.aliasHandling == .standard) {
+                    peerBadge = PeerBadgeRegistryStore.shared.badge(peerId: peer.id)
                     if peer.isScam {
                         credibilityStatusIcon = .text(color: item.presentationData.theme.chat.message.incoming.scamColor, string: item.presentationData.strings.Message_ScamAccount.uppercased())
                     } else if peer.isFake {
@@ -1138,6 +1142,10 @@ public class ContactsPeerItemNode: ItemListRevealOptionsItemNode {
             if let _ = emojiStatusIcon {
                 additionalTitleInset += 3.0
                 additionalTitleInset += 16.0
+            }
+            if peerBadge != nil {
+                additionalTitleInset += 3.0
+                additionalTitleInset += 18.0
             }
             if let actionButtons = actionButtons {
                 additionalTitleInset += 3.0
@@ -1701,6 +1709,40 @@ public class ContactsPeerItemNode: ItemListRevealOptionsItemNode {
                             } else if let emojiStatusIconView = strongSelf.emojiStatusIconView {
                                 strongSelf.emojiStatusIconView = nil
                                 emojiStatusIconView.removeFromSuperview()
+                            }
+
+                            if let peerBadge {
+                                let peerBadgeView: ComponentHostView<Empty>
+                                if let current = strongSelf.peerBadgeView {
+                                    peerBadgeView = current
+                                } else {
+                                    peerBadgeView = ComponentHostView<Empty>()
+                                    strongSelf.offsetContainerNode.view.addSubview(peerBadgeView)
+                                    strongSelf.peerBadgeView = peerBadgeView
+                                }
+                                let badgeSize = peerBadgeView.update(
+                                    transition: .immediate,
+                                    component: AnyComponent(PeerBadgeComponent(
+                                        context: item.context,
+                                        badge: peerBadge,
+                                        size: CGSize(width: 18.0, height: 18.0),
+                                        isVisibleForAnimations: strongSelf.visibilityStatus
+                                    )),
+                                    environment: {},
+                                    containerSize: CGSize(width: 18.0, height: 18.0)
+                                )
+                                nextIconX += 4.0
+                                transition.updateFrame(
+                                    view: peerBadgeView,
+                                    frame: CGRect(
+                                        origin: CGPoint(x: nextIconX, y: floorToScreenPixels(titleFrame.midY - badgeSize.height / 2.0)),
+                                        size: badgeSize
+                                    )
+                                )
+                                nextIconX += badgeSize.width
+                            } else if let peerBadgeView = strongSelf.peerBadgeView {
+                                strongSelf.peerBadgeView = nil
+                                peerBadgeView.removeFromSuperview()
                             }
                             
                             if let (titleBadgeLayout, titleBadgeApply) = titleBadgeLayoutAndApply {

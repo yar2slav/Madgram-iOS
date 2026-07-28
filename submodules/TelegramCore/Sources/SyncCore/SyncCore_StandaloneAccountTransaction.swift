@@ -102,7 +102,8 @@ public let telegramPostboxSeedConfiguration: SeedConfiguration = {
         additionalChatListIndexNamespace: Namespaces.Message.Cloud,
         messageNamespacesRequiringGroupStatsValidation: [Namespaces.Message.Cloud],
         defaultMessageNamespaceReadStates: [Namespaces.Message.Local: .idBased(maxIncomingReadId: 0, maxOutgoingReadId: 0, maxKnownId: 0, count: 0, markedUnread: false)],
-        chatMessagesNamespaces: Set([Namespaces.Message.Cloud, Namespaces.Message.Local, Namespaces.Message.SecretIncoming]),
+        chatMessagesNamespaces: Set([Namespaces.Message.Cloud, Namespaces.Message.Local, Namespaces.Message.SecretIncoming, Namespaces.Message.Archived]),
+        readStateExcludedMessageNamespaces: Set([Namespaces.Message.Archived]),
         getGlobalNotificationSettings: { transaction -> PostboxGlobalNotificationSettings? in
             (transaction.getPreferencesEntry(key: PreferencesKeys.globalNotifications)?.get(GlobalNotificationSettings.self)).flatMap { settings in
                 return PostboxGlobalNotificationSettings(defaultIncludePeer: { peer in

@@ -7,6 +7,7 @@ import SwiftSignalKit
 import ViewControllerComponent
 import ComponentDisplayAdapters
 import TelegramPresentationData
+import TelegramUIPreferences
 import AccountContext
 import TelegramCore
 import PresentationDataUtils
@@ -950,7 +951,7 @@ public class VideoMessageCameraScreen: ViewController {
             self.previewContainerView.addSubview(self.previewContainerContentView)
                         
             let isDualCameraEnabled = Camera.isDualCameraSupported(forRoundVideo: true)
-            let isFrontPosition = "".isEmpty
+            let isFrontPosition = !InterfaceTuningSettingsStore.shared.current.startRoundVideoWithRearCamera
             
             self.mainPreviewView = CameraSimplePreviewView(frame: .zero, main: true, roundVideo: true)
             self.additionalPreviewView = CameraSimplePreviewView(frame: .zero, main: false, roundVideo: true)

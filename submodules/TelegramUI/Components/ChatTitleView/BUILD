@@ -17,6 +17,7 @@ swift_library(
         "//submodules/LegacyComponents:LegacyComponents",
         "//submodules/TelegramPresentationData:TelegramPresentationData",
         "//submodules/TelegramUIPreferences:TelegramUIPreferences",
+        "//submodules/PeerBadgeUI:PeerBadgeUI",
         "//submodules/ActivityIndicator:ActivityIndicator",
         "//submodules/TelegramStringFormatting:TelegramStringFormatting",
         "//submodules/PeerPresenceStatusManager:PeerPresenceStatusManager",

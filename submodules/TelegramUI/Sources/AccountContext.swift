@@ -268,6 +268,12 @@ public final class AccountContextImpl: AccountContext {
     public private(set) var isPremium: Bool
     
     private var isFrozenDisposable: Disposable?
+
+    private var blockedPeersMirrorContext: BlockedPeersContext?
+    private var blockedPeersMirrorDisposable: Disposable?
+    private var blockedPeersMirrorSettingsDisposable: Disposable?
+    private var blockedPeersMirrorForegroundDisposable: Disposable?
+    private var blockedPeersMirrorRefreshTimer: SwiftSignalKit.Timer?
     public private(set) var isFrozen: Bool
     
     public let imageCache: AnyObject?
@@ -437,19 +443,23 @@ public final class AccountContextImpl: AccountContext {
             strongSelf.animatedEmojiStickersPromise.set(.single(stickers))
         })
         
-        self.userLimitsConfigurationDisposable = (self.engine.data.subscribe(TelegramEngine.EngineData.Item.Peer.Peer(id: account.peerId))
-        |> mapToSignal { peer -> Signal<(Bool, EngineConfiguration.UserLimits), NoError> in
-            let isPremium = peer?.isPremium ?? false
-            return self.engine.data.subscribe(TelegramEngine.EngineData.Item.Configuration.UserLimits(isPremium: isPremium))
-            |> map { userLimits in
-                return (isPremium, userLimits)
-            }
-        }
-        |> deliverOnMainQueue).startStrict(next: { [weak self] isPremium, userLimits in
+        self.userLimitsConfigurationDisposable = (combineLatest(
+            self.engine.data.subscribe(TelegramEngine.EngineData.Item.Peer.Peer(id: account.peerId))
+            |> mapToSignal { peer -> Signal<(Bool, EngineConfiguration.UserLimits), NoError> in
+                let isPremium = peer?.isPremium ?? false
+                return self.engine.data.subscribe(TelegramEngine.EngineData.Item.Configuration.UserLimits(isPremium: isPremium))
+                |> map { userLimits in
+                    return (isPremium, userLimits)
+                }
+            },
+            localPremiumSettingsSignal()
+        )
+        |> deliverOnMainQueue).startStrict(next: { [weak self] premiumAndLimits, localPremiumSettings in
             guard let self = self else {
                 return
             }
-            self.isPremium = isPremium
+            let (isPremium, userLimits) = premiumAndLimits
+            self.isPremium = isPremium || localPremiumSettings.isEnabled
             self.userLimits = userLimits
         })
         
@@ -502,8 +512,73 @@ public final class AccountContextImpl: AccountContext {
             }
             (self.animationRenderer as? DCTMultiAnimationRendererImpl)?.useYuvA = settings.compressedEmojiCache
         })
+
+        if !temp {
+            self.blockedPeersMirrorSettingsDisposable = (messageFilterSettingsSignal()
+            |> map { $0.hideBlockedUsersMessages }
+            |> distinctUntilChanged
+            |> deliverOnMainQueue).startStrict(next: { [weak self] hideBlockedUsersMessages in
+                self?.updateBlockedPeersMirror(isEnabled: hideBlockedUsersMessages)
+            })
+        }
     }
-    
+
+    private func updateBlockedPeersMirror(isEnabled: Bool) {
+        self.blockedPeersMirrorRefreshTimer?.invalidate()
+        self.blockedPeersMirrorRefreshTimer = nil
+        self.blockedPeersMirrorForegroundDisposable?.dispose()
+        self.blockedPeersMirrorForegroundDisposable = nil
+
+        if isEnabled {
+            self.refreshBlockedPeersMirror()
+
+            let timer = SwiftSignalKit.Timer(timeout: 60.0, repeat: true, completion: { [weak self] in
+                self?.refreshBlockedPeersMirror()
+            }, queue: Queue.mainQueue())
+            self.blockedPeersMirrorRefreshTimer = timer
+            timer.start()
+
+            self.blockedPeersMirrorForegroundDisposable = (self.sharedContext.applicationBindings.applicationInForeground
+            |> filter { $0 }
+            |> deliverOnMainQueue).startStrict(next: { [weak self] _ in
+                self?.refreshBlockedPeersMirror()
+            })
+        } else {
+            self.blockedPeersMirrorDisposable?.dispose()
+            self.blockedPeersMirrorDisposable = nil
+            self.blockedPeersMirrorContext = nil
+            MessageFilterSettingsStore.shared.update { current in
+                var current = current
+                current.blockedPeerIdsCache = []
+                return current
+            }
+        }
+    }
+
+    private func refreshBlockedPeersMirror() {
+        let blockedPeersContext = BlockedPeersContext(account: self.account, subject: .blocked)
+        self.blockedPeersMirrorContext = blockedPeersContext
+        self.blockedPeersMirrorDisposable?.dispose()
+
+        var loadedPeerIds = Set<Int64>()
+        self.blockedPeersMirrorDisposable = (blockedPeersContext.state
+        |> deliverOnMainQueue).startStrict(next: { [weak blockedPeersContext] state in
+            if state.isLoadingMore {
+                return
+            }
+            loadedPeerIds.formUnion(state.peers.map { $0.peerId.toInt64() })
+            if state.canLoadMore {
+                blockedPeersContext?.loadMore()
+                return
+            }
+            MessageFilterSettingsStore.shared.update { current in
+                var current = current
+                current.blockedPeerIdsCache = loadedPeerIds
+                return current
+            }
+        })
+    }
+
     deinit {
         self.limitsConfigurationDisposable?.dispose()
         self.managedAppSpecificContactsDisposable?.dispose()
@@ -515,6 +590,10 @@ public final class AccountContextImpl: AccountContext {
         self.userLimitsConfigurationDisposable?.dispose()
         self.peerNameColorsConfigurationDisposable?.dispose()
         self.isFrozenDisposable?.dispose()
+        self.blockedPeersMirrorDisposable?.dispose()
+        self.blockedPeersMirrorSettingsDisposable?.dispose()
+        self.blockedPeersMirrorForegroundDisposable?.dispose()
+        self.blockedPeersMirrorRefreshTimer?.invalidate()
     }
     
     public func storeSecureIdPassword(password: String) {

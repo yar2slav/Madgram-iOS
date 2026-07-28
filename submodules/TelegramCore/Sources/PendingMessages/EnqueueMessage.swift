@@ -191,6 +191,24 @@ public enum EnqueueMessage {
             return nil
         }
     }
+
+    public var threadId: Int64? {
+        switch self {
+        case let .message(_, _, _, _, threadId, _, _, _, _, _):
+            return threadId
+        case let .forward(_, threadId, _, _, _):
+            return threadId
+        }
+    }
+
+    public var replyToStoryId: StoryId? {
+        switch self {
+        case let .message(_, _, _, _, _, _, replyToStoryId, _, _, _):
+            return replyToStoryId
+        case .forward:
+            return nil
+        }
+    }
     
     public var attributes: [MessageAttribute] {
         switch self {
@@ -570,12 +588,17 @@ private func opportunisticallyTransformOutgoingMedia(network: Network, postbox: 
 }
 
 public func enqueueMessages(account: Account, peerId: PeerId, messages: [EnqueueMessage]) -> Signal<[MessageId?], NoError> {
+    account.temporarilyRevealGhostModePresence()
     let signal: Signal<[(Bool, EnqueueMessage)], NoError>
     if let transformOutgoingMessageMedia = account.transformOutgoingMessageMedia {
         signal = opportunisticallyTransformOutgoingMedia(network: account.network, postbox: account.postbox, transformOutgoingMessageMedia: transformOutgoingMessageMedia, messages: messages, userInteractive: true)
     } else {
         signal = .single(messages.map { (false, $0) })
     }
+    for storyId in messages.compactMap(\.replyToStoryId) {
+        let _ = _internal_commitGhostModeStoryReadState(account: account, storyId: storyId).startStandalone()
+    }
+    let _ = _internal_commitGhostModeReadState(account: account, peerId: peerId, threadId: messages.first?.threadId).startStandalone()
     return signal
     |> mapToSignal { messages -> Signal<[MessageId?], NoError> in
         return account.postbox.transaction { transaction -> ([MessageId?], [MessageId]) in

@@ -11,7 +11,25 @@ func _internal_applyMaxReadIndexInteractively(postbox: Postbox, stateManager: Ac
 }
     
 func _internal_applyMaxReadIndexInteractively(transaction: Transaction, stateManager: AccountStateManager, index: MessageIndex) {
-    let messageIds = transaction.applyInteractiveReadMaxIndex(index)
+    let settings = ghostModeSettings(transaction: transaction)
+    let isCloudPeer = index.id.peerId.namespace == Namespaces.Peer.CloudUser || index.id.peerId.namespace == Namespaces.Peer.CloudGroup || index.id.peerId.namespace == Namespaces.Peer.CloudChannel
+    let useGhostReadState = settings.hidesMessageReadReceipts && isCloudPeer
+    let previousReadState = useGhostReadState ? ghostModePreviousReadState(
+        transaction: transaction,
+        peerId: index.id.peerId,
+        namespace: index.id.namespace
+    ) : nil
+    let messageIds = transaction.applyInteractiveReadMaxIndex(index, synchronize: !useGhostReadState)
+    if useGhostReadState {
+        transaction.setGhostModeReadState(GhostModeReadStateMarker(
+            peerId: index.id.peerId,
+            threadId: nil,
+            namespace: index.id.namespace,
+            maxReadIndex: index,
+            previousReadState: previousReadState
+        ))
+        updateGhostModeReadStateVersion(transaction: transaction)
+    }
     
     if let peer = transaction.getPeer(index.id.peerId), peer.isForumOrMonoForum {
         if let combinedPeerReadState = transaction.getCombinedPeerReadState(peer.id), combinedPeerReadState.count == 0 {

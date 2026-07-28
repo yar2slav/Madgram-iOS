@@ -12,6 +12,7 @@ import TextFormat
 import Markdown
 import Display
 import TelegramStringFormatting
+import TelegramUIPreferences
 
 struct ChatHistoryEntriesForViewState {
     private var messageStableIdToLocalId: [UInt32: Int64] = [:]
@@ -60,7 +61,8 @@ func chatHistoryEntriesForView(
     adMessage: Message?,
     dynamicAdMessages: [Message],
     isMusicPlaylist: Bool,
-    pinToTopStableId: EngineMessage.StableId?
+    pinToTopStableId: EngineMessage.StableId?,
+    messageFilterSettings: MessageFilterSettings
 ) -> ([ChatHistoryEntry], ChatHistoryEntriesForViewState) {
     var currentState = currentState
     
@@ -152,6 +154,18 @@ func chatHistoryEntriesForView(
         
         if pendingRemovedMessages.contains(message.id) {
             continue
+        }
+
+        if messageFilterSettings.isActive {
+            if let author = message.author, messageFilterSettings.hidesMessages(fromAuthorId: author.id.toInt64()) {
+                continue
+            }
+            if let replyAttribute = message.attributes.first(where: { $0 is ReplyMessageAttribute }) as? ReplyMessageAttribute,
+               let repliedMessage = message.associatedMessages[replyAttribute.messageId],
+               let repliedAuthor = repliedMessage.author,
+               messageFilterSettings.hidesMessages(fromAuthorId: repliedAuthor.id.toInt64()) {
+                message = message.withUpdatedAttributes(message.attributes.filter { !($0 is ReplyMessageAttribute) })
+            }
         }
         
         if case let .replyThread(replyThreadMessage) = location, replyThreadMessage.isForumPost {

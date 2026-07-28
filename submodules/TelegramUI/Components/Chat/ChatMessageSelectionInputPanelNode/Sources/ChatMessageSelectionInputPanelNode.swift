@@ -182,6 +182,7 @@ public final class ChatMessageSelectionInputPanelNode: ChatInputPanelNode {
     private let reportButton: GlassButtonView
     private let forwardButton: GlassButtonView
     private let shareButton: GlassButtonView
+    private let screenshotButton: GlassButtonView
     private let tagButton: GlassButtonView
     private let tagEditButton: GlassButtonView
     
@@ -230,6 +231,11 @@ public final class ChatMessageSelectionInputPanelNode: ChatInputPanelNode {
         self.shareButton.isAccessibilityElement = true
         self.shareButton.accessibilityLabel = strings.VoiceOver_MessageContextShare
         
+        self.screenshotButton = GlassButtonView()
+        self.screenshotButton.icon = "Chat/Context Menu/Image"
+        self.screenshotButton.isAccessibilityElement = true
+        self.screenshotButton.accessibilityLabel = strings.localFeatures.messageShot.action
+
         self.tagButton = GlassButtonView()
         self.tagButton.icon = "Chat/Input/Accessory Panels/TagIcon"
         self.tagButton.isAccessibilityElement = true
@@ -248,6 +254,7 @@ public final class ChatMessageSelectionInputPanelNode: ChatInputPanelNode {
         self.view.addSubview(self.reportButton)
         self.view.addSubview(self.forwardButton)
         self.view.addSubview(self.shareButton)
+        self.view.addSubview(self.screenshotButton)
         self.view.addSubview(self.tagButton)
         self.view.addSubview(self.tagEditButton)
         
@@ -260,6 +267,7 @@ public final class ChatMessageSelectionInputPanelNode: ChatInputPanelNode {
         self.reportButton.button.addTarget(self, action: #selector(self.reportButtonPressed), for: .touchUpInside)
         self.forwardButton.button.addTarget(self, action: #selector(self.forwardButtonPressed), for: .touchUpInside)
         self.shareButton.button.addTarget(self, action: #selector(self.shareButtonPressed), for: .touchUpInside)
+        self.screenshotButton.button.addTarget(self, action: #selector(self.screenshotButtonPressed), for: .touchUpInside)
         self.tagButton.button.addTarget(self, action: #selector(self.tagButtonPressed), for: .touchUpInside)
         self.tagEditButton.button.addTarget(self, action: #selector(self.tagButtonPressed), for: .touchUpInside)
     }
@@ -326,6 +334,14 @@ public final class ChatMessageSelectionInputPanelNode: ChatInputPanelNode {
         }
     }
     
+    @objc private func screenshotButtonPressed() {
+        if let actions = self.actions, actions.isCopyProtected {
+            self.interfaceInteraction?.displayCopyProtectionTip(self.screenshotButton, true)
+            return
+        }
+        self.interfaceInteraction?.screenshotSelectedMessages?()
+    }
+
     @objc private func tagButtonPressed() {
         guard let context = self.context else {
             return
@@ -578,15 +594,20 @@ public final class ChatMessageSelectionInputPanelNode: ChatInputPanelNode {
             }
         }
         
+        var displayButtons = buttons
+        if !self.screenshotButton.isHidden, let shareIndex = displayButtons.firstIndex(where: { $0 === self.shareButton }) {
+            displayButtons.insert(self.screenshotButton, at: shareIndex)
+        }
+
         let buttonSize = CGSize(width: 40.0, height: 40.0)
         
         let availableWidth = width - leftInset - rightInset
-        let spacing: CGFloat = floor((availableWidth - buttonSize.width * CGFloat(buttons.count)) / CGFloat(buttons.count - 1))
+        let spacing: CGFloat = floor((availableWidth - buttonSize.width * CGFloat(displayButtons.count)) / CGFloat(displayButtons.count - 1))
         var offset: CGFloat = leftInset
-        for i in 0 ..< buttons.count {
-            let button = buttons[i]
+        for i in 0 ..< displayButtons.count {
+            let button = displayButtons[i]
             let buttonFrame: CGRect
-            if i == buttons.count - 1 {
+            if i == displayButtons.count - 1 {
                 buttonFrame = CGRect(origin: CGPoint(x: width - rightInset - buttonSize.width, y: 0.0), size: buttonSize)
             } else {
                 buttonFrame = CGRect(origin: CGPoint(x: offset, y: 0.0), size: buttonSize)

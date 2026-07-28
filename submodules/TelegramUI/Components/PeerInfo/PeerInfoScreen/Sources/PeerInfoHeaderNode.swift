@@ -7,6 +7,7 @@ import AvatarNode
 import AccountContext
 import SwiftSignalKit
 import TelegramPresentationData
+import TelegramUIPreferences
 import PhotoResources
 import PeerAvatarGalleryUI
 import TelegramStringFormatting
@@ -44,6 +45,7 @@ import PlainButtonComponent
 import BundleIconComponent
 import MarqueeComponent
 import EdgeEffect
+import PeerBadgeUI
 
 final class PeerInfoHeaderNavigationTransition {
     let sourceNavigationBar: NavigationBar
@@ -136,6 +138,12 @@ final class PeerInfoHeaderNode: ASDisplayNode {
     var statusIconSize: CGSize?
     let titleExpandedStatusIconView: ComponentHostView<Empty>
     var titleExpandedStatusIconSize: CGSize?
+
+    let titlePeerBadgeView: ComponentHostView<Empty>
+    var peerBadgeSize: CGSize?
+    let titleExpandedPeerBadgeView: ComponentHostView<Empty>
+    var titleExpandedPeerBadgeSize: CGSize?
+    private var peerBadgeObserver: NSObjectProtocol?
     
     var subtitleRating: ComponentView<Empty>?
     
@@ -248,6 +256,12 @@ final class PeerInfoHeaderNode: ASDisplayNode {
         
         self.titleExpandedStatusIconView = ComponentHostView<Empty>()
         self.titleNode.stateNode(forKey: TitleNodeStateExpanded)?.view.addSubview(self.titleExpandedStatusIconView)
+
+        self.titlePeerBadgeView = ComponentHostView<Empty>()
+        self.titleNode.stateNode(forKey: TitleNodeStateRegular)?.view.addSubview(self.titlePeerBadgeView)
+
+        self.titleExpandedPeerBadgeView = ComponentHostView<Empty>()
+        self.titleNode.stateNode(forKey: TitleNodeStateExpanded)?.view.addSubview(self.titleExpandedPeerBadgeView)
         
         self.subtitleNodeContainer = ASDisplayNode()
         self.subtitleNodeRawContainer = ASDisplayNode()
@@ -378,10 +392,22 @@ final class PeerInfoHeaderNode: ASDisplayNode {
 
             strongSelf.animateOverlaysFadeIn?()
         }
+
+        self.peerBadgeObserver = NotificationCenter.default.addObserver(
+            forName: PeerBadgeRegistryStore.didChangeNotification,
+            object: nil,
+            queue: .main,
+            using: { [weak self] _ in
+                self?.requestUpdateLayout?(true)
+            }
+        )
     }
     
     deinit {
         self.emojiStatusPackDisposable.dispose()
+        if let peerBadgeObserver = self.peerBadgeObserver {
+            NotificationCenter.default.removeObserver(peerBadgeObserver)
+        }
     }
     
     override func didLoad() {
@@ -1132,6 +1158,36 @@ final class PeerInfoHeaderNode: ASDisplayNode {
             self.verifiedIconSize = iconSize
             self.titleExpandedVerifiedIconSize = expandedIconSize
         }
+
+        if let peerBadge = peer.flatMap({ PeerBadgeRegistryStore.shared.badge(peerId: $0.id) }) {
+            self.peerBadgeSize = self.titlePeerBadgeView.update(
+                transition: ComponentTransition(navigationTransition),
+                component: AnyComponent(PeerBadgeComponent(
+                    context: self.context,
+                    badge: peerBadge,
+                    size: CGSize(width: 24.0, height: 24.0)
+                )),
+                environment: {},
+                containerSize: CGSize(width: 24.0, height: 24.0)
+            )
+            self.titleExpandedPeerBadgeSize = self.titleExpandedPeerBadgeView.update(
+                transition: ComponentTransition(navigationTransition),
+                component: AnyComponent(PeerBadgeComponent(
+                    context: self.context,
+                    badge: peerBadge,
+                    size: CGSize(width: 28.0, height: 28.0)
+                )),
+                environment: {},
+                containerSize: CGSize(width: 28.0, height: 28.0)
+            )
+            transition.updateAlpha(layer: self.titlePeerBadgeView.layer, alpha: 1.0)
+            transition.updateAlpha(layer: self.titleExpandedPeerBadgeView.layer, alpha: 1.0)
+        } else {
+            self.peerBadgeSize = nil
+            self.titleExpandedPeerBadgeSize = nil
+            transition.updateAlpha(layer: self.titlePeerBadgeView.layer, alpha: 0.0)
+            transition.updateAlpha(layer: self.titleExpandedPeerBadgeView.layer, alpha: 0.0)
+        }
         
         var actualNavigationContentsColor = navigationContentsAccentColor
         actualNavigationContentsColor = presentationData.theme.chat.inputPanel.panelControlColor
@@ -1236,10 +1292,15 @@ final class PeerInfoHeaderNode: ASDisplayNode {
             smallTitleAttributes = MultiScaleTextState.Attributes(font: Font.medium(28.0), color: .white, shadowColor: titleShadowColor)
             
             if self.isSettings, case let .user(user) = peer {
-                var subtitle = formatPhoneNumber(context: self.context, number: user.phone ?? "")
+                let hidePhone = InterfaceTuningSettingsStore.shared.current.hidePhoneInSettings
+                var subtitle = hidePhone ? "" : formatPhoneNumber(context: self.context, number: user.phone ?? "")
                 
                 if let mainUsername = user.addressName, !mainUsername.isEmpty {
-                    subtitle = "\(subtitle) • @\(mainUsername)"
+                    if subtitle.isEmpty {
+                        subtitle = "@\(mainUsername)"
+                    } else {
+                        subtitle = "\(subtitle) • @\(mainUsername)"
+                    }
                 }
                 subtitleStringText = subtitle
                 subtitleAttributes = MultiScaleTextState.Attributes(font: Font.regular(17.0), color: .white)
@@ -1607,6 +1668,38 @@ final class PeerInfoHeaderNode: ASDisplayNode {
                 nextIconX += 4.0 + verifiedIconSize.width
                 nextExpandedIconX += 4.0 + titleExpandedVerifiedIconSize.width
             }
+        }
+
+        if let peerBadgeSize = self.peerBadgeSize, let titleExpandedPeerBadgeSize = self.titleExpandedPeerBadgeSize {
+            titleHorizontalOffset -= (peerBadgeSize.width + 4.0) / 2.0
+
+            var collapsedTransitionOffset: CGFloat = 0.0
+            if let navigationTransition = self.navigationTransition {
+                collapsedTransitionOffset = -10.0 * navigationTransition.fraction
+            }
+
+            transition.updateFrame(
+                view: self.titlePeerBadgeView,
+                frame: CGRect(
+                    origin: CGPoint(
+                        x: nextIconX + 4.0 + collapsedTransitionOffset,
+                        y: floor((titleSize.height - peerBadgeSize.height) / 2.0)
+                    ),
+                    size: peerBadgeSize
+                )
+            )
+            transition.updateFrame(
+                view: self.titleExpandedPeerBadgeView,
+                frame: CGRect(
+                    origin: CGPoint(
+                        x: nextExpandedIconX + 4.0,
+                        y: floor((titleExpandedSize.height - titleExpandedPeerBadgeSize.height) / 2.0) + 1.0
+                    ),
+                    size: titleExpandedPeerBadgeSize
+                )
+            )
+            nextIconX += 4.0 + peerBadgeSize.width
+            nextExpandedIconX += 4.0 + titleExpandedPeerBadgeSize.width
         }
         
         var titleFrame: CGRect
@@ -2790,6 +2883,15 @@ final class PeerInfoHeaderNode: ASDisplayNode {
         }
         
         if !(self.state?.isEditing ?? false) {
+            if let peerBadgeSize = self.peerBadgeSize, peerBadgeSize.width > 0.0 {
+                let iconFrame = self.titlePeerBadgeView.convert(self.titlePeerBadgeView.bounds, to: self.view)
+                let expandedIconFrame = self.titleExpandedPeerBadgeView.convert(self.titleExpandedPeerBadgeView.bounds, to: self.view)
+                if expandedIconFrame.contains(point) && self.isAvatarExpanded {
+                    return self.titleExpandedPeerBadgeView.hitTest(self.view.convert(point, to: self.titleExpandedPeerBadgeView), with: event)
+                } else if iconFrame.contains(point) {
+                    return self.titlePeerBadgeView.hitTest(self.view.convert(point, to: self.titlePeerBadgeView), with: event)
+                }
+            }
             switch self.currentCredibilityIcon {
             case .premium:
                 let iconFrame = self.titleCredibilityIconView.convert(self.titleCredibilityIconView.bounds, to: self.view)

@@ -247,6 +247,24 @@ public final class NavigationSearchView: UIView {
 }
 
 public final class TabBarComponent: Component {
+    public struct LayoutOptions: Equatable {
+        public var showTabLabels: Bool
+        public var showSearchShortcut: Bool
+        public var stretchBottomBar: Bool
+
+        public init(showTabLabels: Bool, showSearchShortcut: Bool, stretchBottomBar: Bool) {
+            self.showTabLabels = showTabLabels
+            self.showSearchShortcut = showSearchShortcut
+            self.stretchBottomBar = stretchBottomBar
+        }
+
+        public static let defaultOptions = LayoutOptions(
+            showTabLabels: true,
+            showSearchShortcut: true,
+            stretchBottomBar: true
+        )
+    }
+
     public final class Item: Equatable {
         public enum Content: Equatable {
             public struct CustomItem: Equatable {
@@ -354,6 +372,7 @@ public final class TabBarComponent: Component {
     public let search: Search?
     public let selectedId: AnyHashable?
     public let outerInsets: UIEdgeInsets
+    public let layoutOptions: LayoutOptions
     
     public init(
         theme: PresentationTheme,
@@ -363,7 +382,8 @@ public final class TabBarComponent: Component {
         items: [Item],
         search: Search?,
         selectedId: AnyHashable?,
-        outerInsets: UIEdgeInsets
+        outerInsets: UIEdgeInsets,
+        layoutOptions: LayoutOptions = .defaultOptions
     ) {
         self.theme = theme
         self.tintSelectedItem = tintSelectedItem
@@ -373,6 +393,7 @@ public final class TabBarComponent: Component {
         self.search = search
         self.selectedId = selectedId
         self.outerInsets = outerInsets
+        self.layoutOptions = layoutOptions
     }
     
     public static func ==(lhs: TabBarComponent, rhs: TabBarComponent) -> Bool {
@@ -398,6 +419,9 @@ public final class TabBarComponent: Component {
             return false
         }
         if lhs.outerInsets != rhs.outerInsets {
+            return false
+        }
+        if lhs.layoutOptions != rhs.layoutOptions {
             return false
         }
         return true
@@ -653,7 +677,21 @@ public final class TabBarComponent: Component {
             let _ = alphaTransition
 
             let innerInset: CGFloat = 4.0
-            let availableSize = CGSize(width: min(500.0, availableSize.width), height: availableSize.height)
+            var availableSize = CGSize(width: min(500.0, availableSize.width), height: availableSize.height)
+            if !component.layoutOptions.stretchBottomBar && component.search?.isActive != true {
+                let widthDivisor: CGFloat
+                switch component.items.count {
+                case 1:
+                    widthDivisor = 1.75
+                case 2:
+                    widthDivisor = 1.5
+                case 3:
+                    widthDivisor = 1.25
+                default:
+                    widthDivisor = 1.0
+                }
+                availableSize.width /= widthDivisor
+            }
             
             let previousComponent = self.component
             self.component = component
@@ -661,7 +699,7 @@ public final class TabBarComponent: Component {
             
             self.overrideUserInterfaceStyle = component.theme.overallDarkAppearance ? .dark : .light
 
-            let barHeight: CGFloat = 56.0 + innerInset * 2.0
+            let barHeight: CGFloat = (component.layoutOptions.showTabLabels ? 56.0 : 40.0) + innerInset * 2.0
 
             var availableItemsWidth: CGFloat = availableSize.width - innerInset * 2.0
             if component.search != nil {
@@ -692,10 +730,11 @@ public final class TabBarComponent: Component {
                         isCompact: false,
                         isSelected: false,
                         tintSelectedItem: true,
-                        isUnconstrained: true
+                        isUnconstrained: true,
+                        showTabLabels: component.layoutOptions.showTabLabels
                     )),
                     environment: {},
-                    containerSize: CGSize(width: 200.0, height: 56.0)
+                    containerSize: CGSize(width: 200.0, height: component.layoutOptions.showTabLabels ? 56.0 : 40.0)
                 )
                 
                 unboundItemWidths.append(itemSize.width)
@@ -724,7 +763,7 @@ public final class TabBarComponent: Component {
                 totalItemsWidth = total
             }
 
-            let itemHeight: CGFloat = 56.0
+            let itemHeight: CGFloat = component.layoutOptions.showTabLabels ? 56.0 : 40.0
             let contentWidth: CGFloat = innerInset * 2.0 + totalItemsWidth
             let tabsSize = CGSize(width: min(availableSize.width, contentWidth), height: itemHeight + innerInset * 2.0)
 
@@ -769,7 +808,8 @@ public final class TabBarComponent: Component {
                         isCompact: component.search?.isActive == true,
                         isSelected: false,
                         tintSelectedItem: component.tintSelectedItem,
-                        isUnconstrained: false
+                        isUnconstrained: false,
+                        showTabLabels: component.layoutOptions.showTabLabels
                     )),
                     environment: {},
                     containerSize: itemSize
@@ -782,7 +822,8 @@ public final class TabBarComponent: Component {
                         isCompact: component.search?.isActive == true,
                         isSelected: true,
                         tintSelectedItem: component.tintSelectedItem,
-                        isUnconstrained: false
+                        isUnconstrained: false,
+                        showTabLabels: component.layoutOptions.showTabLabels
                     )),
                     environment: {},
                     containerSize: itemSize
@@ -871,7 +912,7 @@ public final class TabBarComponent: Component {
             } else if let selectionFrame {
                 lensSelection = (selectionFrame.minX - innerInset, selectionFrame.width + innerInset * 2.0)
             } else {
-                lensSelection = (0.0, 56.0)
+                lensSelection = (0.0, component.layoutOptions.showTabLabels ? 56.0 : 40.0)
             }
 
             var lensSize: CGSize = tabsSize
@@ -962,14 +1003,16 @@ private final class ItemComponent: Component {
     let isSelected: Bool
     let tintSelectedItem: Bool
     let isUnconstrained: Bool
+    let showTabLabels: Bool
     
-    init(item: TabBarComponent.Item, theme: PresentationTheme, isCompact: Bool, isSelected: Bool, tintSelectedItem: Bool, isUnconstrained: Bool) {
+    init(item: TabBarComponent.Item, theme: PresentationTheme, isCompact: Bool, isSelected: Bool, tintSelectedItem: Bool, isUnconstrained: Bool, showTabLabels: Bool) {
         self.item = item
         self.theme = theme
         self.isCompact = isCompact
         self.isSelected = isSelected
         self.tintSelectedItem = tintSelectedItem
         self.isUnconstrained = isUnconstrained
+        self.showTabLabels = showTabLabels
     }
     
     static func ==(lhs: ItemComponent, rhs: ItemComponent) -> Bool {
@@ -989,6 +1032,9 @@ private final class ItemComponent: Component {
             return false
         }
         if lhs.isUnconstrained != rhs.isUnconstrained {
+            return false
+        }
+        if lhs.showTabLabels != rhs.showTabLabels {
             return false
         }
         return true
@@ -1043,7 +1089,6 @@ private final class ItemComponent: Component {
         
         func update(component: ItemComponent, availableSize: CGSize, state: EmptyComponentState, environment: Environment<Empty>, transition: ComponentTransition) -> CGSize {
             let alphaTransition: ComponentTransition = transition.animation.isImmediate ? .immediate : .easeInOut(duration: 0.25)
-
             let previousComponent = self.component
 
             let previousTabBarItem: UITabBarItem?
@@ -1285,12 +1330,14 @@ private final class ItemComponent: Component {
                 containerSize: CGSize(width: availableSize.width, height: 100.0)
             )
             let titleFrame = CGRect(origin: CGPoint(x: floor((availableSize.width - titleSize.width) * 0.5), y: availableSize.height - 8.0 - titleSize.height), size: titleSize)
-            if let titleView = self.title.view {
+            if component.showTabLabels, let titleView = self.title.view {
                 if titleView.superview == nil {
                     self.contextContainerView.contentView.addSubview(titleView)
                 }
                 titleView.frame = titleFrame
                 alphaTransition.setAlpha(view: titleView, alpha: component.isCompact ? 0.0 : 1.0)
+            } else if let titleView = self.title.view {
+                titleView.removeFromSuperview()
             }
 
             if let badgeText = badgeValue, !badgeText.isEmpty {

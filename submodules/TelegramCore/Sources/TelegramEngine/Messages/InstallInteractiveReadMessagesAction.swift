@@ -5,6 +5,9 @@ import SwiftSignalKit
 
 func _internal_installInteractiveReadMessagesAction(postbox: Postbox, stateManager: AccountStateManager, peerId: PeerId, threadId: Int64?) -> Disposable {
     return postbox.installStoreMessageAction(peerId: peerId, { messages, transaction in
+        let settings = ghostModeSettings(transaction: transaction)
+        let isCloudPeer = peerId.namespace == Namespaces.Peer.CloudUser || peerId.namespace == Namespaces.Peer.CloudGroup || peerId.namespace == Namespaces.Peer.CloudChannel
+        let useGhostReadState = settings.hidesMessageReadReceipts && isCloudPeer
         var consumeMessageIds: [MessageId] = []
         var readReactionOrPollVotesIds: [MessageId] = []
         
@@ -93,18 +96,37 @@ func _internal_installInteractiveReadMessagesAction(postbox: Postbox, stateManag
                 return .update(StoreMessage(id: currentMessage.id, customStableId: nil, globallyUniqueId: currentMessage.globallyUniqueId, groupingKey: currentMessage.groupingKey, threadId: currentMessage.threadId, timestamp: currentMessage.timestamp, flags: StoreMessageFlags(currentMessage.flags), tags: tags, globalTags: currentMessage.globalTags, localTags: currentMessage.localTags, forwardInfo: currentMessage.forwardInfo.flatMap(StoreMessageForwardInfo.init), authorId: currentMessage.author?.id, text: currentMessage.text, attributes: attributes, media: media))
             })
             
-            if consumeMessageIds.contains(id) {
+            if consumeMessageIds.contains(id) && !useGhostReadState {
                 transaction.setPendingMessageAction(type: .consumeUnseenPersonalMessage, id: id, action: ConsumePersonalMessageAction())
             }
-            if readReactionOrPollVotesIds.contains(id) {
+            if readReactionOrPollVotesIds.contains(id) && !useGhostReadState {
                 transaction.setPendingMessageAction(type: .readReactionOrPollVote, id: id, action: ReadReactionAction())
             }
         }
         
         for (_, index) in readMessageIndexByNamespace {
             if let threadId {
+                let threadData = transaction.getMessageHistoryThreadInfo(peerId: peerId, threadId: threadId)?.data.get(MessageHistoryThreadData.self)
+                if useGhostReadState {
+                    let previousThreadReadState = threadData.map { data in
+                        return GhostModePreviousThreadReadState(
+                            maxIncomingReadId: data.maxIncomingReadId,
+                            maxKnownMessageId: data.maxKnownMessageId,
+                            incomingUnreadCount: data.incomingUnreadCount,
+                            markedUnread: data.isMarkedUnread
+                        )
+                    }
+                    transaction.setGhostModeReadState(GhostModeReadStateMarker(
+                        peerId: peerId,
+                        threadId: threadId,
+                        namespace: index.id.namespace,
+                        maxReadIndex: index,
+                        previousThreadReadState: previousThreadReadState
+                    ))
+                    updateGhostModeReadStateVersion(transaction: transaction)
+                }
                 var newCountIsZero = false
-                if var data = transaction.getMessageHistoryThreadInfo(peerId: peerId, threadId: threadId)?.data.get(MessageHistoryThreadData.self) {
+                if var data = threadData {
                     if index.id.id >= data.maxIncomingReadId {
                         if let count = transaction.getThreadMessageCount(peerId: peerId, threadId: threadId, namespace: Namespaces.Message.Cloud, fromIdExclusive: data.maxIncomingReadId, toIndex: index) {
                             data.incomingUnreadCount = max(0, data.incomingUnreadCount - Int32(count))

@@ -12,6 +12,7 @@ import AnimatedTextComponent
 import PhoneNumberFormat
 import TelegramStringFormatting
 import EmojiStatusComponent
+import PeerBadgeUI
 import GlassBackgroundComponent
 
 public final class ChatNavigationBarTitleView: UIView, NavigationBarTitleView {
@@ -71,6 +72,7 @@ public final class ChatNavigationBarTitleView: UIView, NavigationBarTitleView {
     private var contentData: ContentData?
     private var activities: ChatTitleComponent.Activities?
     private var networkState: AccountNetworkState?
+    private var peerBadgeObserver: NSObjectProtocol?
     
     private var ignoreParentTransitionRequests: Bool = false
     public var requestUpdate: ((ContainedViewLayoutTransition) -> Void)?
@@ -80,10 +82,24 @@ public final class ChatNavigationBarTitleView: UIView, NavigationBarTitleView {
     
     override public init(frame: CGRect) {
         super.init(frame: frame)
+        self.peerBadgeObserver = NotificationCenter.default.addObserver(
+            forName: PeerBadgeRegistryStore.didChangeNotification,
+            object: nil,
+            queue: .main,
+            using: { [weak self] _ in
+                self?.update(transition: .easeInOut(duration: 0.2))
+            }
+        )
     }
     
     required public init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        if let peerBadgeObserver = self.peerBadgeObserver {
+            NotificationCenter.default.removeObserver(peerBadgeObserver)
+        }
     }
     
     public func animateLayoutTransition() {
@@ -315,6 +331,7 @@ public final class ChatTitleComponent: Component {
         private var credibilityIcon: ComponentView<Empty>?
         private var verifiedIcon: ComponentView<Empty>?
         private var statusIcon: ComponentView<Empty>?
+        private var peerBadgeIcon: ComponentView<Empty>?
         
         private var presenceManager: PeerPresenceStatusManager?
         
@@ -373,6 +390,7 @@ public final class ChatTitleComponent: Component {
             var titleCredibilityIcon: ChatTitleCredibilityIcon = .none
             var titleVerifiedIcon: ChatTitleCredibilityIcon = .none
             var titleStatusIcon: ChatTitleCredibilityIcon = .none
+            var peerBadge: PeerBadge?
             var isEnabled = true
             switch component.content {
             case let .peer(peerView, customTitle, _, _, isScheduledMessages, isMuted, _, hidePeerStatus, isEnabledValue):
@@ -400,6 +418,7 @@ public final class ChatTitleComponent: Component {
                     isEnabled = false
                 } else {
                     if let peer = peerView.peer {
+                        peerBadge = PeerBadgeRegistryStore.shared.badge(peerId: peer.id)
                         if let customTitle {
                             titleSegments = [AnimatedTextComponent.Item(
                                 id: AnyHashable(0),
@@ -1009,6 +1028,35 @@ public final class ChatTitleComponent: Component {
                     })
                 }
             }
+
+            var peerBadgeIconSize: CGSize?
+            if let peerBadge {
+                let peerBadgeIcon: ComponentView<Empty>
+                if let current = self.peerBadgeIcon {
+                    peerBadgeIcon = current
+                } else {
+                    peerBadgeIcon = ComponentView()
+                    self.peerBadgeIcon = peerBadgeIcon
+                }
+                peerBadgeIconSize = peerBadgeIcon.update(
+                    transition: transition,
+                    component: AnyComponent(PeerBadgeComponent(
+                        context: component.context,
+                        badge: peerBadge,
+                        size: CGSize(width: 18.0, height: 18.0)
+                    )),
+                    environment: {},
+                    containerSize: CGSize(width: 18.0, height: 18.0)
+                )
+            } else if let peerBadgeIcon = self.peerBadgeIcon {
+                self.peerBadgeIcon = nil
+                if let peerBadgeIconView = peerBadgeIcon.view {
+                    transition.setScale(view: peerBadgeIconView, scale: 0.001)
+                    transition.setAlpha(view: peerBadgeIconView, alpha: 0.0, completion: { [weak peerBadgeIconView] _ in
+                        peerBadgeIconView?.removeFromSuperview()
+                    })
+                }
+            }
             
             let subtitleNode: ChatTitleActivityNode
             if let current = self.subtitleNode {
@@ -1037,6 +1085,9 @@ public final class ChatTitleComponent: Component {
             }
             if let statusIconSize {
                 titleRightIconsWidth += statusIconSize.width + statusIconsSpacing
+            }
+            if let peerBadgeIconSize {
+                titleRightIconsWidth += peerBadgeIconSize.width + statusIconsSpacing
             }
             
             let maxTitleWidth = availableSize.width - titleLeftIconsWidth - titleRightIconsWidth - containerSideInset * 2.0
@@ -1162,6 +1213,27 @@ public final class ChatTitleComponent: Component {
                 transition.setAlpha(view: statusIconView, alpha: 1.0)
                 transition.setScale(view: statusIconView, scale: 1.0)
                 nextRightIconX += statusIconsSpacing + statusIconSize.width
+            }
+
+            if let peerBadgeIconSize, let peerBadgeIconView = self.peerBadgeIcon?.view {
+                let peerBadgeIconFrame = CGRect(
+                    origin: CGPoint(
+                        x: nextRightIconX + statusIconsSpacing,
+                        y: titleFrame.minY + floor((titleFrame.height - peerBadgeIconSize.height) * 0.5)
+                    ),
+                    size: peerBadgeIconSize
+                )
+                if peerBadgeIconView.superview == nil {
+                    self.contentContainer.addSubview(peerBadgeIconView)
+                    peerBadgeIconView.frame = peerBadgeIconFrame
+                    ComponentTransition.immediate.setScale(view: peerBadgeIconView, scale: 0.001)
+                    peerBadgeIconView.alpha = 0.0
+                }
+                transition.setPosition(view: peerBadgeIconView, position: peerBadgeIconFrame.center)
+                transition.setBounds(view: peerBadgeIconView, bounds: CGRect(origin: .zero, size: peerBadgeIconFrame.size))
+                transition.setAlpha(view: peerBadgeIconView, alpha: 1.0)
+                transition.setScale(view: peerBadgeIconView, scale: 1.0)
+                nextRightIconX += statusIconsSpacing + peerBadgeIconSize.width
             }
             
             if let rightIconSize, let rightIconView = self.rightIcon?.view {

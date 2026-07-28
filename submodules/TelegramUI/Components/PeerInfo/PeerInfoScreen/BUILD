@@ -84,6 +84,7 @@ swift_library(
         "//submodules/TelegramUI/Components/PeerInfo/PeerInfoVisualMediaPaneNode",
         "//submodules/TelegramUI/Components/Settings/PeerNameColorScreen",
         "//submodules/PeerPresenceStatusManager",
+        "//submodules/PeerBadgeUI:PeerBadgeUI",
         "//submodules/TelegramUI/Components/PeerReportScreen",
         "//submodules/PhoneNumberFormat",
         "//submodules/PhotoResources",

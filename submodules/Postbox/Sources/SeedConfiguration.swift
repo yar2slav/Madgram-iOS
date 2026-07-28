@@ -71,6 +71,7 @@ public final class SeedConfiguration {
     public let messageNamespacesRequiringGroupStatsValidation: Set<MessageId.Namespace>
     public let defaultMessageNamespaceReadStates: [MessageId.Namespace: PeerReadState]
     public let chatMessagesNamespaces: Set<MessageId.Namespace>
+    public let readStateExcludedMessageNamespaces: Set<MessageId.Namespace>
     public let getGlobalNotificationSettings: (Transaction) -> PostboxGlobalNotificationSettings?
     public let defaultGlobalNotificationSettings: PostboxGlobalNotificationSettings
     public let mergeMessageAttributes: ([MessageAttribute], inout [MessageAttribute]) -> Void
@@ -102,6 +103,7 @@ public final class SeedConfiguration {
         messageNamespacesRequiringGroupStatsValidation: Set<MessageId.Namespace>,
         defaultMessageNamespaceReadStates: [MessageId.Namespace: PeerReadState],
         chatMessagesNamespaces: Set<MessageId.Namespace>,
+        readStateExcludedMessageNamespaces: Set<MessageId.Namespace> = Set(),
         getGlobalNotificationSettings: @escaping (Transaction) -> PostboxGlobalNotificationSettings?,
         defaultGlobalNotificationSettings: PostboxGlobalNotificationSettings,
         mergeMessageAttributes: @escaping ([MessageAttribute], inout [MessageAttribute]) -> Void,
@@ -128,6 +130,7 @@ public final class SeedConfiguration {
         self.messageNamespacesRequiringGroupStatsValidation = messageNamespacesRequiringGroupStatsValidation
         self.defaultMessageNamespaceReadStates = defaultMessageNamespaceReadStates
         self.chatMessagesNamespaces = chatMessagesNamespaces
+        self.readStateExcludedMessageNamespaces = readStateExcludedMessageNamespaces
         self.getGlobalNotificationSettings = getGlobalNotificationSettings
         self.defaultGlobalNotificationSettings = defaultGlobalNotificationSettings
         self.mergeMessageAttributes = mergeMessageAttributes

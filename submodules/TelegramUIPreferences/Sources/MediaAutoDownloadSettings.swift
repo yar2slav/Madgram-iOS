@@ -288,8 +288,8 @@ public struct EnergyUsageSettings: Codable, Equatable {
             loopStickers: true,
             loopEmoji: isCapable,
             fullTranslucency: isCapable,
-            extendBackgroundWork: true,
-            autodownloadInBackground: true
+            extendBackgroundWork: false,
+            autodownloadInBackground: false
         )
     }()
     

@@ -1395,6 +1395,10 @@ public class ChatMessageTodoBubbleContentNode: ChatMessageBubbleContentNode {
                                         guard let strongSelf = self, let item = strongSelf.item, let todoItem else {
                                             return
                                         }
+                                        guard item.message.id.namespace != Namespaces.Message.Archived else {
+                                            item.controllerInteraction.displayTodoToggleUnavailable(item.message.id)
+                                            return
+                                        }
                                         item.controllerInteraction.requestToggleTodoMessageItem(item.message.id, todoItem.id, optionNode.radioNode?.isChecked == true)
                                     }
                                     optionNode.pressed = {

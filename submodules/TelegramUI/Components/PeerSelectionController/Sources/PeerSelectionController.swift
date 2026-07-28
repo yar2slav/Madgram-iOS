@@ -65,6 +65,7 @@ public final class PeerSelectionControllerImpl: ViewController, PeerSelectionCon
     private let hasGlobalSearch: Bool
     private let pretendPresentedInModal: Bool
     private let forwardedMessageIds: [EngineMessage.Id]
+    private let initialForwardOptions: ChatInterfaceForwardOptionsState?
     private let hasTypeHeaders: Bool
     private let requestPeerType: [ReplyMarkupButtonRequestPeerType]?
     private let showPeerTypeRequirements: Bool
@@ -109,6 +110,7 @@ public final class PeerSelectionControllerImpl: ViewController, PeerSelectionCon
         self.createNewGroup = params.createNewGroup
         self.pretendPresentedInModal = params.pretendPresentedInModal
         self.forwardedMessageIds = params.forwardedMessageIds
+        self.initialForwardOptions = params.initialForwardOptions
         self.hasTypeHeaders = params.hasTypeHeaders
         self.selectForumThreads = params.selectForumThreads
         self.requestPeerType = params.requestPeerType
@@ -364,6 +366,7 @@ public final class PeerSelectionControllerImpl: ViewController, PeerSelectionCon
             hasContactSelector: self.hasContactSelector,
             hasGlobalSearch: self.hasGlobalSearch,
             forwardedMessageIds: self.forwardedMessageIds,
+            initialForwardOptions: self.initialForwardOptions,
             hasTypeHeaders: self.hasTypeHeaders,
             requestPeerType: self.requestPeerType,
             showPeerTypeRequirements: self.showPeerTypeRequirements,

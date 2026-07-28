@@ -9,6 +9,7 @@ import TextFormat
 import PhoneNumberFormat
 import SwiftSignalKit
 import TelegramStringFormatting
+import TelegramUIPreferences
 import AsyncDisplayKit
 import LocationResources
 import AttachmentUI
@@ -22,6 +23,7 @@ private let enabledPrivateBioEntities: EnabledEntityTypes = [.internalUrl, .ment
 
 enum InfoSection: Int, CaseIterable {
     case unofficial
+    case technical
     case community
     case groupLocation
     case calls
@@ -51,14 +53,14 @@ func infoItems(
     guard let data = data else {
         return []
     }
-    
+
     var currentPeerInfoSection: InfoSection = .peerInfo
         
     var items: [InfoSection: [PeerInfoScreenItem]] = [:]
     for section in InfoSection.allCases {
         items[section] = []
     }
-    
+
     let bioContextAction: (ASDisplayNode, ContextGesture?, CGPoint?) -> Void = { node, gesture, _ in
         interaction.openBioContextMenu(node, gesture)
     }
@@ -77,7 +79,7 @@ func infoItems(
     let birthdayContextAction: (ASDisplayNode, ContextGesture?, CGPoint?) -> Void = { node, gesture, _ in
         interaction.openBirthdayContextMenu(node, gesture)
     }
-    
+
     if case let .user(user) = data.peer {
         let ItemCallList = 1000
         let ItemPersonalChannelHeader = 2000
@@ -847,7 +849,7 @@ func infoItems(
             }
         }
     }
-    
+
     if let peer = data.peer, let members = data.members, case let .shortList(_, memberList) = members {
         var canAddMembers = false
         if case let .legacyGroup(group) = data.peer {
@@ -901,6 +903,90 @@ func infoItems(
                 interaction.performMemberAction(member, .openStories(sourceView: sourceView))
             }))
         }
+    }
+
+    let interfaceSettings = InterfaceTuningSettingsStore.shared.current
+    let interfaceStrings = presentationData.strings.localFeatures.interfaceTuning
+    var technicalItemId = 91000
+
+    if interfaceSettings.showProfileIdentifiers, let peer = data.peer {
+        let identifier = "\(peer.id.id._internalGetInt64Value())"
+        items[.technical]!.append(PeerInfoScreenLabeledValueItem(
+            id: technicalItemId,
+            label: interfaceStrings.profileIdentifierLabel,
+            text: identifier,
+            textColor: .primary,
+            action: nil,
+            longTapAction: { sourceNode in
+                interaction.openPeerInfoContextMenu(.copyText(identifier), sourceNode, nil)
+            },
+            requestLayout: { animated in
+                interaction.requestLayout(animated)
+            }
+        ))
+        technicalItemId += 1
+    }
+
+    if interfaceSettings.showDataCenter, let peer = data.peer, let representation = peer.smallProfileImage, let resource = representation.resource as? CloudPeerPhotoSizeMediaResource {
+        let value = "DC \(resource.datacenterId)"
+        items[.technical]!.append(PeerInfoScreenLabeledValueItem(
+            id: technicalItemId,
+            label: interfaceStrings.dataCenterLabel,
+            text: "\(resource.datacenterId)",
+            textColor: .primary,
+            action: nil,
+            longTapAction: { _ in
+                UIPasteboard.general.string = value
+            },
+            requestLayout: { animated in
+                interaction.requestLayout(animated)
+            }
+        ))
+        technicalItemId += 1
+    }
+
+    if interfaceSettings.showRegistrationDate, let cachedData = data.cachedData as? CachedUserData, let registrationDate = cachedData.peerStatusSettings?.registrationDate {
+        let components = registrationDate.components(separatedBy: ".")
+        if components.count == 2, let monthValue = Int32(components[0]), let yearValue = Int32(components[1]) {
+            let value = stringForMonth(strings: presentationData.strings, month: monthValue - 1, ofYear: yearValue - 1900)
+            items[.technical]!.append(PeerInfoScreenLabeledValueItem(
+                id: technicalItemId,
+                label: interfaceStrings.registrationDateLabel,
+                text: value,
+                textColor: .primary,
+                action: nil,
+                longTapAction: { _ in
+                    UIPasteboard.general.string = value
+                },
+                requestLayout: { animated in
+                    interaction.requestLayout(animated)
+                }
+            ))
+            technicalItemId += 1
+        }
+    }
+
+    let chatCreationTimestamp: Int32?
+    if case let .legacyGroup(group) = data.peer, group.creationDate != 0 {
+        chatCreationTimestamp = group.creationDate
+    } else {
+        chatCreationTimestamp = nil
+    }
+    if interfaceSettings.showChatCreationDate, let timestamp = chatCreationTimestamp {
+        let value = stringForDate(timestamp: timestamp, strings: presentationData.strings)
+        items[.technical]!.append(PeerInfoScreenLabeledValueItem(
+            id: technicalItemId,
+            label: interfaceStrings.chatCreationDateLabel,
+            text: value,
+            textColor: .primary,
+            action: nil,
+            longTapAction: { _ in
+                UIPasteboard.general.string = value
+            },
+            requestLayout: { animated in
+                interaction.requestLayout(animated)
+            }
+        ))
     }
     
     var result: [(AnyHashable, [PeerInfoScreenItem])] = []

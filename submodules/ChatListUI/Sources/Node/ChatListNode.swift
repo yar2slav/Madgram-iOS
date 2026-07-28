@@ -1309,6 +1309,7 @@ public final class ChatListNode: ListViewImpl {
         }
     }
     private let updatedFilterDisposable = MetaDisposable()
+    private let messageFilterSettingsDisposable = MetaDisposable()
     private let chatListFilterValue = Promise<ChatListFilter?>()
     var chatListFilterSignal: Signal<ChatListFilter?, NoError> {
         return self.chatListFilterValue.get()
@@ -3188,9 +3189,26 @@ public final class ChatListNode: ListViewImpl {
             return strongSelf.isSelectionGestureEnabled
         }
         self.view.addGestureRecognizer(selectionRecognizer)
+
+        self.messageFilterSettingsDisposable.set((messageFilterSettingsSignal()
+        |> deliverOnMainQueue).start(next: { [weak self] settings in
+            guard let self else {
+                return
+            }
+            if self.currentState.presentationData.messageFilterSettings == settings {
+                return
+            }
+            let current = self.currentState.presentationData
+            self.updateState { state in
+                var state = state
+                state.presentationData = ChatListPresentationData(theme: current.theme, fontSize: current.fontSize, strings: current.strings, dateTimeFormat: current.dateTimeFormat, nameSortOrder: current.nameSortOrder, nameDisplayOrder: current.nameDisplayOrder, disableAnimations: current.disableAnimations, messageFilterSettings: settings)
+                return state
+            }
+        }))
     }
     
     deinit {
+        self.messageFilterSettingsDisposable.dispose()
         self.chatListDisposable.dispose()
         self.activityStatusesDisposable?.dispose()
         self.updatedFilterDisposable.dispose()

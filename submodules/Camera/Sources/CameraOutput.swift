@@ -669,7 +669,14 @@ final class CameraOutput: NSObject {
     
     private var currentPosition: Camera.Position = .front
     private var lastSwitchTimestamp: Double = 0.0
-   
+
+    func setInitialPosition(_ position: Camera.Position) {
+        guard !self.isRecording else {
+            return
+        }
+        self.currentPosition = position
+    }
+
     func markPositionChange(position: Camera.Position) {
         self.currentPosition = position
         self.lastSwitchTimestamp = CACurrentMediaTime()

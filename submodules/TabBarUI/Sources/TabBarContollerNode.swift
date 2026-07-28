@@ -6,6 +6,7 @@ import TelegramPresentationData
 import ComponentFlow
 import ComponentDisplayAdapters
 import TabBarComponent
+import TelegramUIPreferences
 import GlassControls
 
 final class TabBarControllerNode: ASDisplayNode {
@@ -72,6 +73,8 @@ final class TabBarControllerNode: ASDisplayNode {
     private var layoutResult: LayoutResult?
     private var isUpdateRequested: Bool = false
     private var isChangingSelectedIndex: Bool = false
+    private var interfaceSettings: InterfaceTuningSettings
+    private var interfaceSettingsObserver: NSObjectProtocol?
     
     func setCurrentController(_ controller: ViewController?) -> () -> Void {
         guard controller !== self.currentController else {
@@ -119,6 +122,7 @@ final class TabBarControllerNode: ASDisplayNode {
         self.disabledPressed = disabledPressed
         self.activateSearch = activateSearch
         self.deactivateSearch = deactivateSearch
+        self.interfaceSettings = InterfaceTuningSettingsStore.shared.current
 
         super.init()
         
@@ -139,9 +143,41 @@ final class TabBarControllerNode: ASDisplayNode {
         }
         
         self.backgroundColor = theme.list.plainBackgroundColor
+
+        self.interfaceSettingsObserver = NotificationCenter.default.addObserver(
+            forName: InterfaceTuningSettingsStore.didChangeNotification,
+            object: nil,
+            queue: .main,
+            using: { [weak self] _ in
+                self?.updateInterfaceSettings(InterfaceTuningSettingsStore.shared.current)
+            }
+        )
         
         //self.addSubnode(self.tabBarNode)
         //self.addSubnode(self.disabledOverlayNode)
+    }
+
+    deinit {
+        if let interfaceSettingsObserver = self.interfaceSettingsObserver {
+            NotificationCenter.default.removeObserver(interfaceSettingsObserver)
+        }
+    }
+
+    private func updateInterfaceSettings(_ settings: InterfaceTuningSettings) {
+        guard settings != self.interfaceSettings else {
+            return
+        }
+        self.interfaceSettings = settings
+
+        if let layoutResult = self.layoutResult {
+            let bottomInset = self.updateImpl(
+                params: layoutResult.params,
+                transition: .animated(duration: 0.25, curve: .easeInOut)
+            )
+            self.layoutResult = LayoutResult(params: layoutResult.params, bottomInset: bottomInset)
+        } else {
+            self.requestUpdate()
+        }
     }
     
     override func didLoad() {
@@ -265,7 +301,7 @@ final class TabBarControllerNode: ASDisplayNode {
                         }
                     )
                 },
-                search: self.currentController?.tabBarSearchState.flatMap { tabBarSearchState in
+                search: self.interfaceSettings.showSearchShortcut ? self.currentController?.tabBarSearchState.flatMap { tabBarSearchState in
                     return TabBarComponent.Search(
                         isActive: tabBarSearchState.isActive,
                         activate: { [weak self] in
@@ -281,9 +317,14 @@ final class TabBarControllerNode: ASDisplayNode {
                             self.deactivateSearch()
                         }
                     )
-                },
+                } : nil,
                 selectedId: selectedId,
-                outerInsets: UIEdgeInsets(top: 0.0, left: sideInset, bottom: tabBarBottomInset, right: sideInset)
+                outerInsets: UIEdgeInsets(top: 0.0, left: sideInset, bottom: tabBarBottomInset, right: sideInset),
+                layoutOptions: TabBarComponent.LayoutOptions(
+                    showTabLabels: self.interfaceSettings.showTabLabels,
+                    showSearchShortcut: self.interfaceSettings.showSearchShortcut,
+                    stretchBottomBar: self.interfaceSettings.stretchBottomBar
+                )
             )),
             environment: {},
             containerSize: CGSize(width: params.layout.size.width - sideInset * 2.0, height: 100.0)

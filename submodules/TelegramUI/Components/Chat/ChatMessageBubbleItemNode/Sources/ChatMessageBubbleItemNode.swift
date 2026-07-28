@@ -29,6 +29,7 @@ import AnimationCache
 import MultiAnimationRenderer
 import ComponentFlow
 import EmojiStatusComponent
+import PeerBadgeUI
 import ChatControllerInteraction
 import ChatMessageForwardInfoNode
 import ChatMessageDateAndStatusNode
@@ -472,7 +473,7 @@ private func contentNodeMessagesAndClassesForItem(_ item: ChatMessageItem) -> ([
         needReactions = false
     }
     
-    if !isAction && !hasSeparateCommentsButton && !Namespaces.Message.allNonRegular.contains(firstMessage.id.namespace) && !hideAllAdditionalInfo {
+    if !isAction && !hasSeparateCommentsButton && !Namespaces.Message.allNonRegular.contains(firstMessage.id.namespace) && firstMessage.id.namespace != Namespaces.Message.Archived && !hideAllAdditionalInfo {
         if hasCommentButton(item: item) {
             result.append((firstMessage, ChatMessageCommentFooterContentNode.self, ChatMessageEntryAttributes(), BubbleItemAttributes(isAttachment: true, neighborType: .footer, neighborSpacing: .default)))
         }
@@ -724,6 +725,7 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
     private var credibilityIconContent: EmojiStatusComponent.Content?
     private var credibilityButtonNode: HighlightTrackingButtonNode?
     private var credibilityHighlightNode: ASImageNode?
+    private var peerBadgeView: ComponentHostView<Empty>?
     
     private var boostBadgeNode: TextNode?
     private var boostIconNode: UIImageView?
@@ -1769,7 +1771,11 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
                     ignoreNameHiding = true
                 }
                 
-                displayAuthorInfo = !mergedTop.merged && allowAuthor && peerId.isGroupOrChannel && effectiveAuthor != nil
+                if item.presentationData.alwaysDisplayAuthorInfo {
+                    displayAuthorInfo = !mergedTop.merged && allowAuthor && effectiveAuthor != nil
+                } else {
+                    displayAuthorInfo = !mergedTop.merged && allowAuthor && peerId.isGroupOrChannel && effectiveAuthor != nil
+                }
                 if let forwardInfo = firstMessage.forwardInfo, forwardInfo.psaType != nil {
                     displayAuthorInfo = false
                 }
@@ -1888,7 +1894,7 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
         } else if case let .replyThread(replyThreadMessage) = item.chatLocation, replyThreadMessage.effectiveTopId == item.message.id {
             needsShareButton = false
             allowFullWidth = true
-        } else if isFailed || Namespaces.Message.allNonRegular.contains(item.message.id.namespace) {
+        } else if isFailed || Namespaces.Message.allNonRegular.contains(item.message.id.namespace) || item.message.id.namespace == Namespaces.Message.Archived {
             needsShareButton = false
         } else if item.message.id.peerId == item.context.account.peerId {
             if let _ = sourceReference {
@@ -2369,6 +2375,7 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
         }
         
         var currentCredibilityIcon: (EmojiStatusComponent.Content, UIColor?)?
+        var currentPeerBadge: PeerBadge?
         
         let displayEphemeralBadge: Bool
         if ephemeralBadgeText != nil && !hidesHeaders && item.message.adAttribute == nil {
@@ -2439,6 +2446,9 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
         }
                 
         if initialDisplayHeader && displayAuthorInfo {
+            if let author = effectiveAuthor ?? item.message.author {
+                currentPeerBadge = PeerBadgeRegistryStore.shared.badge(peerId: author.id)
+            }
             if let peer = firstMessage.peers[firstMessage.id.peerId] as? TelegramChannel, case .broadcast = peer.info, item.content.firstMessage.adAttribute == nil, !overrideEffectiveAuthor {
                 authorNameString = EnginePeer(peer).displayTitle(strings: item.presentationData.strings, displayOrder: item.presentationData.nameDisplayOrder)
                 
@@ -2809,6 +2819,9 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
                     default:
                         credibilityIconWidth += 20.0
                     }
+                }
+                if currentPeerBadge != nil {
+                    credibilityIconWidth += 22.0
                 }
                 
                 let rankBadgeSizeAndApply = rankBadgeLayout(TextNodeLayoutArguments(attributedString: rankBadgeString, backgroundColor: nil, maximumNumberOfLines: 1, truncationType: .end, constrainedSize: CGSize(width: max(0, maximumNodeWidth - layoutConstants.text.bubbleInsets.left - layoutConstants.text.bubbleInsets.right), height: CGFloat.greatestFiniteMagnitude), alignment: .natural, cutout: nil, insets: UIEdgeInsets()))
@@ -3788,6 +3801,7 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
                 authorNameColor: authorNameColor,
                 layoutConstants: layoutConstants,
                 currentCredibilityIcon: currentCredibilityIcon,
+                currentPeerBadge: currentPeerBadge,
                 rankBadgeNodeSizeApply: rankBadgeNodeSizeApply,
                 ephemeralBadgeNodeSizeApply: ephemeralBadgeNodeSizeApply,
                 ephemeralBadgeOriginY: layoutInsets.top + ephemeralBadgeOriginY + detachedContentNodesHeight + additionalTopHeight,
@@ -3862,6 +3876,7 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
         authorNameColor: UIColor?,
         layoutConstants: ChatMessageItemLayoutConstants,
         currentCredibilityIcon: (EmojiStatusComponent.Content, UIColor?)?,
+        currentPeerBadge: PeerBadge?,
         rankBadgeNodeSizeApply: (CGSize, () -> TextNode?, UIColor?),
         ephemeralBadgeNodeSizeApply: (CGSize, CGSize, () -> TextNode?),
         ephemeralBadgeOriginY: CGFloat,
@@ -4302,6 +4317,45 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
                 strongSelf.credibilityHighlightNode?.removeFromSupernode()
                 strongSelf.credibilityHighlightNode = nil
             }
+
+            if let currentPeerBadge {
+                let peerBadgeView: ComponentHostView<Empty>
+                if let current = strongSelf.peerBadgeView {
+                    peerBadgeView = current
+                } else {
+                    peerBadgeView = ComponentHostView<Empty>()
+                    strongSelf.peerBadgeView = peerBadgeView
+                    strongSelf.clippingNode.view.addSubview(peerBadgeView)
+                }
+                let peerBadgeSize = peerBadgeView.update(
+                    transition: .immediate,
+                    component: AnyComponent(PeerBadgeComponent(
+                        context: item.context,
+                        badge: currentPeerBadge,
+                        size: CGSize(width: 18.0, height: 18.0),
+                        isVisibleForAnimations: strongSelf.visibilityStatus
+                    )),
+                    environment: {},
+                    containerSize: CGSize(width: 18.0, height: 18.0)
+                )
+                let originX: CGFloat
+                if let credibilityIconView = strongSelf.credibilityIconView {
+                    originX = credibilityIconView.frame.maxX + 3.0
+                } else {
+                    originX = nameNode.frame.maxX + 3.0
+                }
+                let peerBadgeFrame = CGRect(
+                    origin: CGPoint(
+                        x: originX,
+                        y: nameNode.frame.minY + floor((nameNode.bounds.height - peerBadgeSize.height) / 2.0)
+                    ),
+                    size: peerBadgeSize
+                )
+                animation.animator.updateFrame(layer: peerBadgeView.layer, frame: peerBadgeFrame, completion: nil)
+            } else if let peerBadgeView = strongSelf.peerBadgeView {
+                strongSelf.peerBadgeView = nil
+                peerBadgeView.removeFromSuperview()
+            }
             
             var boostCount: Int = 0
             if incoming {
@@ -4574,6 +4628,12 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
                         credibilityIconView?.removeFromSuperview()
                     })
                 }
+                if let peerBadgeView = strongSelf.peerBadgeView {
+                    strongSelf.peerBadgeView = nil
+                    peerBadgeView.layer.animateAlpha(from: 1.0, to: 0.0, duration: 0.1, removeOnCompletion: false, completion: { [weak peerBadgeView] _ in
+                        peerBadgeView?.removeFromSuperview()
+                    })
+                }
                 if let boostBadgeNode = strongSelf.boostBadgeNode {
                     strongSelf.boostBadgeNode = nil
                     boostBadgeNode.layer.animateAlpha(from: 1.0, to: 0.0, duration: 0.1, removeOnCompletion: false, completion: { [weak boostBadgeNode] _ in
@@ -4599,6 +4659,8 @@ public class ChatMessageBubbleItemNode: ChatMessageItemView, ChatMessagePreviewI
                 strongSelf.rankBadgeNode = nil
                 strongSelf.credibilityIconView?.removeFromSuperview()
                 strongSelf.credibilityIconView = nil
+                strongSelf.peerBadgeView?.removeFromSuperview()
+                strongSelf.peerBadgeView = nil
                 strongSelf.boostBadgeNode?.removeFromSupernode()
                 strongSelf.boostBadgeNode = nil
                 strongSelf.boostIconNode?.removeFromSuperview()

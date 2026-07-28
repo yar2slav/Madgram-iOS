@@ -300,6 +300,8 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
     var leftNavigationButton: ChatNavigationButton?
     var rightNavigationButton: ChatNavigationButton?
     var secondaryRightNavigationButton: ChatNavigationButton?
+    var ghostModeReadButtonItem: UIBarButtonItem?
+    let ghostModeSettingsDisposable = MetaDisposable()
     var chatInfoNavigationButton: ChatNavigationButton?
     
     var moreBarButton: MoreHeaderButton
@@ -718,7 +720,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                         return interfaceState.withUpdatedEffectiveInputState(ChatTextInputState(inputText: chatInputStateStringWithAppliedEntities(link.message, entities: link.entities)))
                     })
                 }
-            case .hashTagSearch:
+            case .hashTagSearch, .messageVersionHistory:
                 break
             }
         }
@@ -797,7 +799,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                         
             if case let .customChatContents(customChatContents) = strongSelf.presentationInterfaceState.subject {
                 switch customChatContents.kind {
-                case .hashTagSearch:
+                case .hashTagSearch, .messageVersionHistory:
                     return true
                 case let .quickReplyMessageInput(_, shortcutType):
                     if let historyView = strongSelf.chatDisplayNode.historyNode.originalHistoryView, historyView.entries.isEmpty {
@@ -3685,6 +3687,9 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
         }, setupReply: { [weak self] messageId in
             self?.interfaceInteraction?.setupReplyMessage(messageId, nil, { _, f in f() })
         }, canSetupReply: { [weak self] message in
+            if message.id.namespace == Namespaces.Message.Archived {
+                return .none
+            }
             if Namespaces.Message.allEphemeral.contains(message.id.namespace) {
                 if !message.flags.contains(.Incoming) {
                     return .none
@@ -6332,6 +6337,32 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
             }
         }
         self.moreBarButton.addTarget(self, action: #selector(self.moreButtonPressed), forControlEvents: .touchUpInside)
+
+        if let peerId = self.chatLocation.peerId, peerId.namespace == Namespaces.Peer.CloudUser || peerId.namespace == Namespaces.Peer.CloudGroup || peerId.namespace == Namespaces.Peer.CloudChannel {
+            self.ghostModeSettingsDisposable.set((context.engine.messages.ghostModeChatState(peerId: peerId, threadId: self.chatLocation.threadId)
+            |> deliverOnMainQueue).start(next: { [weak self] state in
+                guard let self else {
+                    return
+                }
+                if state.settings.hidesMessageReadReceipts && state.hasPendingReadReceipt {
+                    if self.ghostModeReadButtonItem == nil {
+                        let item = UIBarButtonItem(
+                            image: UIImage(systemName: "eye.slash"),
+                            style: .plain,
+                            target: self,
+                            action: #selector(self.ghostModeReadButtonPressed)
+                        )
+                        let ghostModeStrings = self.presentationData.strings.localFeatures.ghostMode
+                        item.accessibilityLabel = ghostModeStrings.markViewedMessagesAsRead
+                        item.accessibilityHint = ghostModeStrings.suppressMessageReadReceiptsInfo
+                        self.ghostModeReadButtonItem = item
+                    }
+                } else {
+                    self.ghostModeReadButtonItem = nil
+                }
+                self.updateRightNavigationButtons(presentationInterfaceState: self.presentationInterfaceState, transition: .animated(duration: 0.2, curve: .easeInOut))
+            }))
+        }
         
         self.navigationItem.titleView = self.chatTitleView
         self.chatTitleView?.tapAction = { [weak self] in
@@ -8427,6 +8458,26 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
         if let button = self.secondaryRightNavigationButton {
             self.navigationButtonAction(button.action)
         }
+    }
+
+    @objc func ghostModeReadButtonPressed() {
+        guard let peerId = self.chatLocation.peerId else {
+            return
+        }
+        self.context.account.temporarilyRevealGhostModePresence()
+        let _ = (self.context.engine.messages.commitGhostModeReadState(peerId: peerId, threadId: self.chatLocation.threadId)
+        |> deliverOnMainQueue).startStandalone(next: { [weak self] success in
+            guard let self, !success else {
+                return
+            }
+            self.present(UndoOverlayController(
+                presentationData: self.presentationData,
+                content: .info(title: nil, text: self.presentationData.strings.localFeatures.ghostMode.readReceiptFailed, timeout: nil, customUndoText: nil),
+                elevatedLayout: false,
+                animateInAsReplacement: false,
+                action: { _ in false }
+            ), in: .current)
+        })
     }
     
     @objc func moreButtonPressed() {

@@ -101,6 +101,25 @@ public extension TelegramEngine {
             return _internal_applyMaxReadIndexInteractively(postbox: self.account.postbox, stateManager: self.account.stateManager, index: index)
         }
 
+        public func ghostModeSettings() -> Signal<GhostModeSettings, NoError> {
+            return self.account.postbox.preferencesView(keys: [PreferencesKeys.ghostModeSettings])
+            |> map { view -> GhostModeSettings in
+                return view.values[PreferencesKeys.ghostModeSettings]?.get(GhostModeSettings.self) ?? .defaultSettings
+            }
+        }
+
+        public func ghostModeChatState(peerId: EnginePeer.Id, threadId: Int64?) -> Signal<GhostModeChatState, NoError> {
+            return _internal_ghostModeChatState(postbox: self.account.postbox, peerId: peerId, threadId: threadId)
+        }
+
+        public func commitGhostModeReadState(peerId: EnginePeer.Id, threadId: Int64?) -> Signal<Bool, NoError> {
+            return _internal_commitGhostModeReadState(account: self.account, peerId: peerId, threadId: threadId)
+        }
+
+        public func discardGhostModeReadStates() -> Signal<Never, NoError> {
+            return _internal_discardGhostModeReadStates(postbox: self.account.postbox)
+        }
+
         public func sendScheduledMessageNowInteractively(messageId: MessageId) -> Signal<Never, NoError> {
             return _internal_sendScheduledMessageNowInteractively(postbox: self.account.postbox, messageId: messageId)
         }
@@ -110,6 +129,7 @@ public extension TelegramEngine {
         }
 
         public func requestMessageActionCallback(messageId: MessageId, isGame: Bool, password: String?, data: MemoryBuffer?) -> Signal<MessageActionCallbackResult, MessageActionCallbackError> {
+            _internal_prepareGhostModeInteraction(account: self.account, peerId: messageId.peerId, threadId: nil)
             return _internal_requestMessageActionCallback(account: self.account, messageId: messageId, isGame: isGame, password: password, data: data)
         }
 
@@ -154,6 +174,47 @@ public extension TelegramEngine {
 
         public func deleteMessages(transaction: Transaction, ids: [MessageId]) {
             return _internal_deleteMessages(transaction: transaction, mediaBox: self.account.postbox.mediaBox, ids: ids, deleteMedia: true, manualAddMessageThreadStatsDifference: nil)
+        }
+
+        public func archivedMessageVersions(id: EngineMessage.Id) -> Signal<[EngineMessage], NoError> {
+            return self.account.postbox.transaction { transaction -> [EngineMessage] in
+                return _internal_archivedMessageVersions(transaction: transaction, id: id).map(EngineMessage.init)
+            }
+        }
+
+        public func deleteArchivedMessage(id: EngineMessage.Id) -> Signal<Never, NoError> {
+            return self.account.postbox.transaction { transaction -> Void in
+                _internal_deleteArchivedMessage(transaction: transaction, mediaBox: self.account.postbox.mediaBox, id: id)
+            }
+            |> ignoreValues
+        }
+
+        public func clearDeletedMessageArchive() -> Signal<Never, NoError> {
+            return self.account.postbox.transaction { transaction -> Void in
+                _internal_clearDeletedMessageArchiveMedia(transaction: transaction, mediaBox: self.account.postbox.mediaBox)
+                _internal_clearDeletedMessageArchive(transaction: transaction)
+            }
+            |> ignoreValues
+        }
+
+        public func clearDeletedMessageArchiveMedia() -> Signal<Never, NoError> {
+            return self.account.postbox.transaction { transaction -> Void in
+                _internal_clearDeletedMessageArchiveMedia(transaction: transaction, mediaBox: self.account.postbox.mediaBox)
+            }
+            |> ignoreValues
+        }
+
+        public func deletedMessageArchiveStats() -> Signal<DeletedMessageArchiveStats, NoError> {
+            return self.account.postbox.transaction { transaction -> DeletedMessageArchiveStats in
+                return _internal_deletedMessageArchiveStats(transaction: transaction, mediaBox: self.account.postbox.mediaBox)
+            }
+        }
+
+        public func refreshDeletedMessageArchiveMediaLimit() -> Signal<Never, NoError> {
+            return self.account.postbox.transaction { transaction -> Void in
+                _internal_refreshDeletedMessageArchiveMediaLimit(transaction: transaction, mediaBox: self.account.postbox.mediaBox)
+            }
+            |> ignoreValues
         }
 
         public func deleteAllMessagesWithAuthor(peerId: PeerId, authorId: PeerId, namespace: MessageId.Namespace) -> Signal<Never, NoError> {
@@ -255,8 +316,8 @@ public extension TelegramEngine {
             return _internal_getMessagesLoadIfNecessary(messageIds, postbox: self.account.postbox, network: self.account.network, accountPeerId: self.account.peerId, strategy: strategy)
         }
 
-        public func markMessageContentAsConsumedInteractively(messageId: MessageId) -> Signal<Void, NoError> {
-            return _internal_markMessageContentAsConsumedInteractively(postbox: self.account.postbox, messageId: messageId)
+        public func markMessageContentAsConsumedInteractively(messageId: MessageId, force: Bool = false) -> Signal<Void, NoError> {
+            return _internal_markMessageContentAsConsumedInteractively(postbox: self.account.postbox, messageId: messageId, force: force)
         }
 
         public func installInteractiveReadMessagesAction(peerId: PeerId, threadId: Int64?) -> Disposable {
@@ -268,6 +329,7 @@ public extension TelegramEngine {
         }
 
         public func requestMessageSelectPollOption(messageId: MessageId, opaqueIdentifiers: [Data]) -> Signal<TelegramMediaPoll?, RequestMessageSelectPollOptionError> {
+            _internal_prepareGhostModeInteraction(account: self.account, peerId: messageId.peerId, threadId: nil)
             return _internal_requestMessageSelectPollOption(account: self.account, messageId: messageId, opaqueIdentifiers: opaqueIdentifiers)
         }
 
@@ -424,6 +486,9 @@ public extension TelegramEngine {
             ids: [EngineMessage.Id],
             reactions: [UpdateMessageReaction]
         ) {
+            if let id = ids.first {
+                _internal_prepareGhostModeInteraction(account: self.account, peerId: id.peerId, threadId: nil)
+            }
             let _ = updateMessageReactionsInteractively(
                 account: self.account,
                 messageIds: ids,
@@ -438,6 +503,9 @@ public extension TelegramEngine {
             ids: [EngineMessage.Id],
             reactions: [UpdateMessageReaction]
         ) {
+            if let id = ids.first {
+                _internal_prepareGhostModeInteraction(account: self.account, peerId: id.peerId, threadId: nil)
+            }
             let _ = updateMessageReactionsInteractively(
                 account: self.account,
                 messageIds: ids,

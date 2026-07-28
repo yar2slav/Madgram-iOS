@@ -19,6 +19,7 @@ void set_date(double a);
 void set_date0(double a);
 
 void set_page(int page);
+void set_page_immediately(int page);
 
 
 void set_pages_textures(int a1, int a2, int a3, int a4, int a5, int a6);

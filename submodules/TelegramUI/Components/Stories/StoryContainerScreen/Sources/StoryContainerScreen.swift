@@ -19,6 +19,7 @@ import TooltipUI
 import ChatEntityKeyboardInputNode
 import notify
 import TelegramNotices
+import TelegramUIPreferences
 
 func hasFirstResponder(_ view: UIView) -> Bool {
     if view.isFirstResponder {
@@ -418,12 +419,15 @@ private final class StoryContainerScreenComponent: Component {
         private var isAnimatingOut: Bool = false
         private var didAnimateOut: Bool = false
         private var isDismissedExlusively: Bool = false
-        
+
         var dismissWithoutTransitionOut: Bool = false
         
         var longPressRecognizer: StoryLongPressRecognizer?
         
         private var pendingNavigationToItemId: EngineStoryId?
+
+        private let viewingGate = ComponentView<Empty>()
+        private var isDisplayingViewingGate = InterfaceTuningSettingsStore.shared.current.confirmStoryOpen
                 
         private let interactionGuide = ComponentView<Empty>()
         private var isDisplayingInteractionGuide: Bool = false
@@ -457,7 +461,7 @@ private final class StoryContainerScreenComponent: Component {
                 guard let self, let stateValue = self.stateValue, let slice = stateValue.slice, let itemSetView = self.visibleItemSetViews[slice.peer.id], let itemSetComponentView = itemSetView.view.view as? StoryItemSetContainerComponent.View else {
                     return []
                 }
-                if self.isDisplayingInteractionGuide {
+                if self.isDisplayingInteractionGuide || self.isDisplayingViewingGate {
                     return []
                 }
                 if let environment = self.environment, case .regular = environment.metrics.widthClass {
@@ -590,7 +594,7 @@ private final class StoryContainerScreenComponent: Component {
                 guard let self else {
                     return false
                 }
-                if self.isDisplayingInteractionGuide {
+                if self.isDisplayingInteractionGuide || self.isDisplayingViewingGate {
                     return false
                 }
                 if let stateValue = self.stateValue, let slice = stateValue.slice, let itemSetView = self.visibleItemSetViews[slice.peer.id] {
@@ -761,7 +765,7 @@ private final class StoryContainerScreenComponent: Component {
             guard let stateValue = self.stateValue, let slice = stateValue.slice, let itemSetView = self.visibleItemSetViews[slice.peer.id], let itemSetComponentView = itemSetView.view.view as? StoryItemSetContainerComponent.View else {
                 return false
             }
-            
+
             if let environment = self.environment, case .regular = environment.metrics.widthClass {
                 
             } else {
@@ -1511,7 +1515,7 @@ private final class StoryContainerScreenComponent: Component {
             if self.pendingNavigationToItemId != nil {
                 isProgressPaused = true
             }
-            if self.isDisplayingInteractionGuide {
+            if self.isDisplayingInteractionGuide || self.isDisplayingViewingGate {
                 isProgressPaused = true
             }
             
@@ -1976,7 +1980,51 @@ private final class StoryContainerScreenComponent: Component {
                 controller.presentationContext.containerLayoutUpdated(subLayout, transition: transition.containedViewLayoutTransition)
             }
             
-            if self.isDisplayingInteractionGuide {
+            if self.isDisplayingViewingGate {
+                let peer = component.content.stateValue?.slice?.peer
+                let _ = self.viewingGate.update(
+                    transition: .immediate,
+                    component: AnyComponent(StoryViewingGateComponent(
+                        theme: environment.theme,
+                        strings: environment.strings.localFeatures.interfaceTuning,
+                        authorName: peer?.displayTitle(strings: environment.strings, displayOrder: .firstLast),
+                        proceed: { [weak self] in
+                            guard let self else {
+                                return
+                            }
+                            self.isDisplayingViewingGate = false
+                            self.state?.updated(transition: .immediate)
+                            if let view = self.viewingGate.view as? StoryViewingGateComponent.View {
+                                view.animateOut {
+                                    view.removeFromSuperview()
+                                }
+                            }
+                        },
+                        close: { [weak self] in
+                            guard let self else {
+                                return
+                            }
+                            self.environment?.controller()?.dismiss()
+                        }
+                    )),
+                    environment: {},
+                    containerSize: availableSize
+                )
+                if let view = self.viewingGate.view as? StoryViewingGateComponent.View {
+                    if view.superview == nil {
+                        self.addSubview(view)
+                        view.animateIn()
+                    }
+                    view.layer.zPosition = 1001.0
+                    view.frame = CGRect(origin: .zero, size: availableSize)
+                }
+            } else if let view = self.viewingGate.view as? StoryViewingGateComponent.View, view.superview != nil {
+                view.animateOut {
+                    view.removeFromSuperview()
+                }
+            }
+
+            if self.isDisplayingInteractionGuide && !self.isDisplayingViewingGate {
                 let _ = self.interactionGuide.update(
                     transition: .immediate,
                     component: AnyComponent(

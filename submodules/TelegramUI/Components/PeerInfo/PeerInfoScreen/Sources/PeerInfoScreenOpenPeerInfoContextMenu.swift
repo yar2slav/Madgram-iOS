@@ -124,6 +124,20 @@ extension PeerInfoScreenNode {
                     return nil
                 }
             }))
+        case let .copyText(text):
+            let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+            let contextMenuController = makeContextMenuController(actions: [ContextMenuAction(content: .text(title: presentationData.strings.Conversation_ContextMenuCopy, accessibilityLabel: presentationData.strings.Conversation_ContextMenuCopy), action: { [weak self] in
+                UIPasteboard.general.string = text
+                self?.controller?.present(UndoOverlayController(presentationData: presentationData, content: .copy(text: presentationData.strings.Conversation_TextCopied), elevatedLayout: false, animateInAsReplacement: false, action: { _ in return false }), in: .current)
+            })])
+            controller.present(contextMenuController, in: .window(.root), with: ContextMenuControllerPresentationArguments(sourceNodeAndRect: { [weak self, weak sourceNode] in
+                if let controller = self?.controller, let sourceNode {
+                    let rect = (sourceRect ?? sourceNode.bounds).insetBy(dx: 0.0, dy: 2.0)
+                    return (sourceNode, rect, controller.displayNode, controller.view.bounds)
+                } else {
+                    return nil
+                }
+            }))
         case let .link(customLink):
             let text: String
             let content: UndoOverlayContent

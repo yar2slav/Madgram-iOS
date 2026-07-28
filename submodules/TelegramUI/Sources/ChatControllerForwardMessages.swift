@@ -52,7 +52,7 @@ extension ChatControllerImpl {
             var attemptSelectionImpl: ((EnginePeer, ChatListDisabledPeerReason) -> Void)?
             let controller = self.context.sharedContext.makePeerSelectionController(PeerSelectionControllerParams(context: self.context, updatedPresentationData: self.updatedPresentationData, filter: filter, hasFilters: true, attemptSelection: { peer, _, reason in
                 attemptSelectionImpl?(peer, reason)
-            }, multipleSelection: true, forwardedMessageIds: messages.map { $0.id }, selectForumThreads: true))
+            }, multipleSelection: true, forwardedMessageIds: messages.map { $0.id }, initialForwardOptions: options, selectForumThreads: true))
             let context = self.context
             attemptSelectionImpl = { [weak self, weak controller] peer, reason in
                 guard let strongSelf = self, let controller = controller else {
@@ -372,9 +372,14 @@ extension ChatControllerImpl {
                         hasNotOwnMessages = true
                     }
                 }
+                let forwardOptions = options ?? ChatInterfaceForwardOptionsState(
+                    hideNames: !hasNotOwnMessages,
+                    hideCaptions: false,
+                    unhideNamesOnCaptionChange: false
+                )
                 
                 if case .peer(peerId) = strongSelf.chatLocation, strongSelf.parentController == nil, !isPinnedMessages {
-                    strongSelf.updateChatPresentationInterfaceState(animated: false, interactive: true, { $0.updatedInterfaceState({ $0.withUpdatedForwardMessageIds(messages.map { $0.id }).withUpdatedForwardOptionsState(ChatInterfaceForwardOptionsState(hideNames: !hasNotOwnMessages, hideCaptions: false, unhideNamesOnCaptionChange: false)).withoutSelectionState() }).updatedSearch(nil) })
+                    strongSelf.updateChatPresentationInterfaceState(animated: false, interactive: true, { $0.updatedInterfaceState({ $0.withUpdatedForwardMessageIds(messages.map { $0.id }).withUpdatedForwardOptionsState(forwardOptions).withoutSelectionState() }).updatedSearch(nil) })
                     strongSelf.updateItemNodesSearchTextHighlightStates()
                     strongSelf.searchResultsController = nil
                     strongController.dismiss()
@@ -391,10 +396,16 @@ extension ChatControllerImpl {
                     }
                     
                     var correlationIds: [Int64] = []
+                    let attributes: [EngineMessage.Attribute]
+                    if options != nil {
+                        attributes = [ForwardOptionsMessageAttribute(hideNames: forwardOptions.hideNames, hideCaptions: forwardOptions.hideCaptions)]
+                    } else {
+                        attributes = []
+                    }
                     let mappedMessages = messages.map { message -> EnqueueMessage in
                         let correlationId = Int64.random(in: Int64.min ... Int64.max)
                         correlationIds.append(correlationId)
-                        return .forward(source: message.id, threadId: nil, grouping: .auto, attributes: [], correlationId: correlationId)
+                        return .forward(source: message.id, threadId: nil, grouping: .auto, attributes: attributes, correlationId: correlationId)
                     }
                     
                     let _ = (reactionItems
@@ -456,7 +467,7 @@ extension ChatControllerImpl {
                                         isChatPinnedMessages = true
                                     }
                                     if !isChatPinnedMessages {
-                                        maybeChat.updateChatPresentationInterfaceState(animated: false, interactive: true, { $0.updatedInterfaceState({ $0.withUpdatedForwardMessageIds(messages.map { $0.id }).withoutSelectionState() }) })
+                                        maybeChat.updateChatPresentationInterfaceState(animated: false, interactive: true, { $0.updatedInterfaceState({ $0.withUpdatedForwardMessageIds(messages.map { $0.id }).withUpdatedForwardOptionsState(forwardOptions).withoutSelectionState() }) })
                                         strongSelf.dismiss()
                                         strongController.dismiss()
                                         return
@@ -467,7 +478,7 @@ extension ChatControllerImpl {
                     }
 
                     let _ = (ChatInterfaceState.update(engine: strongSelf.context.engine, peerId: peerId, threadId: threadId, { currentState in
-                        return currentState.withUpdatedForwardMessageIds(messages.map { $0.id }).withUpdatedForwardOptionsState(ChatInterfaceForwardOptionsState(hideNames: !hasNotOwnMessages, hideCaptions: false, unhideNamesOnCaptionChange: false))
+                        return currentState.withUpdatedForwardMessageIds(messages.map { $0.id }).withUpdatedForwardOptionsState(forwardOptions)
                     })
                     |> deliverOnMainQueue).startStandalone(completed: {
                         if let strongSelf = self {

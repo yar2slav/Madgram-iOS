@@ -128,6 +128,7 @@ final class PeerSelectionControllerNode: ASDisplayNode {
         hasContactSelector: Bool,
         hasGlobalSearch: Bool,
         forwardedMessageIds: [EngineMessage.Id],
+        initialForwardOptions: ChatInterfaceForwardOptionsState?,
         hasTypeHeaders: Bool,
         requestPeerType: [ReplyMarkupButtonRequestPeerType]?,
         showPeerTypeRequirements: Bool = true,
@@ -160,7 +161,9 @@ final class PeerSelectionControllerNode: ASDisplayNode {
 
         self.presentationInterfaceState = ChatPresentationInterfaceState(chatWallpaper: .builtin(WallpaperSettings()), theme: self.presentationData.theme, preferredGlassType: .default, strings: self.presentationData.strings, dateTimeFormat: self.presentationData.dateTimeFormat, nameDisplayOrder: self.presentationData.nameDisplayOrder, limitsConfiguration: self.context.currentLimitsConfiguration.with { $0 }, fontSize: self.presentationData.chatFontSize, bubbleCorners: self.presentationData.chatBubbleCorners, accountPeerId: self.context.account.peerId, mode: .standard(.default), chatLocation: .peer(id: EnginePeer.Id(0)), subject: nil, greetingData: nil, pendingUnpinnedAllMessages: false, activeGroupCallInfo: nil, hasActiveGroupCall: false, threadData: nil, isGeneralThreadClosed: nil, replyMessage: nil, accountPeerColor: nil, businessIntro: nil)
 
-        self.presentationInterfaceState = self.presentationInterfaceState.updatedInterfaceState { $0.withUpdatedForwardMessageIds(forwardedMessageIds) }
+        self.presentationInterfaceState = self.presentationInterfaceState.updatedInterfaceState {
+            $0.withUpdatedForwardMessageIds(forwardedMessageIds).withUpdatedForwardOptionsState(initialForwardOptions)
+        }
         self.presentationInterfaceStatePromise.set(self.presentationInterfaceState)
 
         if let _ = self.requestPeerType, showPeerTypeRequirements {
@@ -419,7 +422,7 @@ final class PeerSelectionControllerNode: ASDisplayNode {
             f(.default)
         }, forwardSelectedMessages: {
         }, forwardCurrentForwardMessages: {
-        }, forwardMessages: { _ in
+        }, forwardMessages: { _, _ in
         }, updateForwardOptionsState: { [weak self] f in
             if let strongSelf = self {
                 strongSelf.updateChatPresentationInterfaceState(animated: true, { $0.updatedInterfaceState({ $0.withUpdatedForwardOptionsState(f($0.forwardOptionsState ?? ChatInterfaceForwardOptionsState(hideNames: false, hideCaptions: false, unhideNamesOnCaptionChange: false))) }) })

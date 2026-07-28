@@ -38,6 +38,7 @@ import ChatMessageItemView
 import ChatMessageBubbleItemNode
 import AdsInfoScreen
 import AdsReportScreen
+import MessageShotScreen
  
 private struct MessageContextMenuData {
     let starStatus: Bool?
@@ -47,6 +48,74 @@ private struct MessageContextMenuData {
     let canSelect: Bool
     let resourceStatus: EngineMediaResource.FetchStatus?
     let messageActions: ChatAvailableMessageActions
+    let keepsViewOnceMedia: Bool
+}
+
+private func canForwardWithoutAuthor(
+    messages: [EngineRawMessage],
+    accountPeerId: EnginePeer.Id,
+    chatLocation: ChatLocation,
+    isPremium: Bool
+) -> Bool {
+    if case let .peer(peerId) = chatLocation, peerId.namespace == Namespaces.Peer.SecretChat {
+        return false
+    }
+
+    var hasNotOwnMessages = false
+    var hasForwardableContent = false
+    var hasRichText = false
+    for message in messages {
+        if message.id.peerId.namespace == Namespaces.Peer.SecretChat {
+            return false
+        }
+        if message.id.peerId != accountPeerId || message.forwardInfo != nil {
+            hasNotOwnMessages = true
+        }
+        if message.richText != nil {
+            hasRichText = true
+        }
+        for media in message.media {
+            if media is TelegramMediaPaidContent || media is TelegramMediaAction {
+                return false
+            }
+            if !(media is TelegramMediaDice) {
+                hasForwardableContent = true
+            }
+        }
+        if message.media.isEmpty || !message.text.isEmpty {
+            hasForwardableContent = true
+        }
+    }
+    if hasRichText && !isPremium {
+        return false
+    }
+    return hasNotOwnMessages && hasForwardableContent
+}
+
+private func messageIsDeferredViewOnce(_ message: EngineRawMessage) -> Bool {
+    if !message.flags.contains(.Incoming) {
+        return false
+    }
+    if message.id.peerId.namespace == Namespaces.Peer.SecretChat {
+        return false
+    }
+    var isViewOnce = false
+    for attribute in message.attributes {
+        if let attribute = attribute as? AutoremoveTimeoutMessageAttribute, attribute.timeout == viewOnceTimeout {
+            if let countdownBeginTime = attribute.countdownBeginTime, countdownBeginTime != 0 {
+                return false
+            }
+            isViewOnce = true
+        } else if let attribute = attribute as? AutoclearTimeoutMessageAttribute, attribute.timeout == viewOnceTimeout {
+            if let countdownBeginTime = attribute.countdownBeginTime, countdownBeginTime != 0 {
+                return false
+            }
+            isViewOnce = true
+        } else if let attribute = attribute as? ConsumableContentMessageAttribute, attribute.consumed {
+            return false
+        }
+    }
+    return isViewOnce
 }
 
 func canEditMessage(context: AccountContext, limitsConfiguration: EngineConfiguration.Limits, message: EngineRawMessage) -> Bool {
@@ -503,6 +572,37 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
             return .single(ContextController.Items(content: .list([])))
         }
     }
+
+    func historyAction(for message: EngineRawMessage) -> ContextMenuItem {
+        let archiveStrings = chatPresentationInterfaceState.strings.localFeatures.localMessageArchive
+        return .action(ContextMenuActionItem(text: archiveStrings.history, icon: { theme in
+            return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Edit"), color: theme.actionSheet.primaryTextColor)
+        }, action: { controller, f in
+            f(.default)
+            let _ = (context.engine.messages.archivedMessageVersions(id: message.id)
+            |> deliverOnMainQueue).start(next: { versions in
+                guard !versions.isEmpty, let navigationController = controllerInteraction.navigationController() else {
+                    return
+                }
+                navigationController.pushViewController(makeMessageVersionsChatController(context: context, originalMessageId: message.id, versions: versions))
+            })
+        }))
+    }
+
+    if messages.count == 1, let message = messages.first, message.isArchivedDeletedMessage {
+        let archiveStrings = chatPresentationInterfaceState.strings.localFeatures.localMessageArchive
+        var items: [ContextMenuItem] = [historyAction(for: message)]
+        items.append(.action(ContextMenuActionItem(text: archiveStrings.deleteForMe, textColor: .destructive, icon: { theme in
+            return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Delete"), color: theme.actionSheet.destructiveActionTextColor)
+        }, action: { _, completion in
+            let _ = context.engine.messages.deleteArchivedMessage(id: message.id).start()
+            completion(.dismissWithoutContent)
+        })))
+        items.append(.separator)
+        let noAction: ((ContextMenuActionItem.Action) -> Void)? = nil
+        items.append(.action(ContextMenuActionItem(text: archiveStrings.deletedMessageSavedLocally, textLayout: .multiline, textFont: .small, icon: { _ in nil }, action: noAction)))
+        return .single(ContextController.Items(content: .list(items)))
+    }
     
     var isEmbeddedMode = false
     if case .standard(.embedded) = chatPresentationInterfaceState.mode {
@@ -891,6 +991,12 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
     
     let isScheduled = chatPresentationInterfaceState.subject == .scheduledMessages
     
+    let keepsViewOnceMediaSignal: Signal<Bool, NoError> = context.engine.messages.ghostModeSettings()
+    |> map { settings -> Bool in
+        return settings.keepsViewOnceMedia
+    }
+    |> take(1)
+
     let dataSignal: Signal<(MessageContextMenuData, [EngineMessage.Id: ChatUpdatingMessageMedia], InfoSummaryData, AppConfiguration, Bool, Int32, AvailableReactions?, TranslationSettings, LoggingSettings, NotificationSoundList?, EnginePeer?), NoError> = combineLatest(
         loadLimits,
         loadStickerSaveStatusSignal,
@@ -904,10 +1010,14 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
         context.engine.stickers.availableReactions(),
         context.sharedContext.accountManager.sharedData(keys: [ApplicationSpecificSharedDataKeys.translationSettings, SharedDataKeys.loggingSettings]) |> take(1),
         context.engine.peers.notificationSoundList() |> take(1),
-        context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: context.account.peerId))
+        combineLatest(
+            context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: context.account.peerId)),
+            keepsViewOnceMediaSignal
+        )
     )
-    |> map { limitsAndAppConfig, stickerSaveStatus, resourceStatus, messageActions, updatingMessageMedia, infoSummaryData, isMessageRead, messageViewsPrivacyTips, availableReactions, sharedData, notificationSoundList, accountPeer -> (MessageContextMenuData, [EngineMessage.Id: ChatUpdatingMessageMedia], InfoSummaryData, AppConfiguration, Bool, Int32, AvailableReactions?, TranslationSettings, LoggingSettings, NotificationSoundList?, EnginePeer?) in
+    |> map { limitsAndAppConfig, stickerSaveStatus, resourceStatus, messageActions, updatingMessageMedia, infoSummaryData, isMessageRead, messageViewsPrivacyTips, availableReactions, sharedData, notificationSoundList, accountPeerAndGhostMode -> (MessageContextMenuData, [EngineMessage.Id: ChatUpdatingMessageMedia], InfoSummaryData, AppConfiguration, Bool, Int32, AvailableReactions?, TranslationSettings, LoggingSettings, NotificationSoundList?, EnginePeer?) in
         let (limitsConfiguration, appConfig) = limitsAndAppConfig
+        let (accountPeer, keepsViewOnceMedia) = accountPeerAndGhostMode
         var canEdit = false
         if !isAction {
             let message = messages[0]
@@ -951,7 +1061,8 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
             canEdit: canEdit && !isEmbeddedMode,
             canSelect: canSelect && !isEmbeddedMode,
             resourceStatus: resourceStatus,
-            messageActions: messageActions
+            messageActions: messageActions,
+            keepsViewOnceMedia: keepsViewOnceMedia
         )
         
         return (data, updatingMessageMedia, infoSummaryData, appConfig, isMessageRead, messageViewsPrivacyTips, availableReactions, translationSettings, loggingSettings, notificationSoundList, accountPeer)
@@ -963,6 +1074,11 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
         let isPremium = accountPeer?.isPremium ?? false
 
         var actions: [ContextMenuItem] = []
+
+        if message.archivedMessageAttribute?.versionIds.isEmpty == false {
+            actions.append(historyAction(for: message))
+            actions.append(.separator)
+        }
 
         if isSharedMediaPolls && messages.count == 1 {
             actions.append(.action(ContextMenuActionItem(text: chatPresentationInterfaceState.strings.SharedMedia_ViewInChat, icon: { theme in
@@ -1226,6 +1342,15 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
             })))
         }
         
+        if data.keepsViewOnceMedia, messages.count == 1, messageIsDeferredViewOnce(messages[0]) {
+            actions.append(.action(ContextMenuActionItem(text: chatPresentationInterfaceState.strings.localFeatures.ghostMode.burnViewOnceMedia, textColor: .destructive, icon: { theme in
+                return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Timer"), color: theme.actionSheet.destructiveActionTextColor)
+            }, action: { _, f in
+                let _ = context.engine.messages.markMessageContentAsConsumedInteractively(messageId: messages[0].id, force: true).startStandalone()
+                f(.dismissWithoutContent)
+            })))
+        }
+
         if data.messageActions.options.contains(.sendScheduledNow) {
             actions.append(.action(ContextMenuActionItem(text: chatPresentationInterfaceState.strings.ScheduledMessages_SendNow, icon: { theme in
                 return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Resend"), color: theme.actionSheet.primaryTextColor)
@@ -1924,12 +2049,29 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
 
         if data.messageActions.options.contains(.forward) {
             if !isCopyProtected {
+                let forwardedMessages = selectAll || isImage ? messages : [message]
                 actions.append(.action(ContextMenuActionItem(text: chatPresentationInterfaceState.strings.Conversation_ContextMenuForward, icon: { theme in
                     return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Forward"), color: theme.actionSheet.primaryTextColor)
                 }, action: { _, f in
-                    interfaceInteraction.forwardMessages(selectAll || isImage ? messages : [message])
+                    interfaceInteraction.forwardMessages(forwardedMessages, nil)
                     f(.dismissWithoutContent)
                 })))
+                if canForwardWithoutAuthor(
+                    messages: forwardedMessages,
+                    accountPeerId: context.account.peerId,
+                    chatLocation: chatPresentationInterfaceState.chatLocation,
+                    isPremium: isPremium
+                ) {
+                    actions.append(.action(ContextMenuActionItem(text: chatPresentationInterfaceState.strings.localFeatures.madgram.forwardWithoutAuthor, icon: { theme in
+                        return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/ForwardDisable"), color: theme.actionSheet.primaryTextColor)
+                    }, action: { _, f in
+                        interfaceInteraction.forwardMessages(
+                            forwardedMessages,
+                            ChatInterfaceForwardOptionsState(hideNames: true, hideCaptions: false, unhideNamesOnCaptionChange: false)
+                        )
+                        f(.dismissWithoutContent)
+                    })))
+                }
             }
         }
         
@@ -1946,7 +2088,46 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
                 interfaceInteraction.blockMessageAuthor(message, controller)
             })))
         }
-        
+
+        if !message.media.contains(where: { $0 is TelegramMediaAction }) {
+            let shotStrings = chatPresentationInterfaceState.strings.localFeatures.messageShot
+            actions.append(.action(ContextMenuActionItem(text: shotStrings.action, icon: { theme in
+                return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Image"), color: theme.actionSheet.primaryTextColor)
+            }, action: { _, f in
+                f(.dismissWithoutContent)
+                guard let navigationController = controllerInteraction.navigationController() else {
+                    return
+                }
+                navigationController.pushViewController(MessageShotScreen(
+                    context: context,
+                    messages: messages.map(EngineMessage.init),
+                    wallpaper: chatPresentationInterfaceState.chatWallpaper
+                ))
+            })))
+        }
+
+        if let author = message.author, author.id != context.account.peerId, message.id.namespace == Namespaces.Message.Cloud, !message.media.contains(where: { $0 is TelegramMediaAction }) {
+            let filterStrings = chatPresentationInterfaceState.strings.localFeatures.messageFilter
+            let authorId = author.id.toInt64()
+            let isHidden = MessageFilterSettingsStore.shared.current.isShadowBanned(authorId)
+            actions.append(.action(ContextMenuActionItem(text: isHidden ? filterStrings.showMessages : filterStrings.hideMessages, icon: { theme in
+                return generateTintedImage(image: UIImage(bundleImageName: isHidden ? "Chat/Context Menu/Unmute" : "Chat/Context Menu/Muted"), color: theme.actionSheet.primaryTextColor)
+            }, action: { _, f in
+                let nowHidden = MessageFilterSettingsStore.shared.toggleShadowBan(peerId: authorId)
+                f(.dismissWithoutContent)
+                Queue.mainQueue().after(0.2) {
+                    let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+                    controllerInteraction.presentControllerInCurrent(UndoOverlayController(
+                        presentationData: presentationData,
+                        content: .info(title: nil, text: nowHidden ? filterStrings.messagesHidden : filterStrings.messagesShown, timeout: nil, customUndoText: nil),
+                        elevatedLayout: false,
+                        animateInAsReplacement: false,
+                        action: { _ in return false }
+                    ), nil)
+                }
+            })))
+        }
+
         var clearCacheAsDelete = false
         var hasViewStats = false
         if let channel = message.peers[message.id.peerId] as? TelegramChannel, case .broadcast = channel.info, !isMigrated {
@@ -2314,7 +2495,7 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
         
         if let message = messages.first, case let .customChatContents(customChatContents) = chatPresentationInterfaceState.subject {
             switch customChatContents.kind {
-            case .hashTagSearch:
+            case .hashTagSearch, .messageVersionHistory:
                 break
             case .quickReplyMessageInput:
                 actions.removeAll()

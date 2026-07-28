@@ -262,6 +262,8 @@ class BazelCommandLine:
 
     def get_additional_build_arguments(self):
         combined_arguments = []
+        if self.additional_args is not None:
+            combined_arguments += shlex.split(self.additional_args)
         if self.split_submodules:
             combined_arguments += [
                 # https://github.com/bazelbuild/rules_swift
@@ -698,6 +700,7 @@ def build(bazel, arguments):
     bazel_command_line.set_show_actions(arguments.showActions)
     bazel_command_line.set_enable_sandbox(arguments.sandbox)
     bazel_command_line.set_profile_swift(arguments.profileSwift)
+    bazel_command_line.add_additional_args(arguments.bazelArguments)
 
     bazel_command_line.set_split_swiftmodules(arguments.enableParallelSwiftmoduleGeneration)
 

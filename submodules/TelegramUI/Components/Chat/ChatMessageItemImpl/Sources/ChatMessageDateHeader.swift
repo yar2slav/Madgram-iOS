@@ -279,7 +279,7 @@ private final class ChatMessageDateContentNode: ASDisplayNode {
         
         var text: String
         if timeinfo.tm_year == timeinfoNow.tm_year {
-            if timeinfo.tm_yday == timeinfoNow.tm_yday {
+            if timeinfo.tm_yday == timeinfoNow.tm_yday && !presentationData.isPreview {
                 text = presentationData.strings.Weekday_Today
             } else {
                 text = presentationData.strings.Date_ChatDateHeader(monthAtIndex(Int(timeinfo.tm_mon), strings: presentationData.strings), "\(timeinfo.tm_mday)").string

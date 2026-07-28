@@ -231,13 +231,43 @@ public final class Transaction {
         self.postbox?.applyOutgoingReadMaxId(messageId)
     }
     
-    public func applyInteractiveReadMaxIndex(_ messageIndex: MessageIndex) -> [MessageId] {
+    public func applyInteractiveReadMaxIndex(_ messageIndex: MessageIndex, synchronize: Bool = true) -> [MessageId] {
         assert(!self.disposed)
         if let postbox = self.postbox {
-            return postbox.applyInteractiveReadMaxIndex(messageIndex: messageIndex)
+            return postbox.applyInteractiveReadMaxIndex(messageIndex: messageIndex, synchronize: synchronize)
         } else {
             return []
         }
+    }
+
+    public func synchronizeIncomingReadState(_ peerId: PeerId) {
+        assert(!self.disposed)
+        self.postbox?.synchronizeIncomingReadState(peerId)
+    }
+
+    public func getGhostModeReadState(peerId: PeerId, threadId: Int64?, namespace: MessageId.Namespace) -> GhostModeReadStateMarker? {
+        assert(!self.disposed)
+        return self.postbox?.ghostModeReadStateTable.get(peerId: peerId, threadId: threadId, namespace: namespace)
+    }
+
+    public func setGhostModeReadState(_ marker: GhostModeReadStateMarker) {
+        assert(!self.disposed)
+        self.postbox?.ghostModeReadStateTable.set(marker)
+    }
+
+    public func removeGhostModeReadState(peerId: PeerId, threadId: Int64?, namespace: MessageId.Namespace) {
+        assert(!self.disposed)
+        self.postbox?.ghostModeReadStateTable.remove(peerId: peerId, threadId: threadId, namespace: namespace)
+    }
+
+    public func getAllGhostModeReadStates() -> [GhostModeReadStateMarker] {
+        assert(!self.disposed)
+        return self.postbox?.ghostModeReadStateTable.getAll() ?? []
+    }
+
+    public func removeAllGhostModeReadStates() -> [GhostModeReadStateMarker] {
+        assert(!self.disposed)
+        return self.postbox?.ghostModeReadStateTable.removeAll() ?? []
     }
     
     public func applyMarkUnread(peerId: PeerId, namespace: MessageId.Namespace, value: Bool, interactive: Bool) {
@@ -1814,6 +1844,7 @@ final class PostboxImpl {
     let peerChatStateTable: PeerChatStateTable
     let readStateTable: MessageHistoryReadStateTable
     let synchronizeReadStateTable: MessageHistorySynchronizeReadStateTable
+    let ghostModeReadStateTable: GhostModeReadStateTable
     let synchronizeGroupMessageStatsTable: InvalidatedGroupMessageStatsTable
     let contactsTable: ContactTable
     let itemCollectionInfoTable: ItemCollectionInfoTable
@@ -1914,6 +1945,7 @@ final class PostboxImpl {
         self.mediaTable = MessageMediaTable(valueBox: self.valueBox, table: MessageMediaTable.tableSpec(6), useCaches: useCaches)
         self.readStateTable = MessageHistoryReadStateTable(valueBox: self.valueBox, table: MessageHistoryReadStateTable.tableSpec(14), useCaches: useCaches, seedConfiguration: seedConfiguration)
         self.synchronizeReadStateTable = MessageHistorySynchronizeReadStateTable(valueBox: self.valueBox, table: MessageHistorySynchronizeReadStateTable.tableSpec(15), useCaches: useCaches)
+        self.ghostModeReadStateTable = GhostModeReadStateTable(valueBox: self.valueBox, table: GhostModeReadStateTable.tableSpec(86), useCaches: useCaches)
         self.synchronizeGroupMessageStatsTable = InvalidatedGroupMessageStatsTable(valueBox: self.valueBox, table: InvalidatedGroupMessageStatsTable.tableSpec(59), useCaches: useCaches)
         self.timestampBasedMessageAttributesIndexTable = TimestampBasedMessageAttributesIndexTable(valueBox: self.valueBox, table: TimestampBasedMessageAttributesTable.tableSpec(33), useCaches: useCaches)
         self.timestampBasedMessageAttributesTable = TimestampBasedMessageAttributesTable(valueBox: self.valueBox, table: TimestampBasedMessageAttributesTable.tableSpec(34), useCaches: useCaches, indexTable: self.timestampBasedMessageAttributesIndexTable)
@@ -1984,6 +2016,7 @@ final class PostboxImpl {
         tables.append(self.mediaTable)
         tables.append(self.readStateTable)
         tables.append(self.synchronizeReadStateTable)
+        tables.append(self.ghostModeReadStateTable)
         tables.append(self.synchronizeGroupMessageStatsTable)
         tables.append(self.messageHistoryTable)
         tables.append(self.chatListIndexTable)
@@ -2340,37 +2373,44 @@ final class PostboxImpl {
     
     fileprivate func applyIncomingReadMaxId(_ messageId: MessageId) {
         self.messageHistoryTable.applyIncomingReadMaxId(messageId, operationsByPeerId: &self.currentOperationsByPeerId, updatedPeerReadStateOperations: &self.currentUpdatedSynchronizeReadStateOperations)
+        if let marker = self.ghostModeReadStateTable.get(peerId: messageId.peerId, threadId: nil, namespace: messageId.namespace), marker.maxReadIndex.id.id <= messageId.id {
+            self.ghostModeReadStateTable.remove(peerId: messageId.peerId, threadId: nil, namespace: messageId.namespace)
+        }
     }
     
     fileprivate func applyOutgoingReadMaxId(_ messageId: MessageId) {
         self.messageHistoryTable.applyOutgoingReadMaxId(messageId, operationsByPeerId: &self.currentOperationsByPeerId, updatedPeerReadStateOperations: &self.currentUpdatedSynchronizeReadStateOperations)
     }
     
-    fileprivate func applyInteractiveReadMaxIndex(messageIndex: MessageIndex) -> [MessageId] {
+    fileprivate func applyInteractiveReadMaxIndex(messageIndex: MessageIndex, synchronize: Bool) -> [MessageId] {
         let peerIds = self.peerIdsForLocation(.peer(peerId: messageIndex.id.peerId, threadId: nil), ignoreRelatedChats: false)
         switch peerIds {
         case let .associated(_, messageId):
             if let messageId = messageId, let readState = self.readStateTable.getCombinedState(messageId.peerId), readState.count != 0 {
                 if let topMessage = self.messageHistoryTable.topMessage(peerId: messageId.peerId) {
-                    let _ = self.messageHistoryTable.applyInteractiveMaxReadIndex(postbox: self, messageIndex: topMessage.index, operationsByPeerId: &self.currentOperationsByPeerId, updatedPeerReadStateOperations: &self.currentUpdatedSynchronizeReadStateOperations)
+                    let _ = self.messageHistoryTable.applyInteractiveMaxReadIndex(postbox: self, messageIndex: topMessage.index, synchronize: synchronize, operationsByPeerId: &self.currentOperationsByPeerId, updatedPeerReadStateOperations: &self.currentUpdatedSynchronizeReadStateOperations)
                 }
             }
         default:
             break
         }
         let initialCombinedStates = self.readStateTable.getCombinedState(messageIndex.id.peerId)
-        var resultIds = self.messageHistoryTable.applyInteractiveMaxReadIndex(postbox: self, messageIndex: messageIndex, operationsByPeerId: &self.currentOperationsByPeerId, updatedPeerReadStateOperations: &self.currentUpdatedSynchronizeReadStateOperations)
+        var resultIds = self.messageHistoryTable.applyInteractiveMaxReadIndex(postbox: self, messageIndex: messageIndex, synchronize: synchronize, operationsByPeerId: &self.currentOperationsByPeerId, updatedPeerReadStateOperations: &self.currentUpdatedSynchronizeReadStateOperations)
         if let states = initialCombinedStates?.states {
             for (namespace, state) in states {
                 if namespace != messageIndex.id.namespace && state.count != 0 {
                     if let item = self.messageHistoryTable.fetch(peerId: messageIndex.id.peerId, namespace: namespace, tag: nil, customTag: nil, threadId: nil, from: MessageIndex(id: MessageId(peerId: messageIndex.id.peerId, namespace: namespace, id: 1), timestamp: messageIndex.timestamp), includeFrom: true, to: MessageIndex.lowerBound(peerId: messageIndex.id.peerId, namespace: namespace), ignoreMessagesInTimestampRange: nil, ignoreMessageIds: Set(), limit: 1).first {
-                        resultIds.append(contentsOf:  self.messageHistoryTable.applyInteractiveMaxReadIndex(postbox: self, messageIndex: item.index, operationsByPeerId: &self.currentOperationsByPeerId, updatedPeerReadStateOperations: &self.currentUpdatedSynchronizeReadStateOperations))
+                        resultIds.append(contentsOf: self.messageHistoryTable.applyInteractiveMaxReadIndex(postbox: self, messageIndex: item.index, synchronize: synchronize, operationsByPeerId: &self.currentOperationsByPeerId, updatedPeerReadStateOperations: &self.currentUpdatedSynchronizeReadStateOperations))
                     }
                 }
             }
         }
         
         return resultIds
+    }
+
+    fileprivate func synchronizeIncomingReadState(_ peerId: PeerId) {
+        self.synchronizeReadStateTable.set(peerId, operation: .Push(state: self.readStateTable.getCombinedState(peerId), thenSync: false), operations: &self.currentUpdatedSynchronizeReadStateOperations)
     }
     
     func applyMarkUnread(peerId: PeerId, namespace: MessageId.Namespace, value: Bool, interactive: Bool) {

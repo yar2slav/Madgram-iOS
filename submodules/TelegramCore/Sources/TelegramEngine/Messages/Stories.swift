@@ -2071,6 +2071,39 @@ func _internal_deleteStories(account: Account, peerId: PeerId, ids: [Int32]) -> 
 }
 
 func _internal_markStoryAsSeen(account: Account, peerId: PeerId, id: Int32, asPinned: Bool) -> Signal<Never, NoError> {
+    let guestSettings = account.postbox.transaction { transaction -> GhostModeSettings in
+        return ghostModeSettings(transaction: transaction)
+    }
+    return guestSettings
+    |> mapToSignal { settings -> Signal<Never, NoError> in
+        if settings.hidesStoryReadReceipts {
+            return account.postbox.transaction { transaction -> Void in
+                let previousStoryReadId = transaction.getPeerStoryState(peerId: peerId)?.entry.get(Stories.PeerState.self)?.maxReadId ?? 0
+                if let peerStoryState = transaction.getPeerStoryState(peerId: peerId)?.entry.get(Stories.PeerState.self) {
+                    transaction.setPeerStoryState(peerId: peerId, state: Stories.PeerState(
+                        maxReadId: max(peerStoryState.maxReadId, id)
+                    ).postboxRepresentation)
+                }
+                transaction.setGhostModeReadState(GhostModeReadStateMarker(
+                    peerId: peerId,
+                    threadId: nil,
+                    namespace: ghostModeStoryNamespace,
+                    maxReadIndex: MessageIndex(
+                        id: MessageId(peerId: peerId, namespace: ghostModeStoryNamespace, id: id),
+                        timestamp: 0
+                    ),
+                    previousStoryReadId: previousStoryReadId
+                ))
+                updateGhostModeReadStateVersion(transaction: transaction)
+                account.stateManager.injectStoryUpdates(updates: [.read(peerId: peerId, maxId: id)])
+            }
+            |> ignoreValues
+        }
+        return _internal_markStoryAsSeenNormally(account: account, peerId: peerId, id: id, asPinned: asPinned)
+    }
+}
+
+private func _internal_markStoryAsSeenNormally(account: Account, peerId: PeerId, id: Int32, asPinned: Bool) -> Signal<Never, NoError> {
     if asPinned {
         return account.postbox.transaction { transaction -> Api.InputPeer? in
             return transaction.getPeer(peerId).flatMap(apiInputPeer)
@@ -2978,7 +3011,8 @@ func _internal_updateStoryViewsForMyReaction(isChannel: Bool, views: Stories.Ite
 }
 
 func _internal_setStoryReaction(account: Account, peerId: EnginePeer.Id, id: Int32, reaction: MessageReaction.Reaction?) -> Signal<Never, NoError> {
-    return account.postbox.transaction { transaction -> (Stories.StoredItem?, Api.InputPeer?) in
+    account.temporarilyRevealGhostModePresence()
+    let signal = account.postbox.transaction { transaction -> (Stories.StoredItem?, Api.InputPeer?) in
         guard let peer = transaction.getPeer(peerId) else {
             return (nil, nil)
         }
@@ -3089,10 +3123,13 @@ func _internal_setStoryReaction(account: Account, peerId: EnginePeer.Id, id: Int
             return .complete()
         }
     }
+    let _ = _internal_commitGhostModeStoryReadState(account: account, storyId: StoryId(peerId: peerId, id: id)).startStandalone()
+    return signal
 }
 
 func _internal_sendStoryStars(account: Account, peerId: EnginePeer.Id, id: Int32, count: Int) -> Signal<Never, NoError> {
-    return account.postbox.transaction { transaction -> (Stories.StoredItem?, Api.InputPeer?) in
+    account.temporarilyRevealGhostModePresence()
+    let signal = account.postbox.transaction { transaction -> (Stories.StoredItem?, Api.InputPeer?) in
         guard let peer = transaction.getPeer(peerId) else {
             return (nil, nil)
         }
@@ -3208,4 +3245,6 @@ func _internal_sendStoryStars(account: Account, peerId: EnginePeer.Id, id: Int32
             return .complete()
         }*/
     }
+    let _ = _internal_commitGhostModeStoryReadState(account: account, storyId: StoryId(peerId: peerId, id: id)).startStandalone()
+    return signal
 }

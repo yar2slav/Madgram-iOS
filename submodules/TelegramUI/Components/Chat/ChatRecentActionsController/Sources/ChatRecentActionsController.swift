@@ -70,7 +70,7 @@ public final class ChatRecentActionsController: TelegramBaseController {
             f(.default)
         }, forwardSelectedMessages: {
         }, forwardCurrentForwardMessages: {
-        }, forwardMessages: { _ in
+        }, forwardMessages: { _, _ in
         }, updateForwardOptionsState: { _ in
         }, presentForwardOptions: { _ in
         }, presentReplyOptions: { _ in

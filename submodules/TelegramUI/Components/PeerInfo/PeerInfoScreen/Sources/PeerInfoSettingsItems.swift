@@ -19,6 +19,7 @@ enum SettingsSection: Int, CaseIterable {
     case accounts
     case myProfile
     case proxy
+    case madgram
     case apps
     case shortcuts
     case advanced
@@ -233,6 +234,7 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
     items[.advanced]!.append(PeerInfoScreenDisclosureItem(id: 1, text: presentationData.strings.Settings_PrivacySettings, icon: PresentationResourcesSettings.security, action: {
         interaction.openSettings(.privacyAndSecurity)
     }))
+
     items[.advanced]!.append(PeerInfoScreenDisclosureItem(id: 2, text: presentationData.strings.Settings_ChatSettings, icon: PresentationResourcesSettings.dataAndStorage, action: {
         interaction.openSettings(.dataAndStorage)
     }))
@@ -249,6 +251,10 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
         interaction.openSettings(.language)
     }))
     
+    items[.madgram]!.append(PeerInfoScreenDisclosureItem(id: 7, text: presentationData.strings.localFeatures.madgram.title, icon: PresentationResourcesSettings.madgram, action: {
+        interaction.openSettings(.madgram)
+    }))
+
     let premiumConfiguration = PremiumConfiguration.with(appConfiguration: context.currentAppConfiguration.with { $0 })
     let isPremiumDisabled = premiumConfiguration.isPremiumDisabled
     if !isPremiumDisabled || context.isPremium {

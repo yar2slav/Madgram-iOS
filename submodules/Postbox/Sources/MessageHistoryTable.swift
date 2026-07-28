@@ -185,7 +185,10 @@ final class MessageHistoryTable: Table {
     
     private func processIndexOperationsCommitAccumulatedRemoveIndices(peerId: PeerId, accumulatedRemoveIndices: inout [MessageIndex], updatedCombinedState: inout CombinedPeerReadState?, invalidateReadState: inout Bool, unsentMessageOperations: inout [IntermediateMessageHistoryUnsentOperation], outputOperations: inout [MessageHistoryOperation], globalTagsOperations: inout [GlobalMessageHistoryTagsOperation], pendingActionsOperations: inout [PendingMessageActionsOperation], updatedMessageActionsSummaries: inout [PendingMessageActionsSummaryKey: Int32], updatedMessageTagSummaries: inout [MessageHistoryTagsSummaryKey: MessageHistoryTagNamespaceSummary], invalidateMessageTagSummaries: inout [InvalidatedMessageHistoryTagsSummaryEntryOperation], localTagsOperations: inout [IntermediateMessageHistoryLocalTagsOperation], timestampBasedMessageAttributesOperations: inout [TimestampBasedMessageAttributesOperation]) {
         if !accumulatedRemoveIndices.isEmpty {
-            let readStateRemoveIndices = accumulatedRemoveIndices.filter { self.seedConfiguration.chatMessagesNamespaces.contains($0.id.namespace) }
+            let readStateRemoveIndices = accumulatedRemoveIndices.filter {
+                self.seedConfiguration.chatMessagesNamespaces.contains($0.id.namespace)
+                && !self.seedConfiguration.readStateExcludedMessageNamespaces.contains($0.id.namespace)
+            }
             if !readStateRemoveIndices.isEmpty {
                 let (combinedState, invalidate) = self.readStateTable.deleteMessages(peerId, indices: readStateRemoveIndices, incomingStatsInIndices: { peerId, namespace, indices in
                     return self.incomingMessageStatsInIndices(peerId, namespace: namespace, indices: indices)
@@ -347,7 +350,9 @@ final class MessageHistoryTable: Table {
                             self.timeBasedAttributesTable.set(tag: tag, id: message.id, timestamp: timestamp, operations: &timestampBasedMessageAttributesOperations)
                         }
                     }
-                    if self.seedConfiguration.chatMessagesNamespaces.contains(message.id.namespace) && !message.flags.intersection(.IsIncomingMask).isEmpty {
+                    if self.seedConfiguration.chatMessagesNamespaces.contains(message.id.namespace)
+                        && !self.seedConfiguration.readStateExcludedMessageNamespaces.contains(message.id.namespace)
+                        && !message.flags.intersection(.IsIncomingMask).isEmpty {
                         accumulatedAddedIncomingMessageIndices.insert(message.index)
                     }
                 case let .InsertExistingMessage(storeMessage):
@@ -377,7 +382,9 @@ final class MessageHistoryTable: Table {
                             outputOperations.append(.UpdateGroupInfos(updatedGroupInfos))
                         }
                         
-                        if self.seedConfiguration.chatMessagesNamespaces.contains(message.id.namespace) && !message.flags.intersection(.IsIncomingMask).isEmpty {
+                        if self.seedConfiguration.chatMessagesNamespaces.contains(message.id.namespace)
+                            && !self.seedConfiguration.readStateExcludedMessageNamespaces.contains(message.id.namespace)
+                            && !message.flags.intersection(.IsIncomingMask).isEmpty {
                             if index != message.index {
                                 accumulatedRemoveIndices.append(index)
                                 accumulatedAddedIncomingMessageIndices.insert(message.index)
@@ -715,7 +722,7 @@ final class MessageHistoryTable: Table {
         return messageIds
     }
     
-    func applyInteractiveMaxReadIndex(postbox: PostboxImpl, messageIndex: MessageIndex, operationsByPeerId: inout [PeerId: [MessageHistoryOperation]], updatedPeerReadStateOperations: inout [PeerId: PeerReadStateSynchronizationOperation?]) -> [MessageId] {
+    func applyInteractiveMaxReadIndex(postbox: PostboxImpl, messageIndex: MessageIndex, synchronize: Bool = true, operationsByPeerId: inout [PeerId: [MessageHistoryOperation]], updatedPeerReadStateOperations: inout [PeerId: PeerReadStateSynchronizationOperation?]) -> [MessageId] {
         var topMessageId: (MessageId.Id, Bool)?
         if let index = self.topIndexEntry(peerId: messageIndex.id.peerId, namespace: messageIndex.id.namespace) {
             if let message = self.getMessage(index) {
@@ -747,7 +754,9 @@ final class MessageHistoryTable: Table {
         
         switch result {
             case let .Push(thenSync):
-                self.synchronizeReadStateTable.set(messageIndex.id.peerId, operation: .Push(state: self.readStateTable.getCombinedState(messageIndex.id.peerId), thenSync: thenSync), operations: &updatedPeerReadStateOperations)
+                if synchronize {
+                    self.synchronizeReadStateTable.set(messageIndex.id.peerId, operation: .Push(state: self.readStateTable.getCombinedState(messageIndex.id.peerId), thenSync: thenSync), operations: &updatedPeerReadStateOperations)
+                }
             case .None:
                 break
         }

@@ -78,6 +78,7 @@ import PremiumUI
 import ImageTransparency
 import StickerPackPreviewUI
 import TextNodeWithEntities
+import MessageShotScreen
 import EntityKeyboard
 import ChatTitleView
 import EmojiStatusComponent
@@ -1132,7 +1133,7 @@ extension ChatControllerImpl {
                 })
             } else if case let .customChatContents(customChatContents) = strongSelf.subject {
                 switch customChatContents.kind {
-                case .hashTagSearch:
+                case .hashTagSearch, .messageVersionHistory:
                     break
                 case .quickReplyMessageInput:
                     customChatContents.enqueueMessages(messages: messages)
@@ -2075,7 +2076,7 @@ extension ChatControllerImpl {
                     strongSelf.forwardMessages(messageIds: forwardMessageIds, options: strongSelf.presentationInterfaceState.interfaceState.forwardOptionsState, resetCurrent: true)
                 }
             }
-        }, forwardMessages: { [weak self] messages in
+        }, forwardMessages: { [weak self] messages, options in
             if let strongSelf = self, !messages.isEmpty {
                 guard !strongSelf.presentAccountFrozenInfoIfNeeded(delay: true) else {
                     return
@@ -2083,7 +2084,7 @@ extension ChatControllerImpl {
                 
                 strongSelf.commitPurposefulAction()
                 let forwardMessageIds = messages.map { $0.id }.sorted()
-                strongSelf.forwardMessages(messageIds: forwardMessageIds)
+                strongSelf.forwardMessages(messageIds: forwardMessageIds, options: options)
             }
         }, updateForwardOptionsState: { [weak self] f in
             if let strongSelf = self {
@@ -4856,8 +4857,12 @@ extension ChatControllerImpl {
             return self
         }, statuses: ChatPanelInterfaceInteractionStatuses(editingMessage: self.editingMessage.get(), startingBot: self.startingBot.get(), unblockingPeer: self.unblockingPeer.get(), searching: self.searching.get(), loadingMessage: self.loadingMessage.get(), inlineSearch: self.performingInlineSearch.get()))
         
+        interfaceInteraction.screenshotSelectedMessages = { [weak self] in
+            self?.presentMessageShotForSelectedMessages()
+        }
+
         self.interfaceInteraction = interfaceInteraction
-        
+
         if let search = self.focusOnSearchAfterAppearance {
             self.focusOnSearchAfterAppearance = nil
             self.interfaceInteraction?.beginMessageSearch(search.0, search.1)
@@ -5678,4 +5683,31 @@ extension ChatControllerImpl {
             historyNode.canReadHistory.set(self.computedCanReadHistoryPromise.get())
         }
     }
+
+    func presentMessageShotForSelectedMessages() {
+        guard let selectedIds = self.presentationInterfaceState.interfaceState.selectionState?.selectedIds, !selectedIds.isEmpty else {
+            return
+        }
+        let messagesSignal: Signal<[EngineMessage], NoError> = self.context.engine.data.get(EngineDataMap(
+            selectedIds.map(TelegramEngine.EngineData.Item.Messages.Message.init)
+        ))
+        |> map { messages -> [EngineMessage] in
+            let values: [EngineMessage] = messages.values.compactMap { $0 }
+            return values.sorted(by: { $0.index < $1.index })
+        }
+        let _ = (messagesSignal
+        |> deliverOnMainQueue).startStandalone(next: { [weak self] messages in
+            guard let self, !messages.isEmpty, let navigationController = self.effectiveNavigationController else {
+                return
+            }
+            self.updateChatPresentationInterfaceState(animated: true, interactive: true, { $0.updatedInterfaceState({ $0.withoutSelectionState() }) })
+            self.chatDisplayNode.dismissInput()
+            navigationController.pushViewController(MessageShotScreen(
+                context: self.context,
+                messages: messages,
+                wallpaper: self.presentationInterfaceState.chatWallpaper
+            ))
+        })
+    }
+
 }

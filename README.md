@@ -1,116 +1,192 @@
-# Telegram iOS Source Code Compilation Guide
+# MadGram for iOS
 
-We welcome all developers to use our API and source code to create applications on our platform.
-There are several things we require from **all developers** for the moment.
+[Русский](#русский) · [English](#english)
 
-# Creating your Telegram Application
+## Русский
 
-1. [**Obtain your own api_id**](https://core.telegram.org/api/obtaining_api_id) for your application.
-2. Please **do not** use the name Telegram for your app — or make sure your users understand that it is unofficial.
-3. Kindly **do not** use our standard logo (white paper plane in a blue circle) as your app's logo.
-3. Please study our [**security guidelines**](https://core.telegram.org/mtproto/security_guidelines) and take good care of your users' data and privacy.
-4. Please remember to publish **your** code too in order to comply with the licences.
+MadGram — неофициальный клиент Telegram для iPhone, созданный на основе исходного кода
+[Telegram iOS](https://github.com/TelegramMessenger/Telegram-iOS). Он сохраняет привычный интерфейс
+и добавляет инструменты приватности, локальную работу с сообщениями и дополнительные настройки.
 
-# Quick Compilation Guide
+MadGram не связан с Telegram и не одобрен Telegram.
 
-## Get the Code
+### Возможности
 
+- **Режим призрака** позволяет оставаться офлайн, читать чаты и смотреть истории без раскрытия
+  статуса в сети, отметок о прочтении и набора текста.
+- **Удалённые и изменённые сообщения** сохраняются в локальном архиве с независимыми
+  переключателями, историей версий, настраиваемой меткой и лимитами хранения.
+- **Фильтры сообщений** скрывают сообщения выбранных пользователей, не удаляя их из аккаунта.
+- **Message Shot** создаёт снимки цепочек сообщений с настройкой темы, обоев, аватаров, времени,
+  реакций и спойлеров.
+- **Пересылка без автора** использует обычный экран выбора получателей, но скрывает имя отправителя
+  там, где Telegram поддерживает такую пересылку.
+- **Локальный Premium** включает клиентские элементы Premium-интерфейса. Серверные лимиты и платные
+  функции по-прежнему требуют настоящей подписки Telegram Premium.
+- **Настройка интерфейса** управляет вкладками, данными профиля, историями, камерой видеосообщений
+  и отображением номера телефона.
+- **Пользовательские бейджи** загружаются из подписанного реестра и отображаются рядом с профилями.
+- **Энергосбережение** одной настройкой ограничивает анимации, автовоспроизведение и фоновую работу.
+
+Настройки MadGram доступны на русском, украинском и английском языках.
+
+### Сборка
+
+Проект собирается Bazel через `build-system/Make/Make.py`. Используйте версию Xcode, указанную в
+`versions.json`.
+
+```sh
+git clone --recursive https://github.com/yar2slav/Madgram-iOS.git
+cd Madgram-iOS
+
+cp build-system/template_minimal_development_configuration.json \
+  build-system/local-development-configuration.json
 ```
-git clone --recursive -j8 https://github.com/TelegramMessenger/Telegram-iOS.git
-```
 
-## Setup Xcode
+Укажите в локальном файле собственные bundle identifier, Telegram `api_id`, Telegram `api_hash` и
+Apple Team ID. Файл исключён из Git и не должен попадать в коммиты.
 
-Install Xcode (directly from https://developer.apple.com/download/applications or using the App Store).
+Создание Xcode-проекта:
 
-## Adjust Configuration
-
-1. Generate a random identifier:
-```
-openssl rand -hex 8
-```
-2. Create a new Xcode project. Use `Telegram` as the Product Name. Use `org.{identifier from step 1}` as the Organization Identifier.
-3. Open `Keychain Access` and navigate to `Certificates`. Locate `Apple Development: your@email.address (XXXXXXXXXX)` and double tap the certificate. Under `Details`, locate `Organizational Unit`. This is the Team ID.
-4. Edit `build-system/template_minimal_development_configuration.json`. Use data from the previous steps.
-
-## Generate an Xcode project
-
-```
+```sh
 python3 build-system/Make/Make.py \
-    --cacheDir="$HOME/telegram-bazel-cache" \
-    generateProject \
-    --configurationPath=build-system/template_minimal_development_configuration.json \
-    --xcodeManagedCodesigning
+  --cacheDir="$HOME/telegram-bazel-cache" \
+  generateProject \
+  --configurationPath=build-system/local-development-configuration.json \
+  --xcodeManagedCodesigning
 ```
 
-# Advanced Compilation Guide
+Сборка для симулятора на Apple Silicon:
 
-## Xcode
-
-1. Copy and edit `build-system/appstore-configuration.json`.
-2. Copy `build-system/fake-codesigning`. Create and download provisioning profiles, using the `profiles` folder as a reference for the entitlements.
-3. Generate an Xcode project:
-```
+```sh
 python3 build-system/Make/Make.py \
-    --cacheDir="$HOME/telegram-bazel-cache" \
-    generateProject \
-    --configurationPath=configuration_from_step_1.json \
-    --codesigningInformationPath=directory_from_step_2
+  --overrideXcodeVersion \
+  --cacheDir="$HOME/telegram-bazel-cache" \
+  build \
+  --configurationPath=build-system/local-development-configuration.json \
+  --xcodeManagedCodesigning \
+  --buildNumber=1 \
+  --configuration=debug_sim_arm64
 ```
 
-## IPA
+Для устройства и распространения приложения потребуются подходящие сертификаты и provisioning
+profiles.
 
-1. Repeat the steps from the previous section. Use distribution provisioning profiles.
-2. Run:
+### Приватность
+
+Архив сообщений, фильтры и настройки MadGram хранятся на устройстве. Сообщения и данные аккаунта
+продолжают использовать инфраструктуру Telegram и регулируются протоколом и политикой приватности
+Telegram.
+
+При включённой настройке Ghost Mode одноразовое медиа может оставаться доступным до явного нажатия
+Burn. Пока оно удерживается, клиент не отправляет уведомление о скриншоте в секретном чате. Защита
+платного контента и сообщений с явным запретом копирования не обходится.
+
+Клиент периодически получает подписанный реестр бейджей с `https://b.mad.tg`. Содержимое сообщений
+и чатов в этот запрос не включается.
+
+### Требования upstream
+
+Перед распространением сборки:
+
+- получите собственные Telegram API credentials;
+- используйте отдельные название и иконку приложения;
+- явно укажите, что клиент неофициальный;
+- сохраните уведомления об открытых лицензиях и соблюдайте лицензии Telegram iOS и зависимостей.
+
+Исходный upstream доступен в
+[`TelegramMessenger/Telegram-iOS`](https://github.com/TelegramMessenger/Telegram-iOS).
+
+## English
+
+MadGram is an unofficial Telegram client for iPhone built on top of the official
+[Telegram iOS](https://github.com/TelegramMessenger/Telegram-iOS) source. It keeps the familiar
+interface while adding privacy controls, local message tools and extra customization.
+
+MadGram is not affiliated with or endorsed by Telegram.
+
+### Features
+
+- **Ghost Mode** keeps the account offline while chats and stories are viewed, with separate
+  controls for read receipts, online status and typing status.
+- **Deleted and edited messages** can be archived locally, with independent controls, edit history,
+  configurable markers and storage limits.
+- **Message filters** hide messages from selected users without deleting anything from the account.
+- **Message Shot** exports message chains with theme, wallpaper, avatar, timestamp, reaction and
+  spoiler controls.
+- **Forward without sender** uses the standard recipient picker while removing sender attribution
+  where Telegram supports it.
+- **Local Premium** unlocks client-side Premium interface elements. Server-side limits and paid
+  features still require a real Telegram Premium subscription.
+- **Interface tuning** adds controls for tabs, profile details, stories, the round-video camera and
+  phone-number visibility.
+- **Custom peer badges** are downloaded from a signed registry and displayed alongside profiles.
+- **Power Saving** applies a single low-power preset for animations, autoplay and background work.
+
+MadGram-specific settings are available in Russian, Ukrainian and English.
+
+### Building
+
+The project uses Bazel through `build-system/Make/Make.py`. Use the Xcode version listed in
+`versions.json`.
+
+```sh
+git clone --recursive https://github.com/yar2slav/Madgram-iOS.git
+cd Madgram-iOS
+
+cp build-system/template_minimal_development_configuration.json \
+  build-system/local-development-configuration.json
 ```
+
+Set your own bundle identifier, Telegram `api_id`, Telegram `api_hash` and Apple Team ID in the local
+file. It is ignored by Git and must not be committed.
+
+Generate an Xcode project:
+
+```sh
 python3 build-system/Make/Make.py \
-    --cacheDir="$HOME/telegram-bazel-cache" \
-    build \
-    --configurationPath=...see previous section... \
-    --codesigningInformationPath=...see previous section... \
-    --buildNumber=100001 \
-    --configuration=release_arm64
+  --cacheDir="$HOME/telegram-bazel-cache" \
+  generateProject \
+  --configurationPath=build-system/local-development-configuration.json \
+  --xcodeManagedCodesigning
 ```
 
-# FAQ
+Build for an Apple Silicon simulator:
 
-## Xcode is stuck at "build-request.json not updated yet"
-
-Occasionally, you might observe the following message in your build log:
-```
-"/Users/xxx/Library/Developer/Xcode/DerivedData/Telegram-xxx/Build/Intermediates.noindex/XCBuildData/xxx.xcbuilddata/build-request.json" not updated yet, waiting...
-```
-
-Should this occur, simply cancel the ongoing build and initiate a new one.
-
-## Telegram_xcodeproj: no such package 
-
-Following a system restart, the auto-generated Xcode project might encounter a build failure accompanied by this error:
-```
-ERROR: Skipping '@rules_xcodeproj_generated//generator/Telegram/Telegram_xcodeproj:Telegram_xcodeproj': no such package '@rules_xcodeproj_generated//generator/Telegram/Telegram_xcodeproj': BUILD file not found in directory 'generator/Telegram/Telegram_xcodeproj' of external repository @rules_xcodeproj_generated. Add a BUILD file to a directory to mark it as a package.
-```
-
-If you encounter this issue, re-run the project generation steps in the README.
-
-
-# Tips
-
-## Codesigning is not required for simulator-only builds
-
-Add `--disableProvisioningProfiles`:
-```
+```sh
 python3 build-system/Make/Make.py \
-    --cacheDir="$HOME/telegram-bazel-cache" \
-    generateProject \
-    --configurationPath=path-to-configuration.json \
-    --codesigningInformationPath=path-to-provisioning-data \
-    --disableProvisioningProfiles
+  --overrideXcodeVersion \
+  --cacheDir="$HOME/telegram-bazel-cache" \
+  build \
+  --configurationPath=build-system/local-development-configuration.json \
+  --xcodeManagedCodesigning \
+  --buildNumber=1 \
+  --configuration=debug_sim_arm64
 ```
 
-## Versions
+Device and distribution builds require matching Apple signing identities and provisioning profiles.
 
-Each release is built using a specific Xcode version (see `versions.json`). The helper script checks the versions of the installed software and reports an error if they don't match the ones specified in `versions.json`. It is possible to bypass these checks:
+### Privacy
 
-```
-python3 build-system/Make/Make.py --overrideXcodeVersion build ... # Don't check the version of Xcode
-```
+MadGram's archive, filters and settings are stored on the device. Telegram messages and account data
+continue to use Telegram's infrastructure and are subject to Telegram's protocol and privacy policy.
+
+When the relevant Ghost Mode option is enabled, view-once media can remain available until it is
+explicitly burned. While it is retained, the client does not send a screenshot notification in a
+secret chat. Paid content and messages with explicit copy protection remain protected.
+
+The client periodically downloads a signed badge registry from `https://b.mad.tg`. Message and chat
+contents are not included in this request.
+
+### Upstream requirements
+
+Before distributing a build:
+
+- obtain your own Telegram API credentials;
+- use a distinct application name and icon;
+- make it clear that the client is unofficial;
+- retain the applicable open-source notices and comply with the licenses of Telegram iOS and its
+  bundled dependencies.
+
+The upstream source remains available at
+[`TelegramMessenger/Telegram-iOS`](https://github.com/TelegramMessenger/Telegram-iOS).

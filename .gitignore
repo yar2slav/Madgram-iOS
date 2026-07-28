@@ -57,8 +57,11 @@ bazel-out
 bazel-out/*
 bazel-telegram-ios
 bazel-telegram-ios/*
+bazel-madgram
+bazel-madgram/*
 bazel-testlogs
 bazel-testlogs/*
+/bazel-*
 xcodeproj.bazelrc
 */*.swp
 *.swp
@@ -84,3 +87,9 @@ xcode-files
 **/node_modules/
 tools/sim-watcher/dist/
 .mcp.json
+AGENTS.md
+build-system/local-development-configuration.json
+*.env
+*.p8
+*.p12
+*.mobileprovision

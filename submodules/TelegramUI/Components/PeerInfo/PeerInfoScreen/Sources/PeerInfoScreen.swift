@@ -147,6 +147,7 @@ enum PeerInfoContextSubject {
     case bio
     case phone(String)
     case link(customLink: String?)
+    case copyText(String)
     case businessHours(String)
     case businessLocation(String)
     case birthday
@@ -163,6 +164,7 @@ enum PeerInfoSettingsSection {
     case chatFolders
     case notificationsAndSounds
     case privacyAndSecurity
+    case madgram
     case passwordSetup
     case dataAndStorage
     case appearance

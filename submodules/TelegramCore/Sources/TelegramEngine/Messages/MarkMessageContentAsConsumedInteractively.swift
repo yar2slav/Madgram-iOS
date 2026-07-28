@@ -3,15 +3,36 @@ import Postbox
 import TelegramApi
 import SwiftSignalKit
 
-func _internal_markMessageContentAsConsumedInteractively(postbox: Postbox, messageId: MessageId) -> Signal<Void, NoError> {
+private func messageIsViewOnce(_ message: Message) -> Bool {
+    for attribute in message.attributes {
+        if let attribute = attribute as? AutoremoveTimeoutMessageAttribute, attribute.timeout == viewOnceTimeout {
+            return true
+        }
+        if let attribute = attribute as? AutoclearTimeoutMessageAttribute, attribute.timeout == viewOnceTimeout {
+            return true
+        }
+    }
+    return false
+}
+
+func _internal_markMessageContentAsConsumedInteractively(postbox: Postbox, messageId: MessageId, force: Bool = false) -> Signal<Void, NoError> {
     return postbox.transaction { transaction -> Void in
+        let settings = ghostModeSettings(transaction: transaction)
+        let isSecretChat = messageId.peerId.namespace == Namespaces.Peer.SecretChat
+        let suppressRemoteConsumption = !force && settings.hidesMessageReadReceipts && !isSecretChat
         if let message = transaction.getMessage(messageId), message.flags.contains(.Incoming) {
+            let deferViewOnceConsumption = ghostModeDefersViewOnceConsumption(
+                settings: settings,
+                isViewOnce: messageIsViewOnce(message),
+                isSecretChat: isSecretChat,
+                force: force
+            )
             var updateMessage = false
             var updatedAttributes = message.attributes
             
             for i in 0 ..< updatedAttributes.count {
                 if let attribute = updatedAttributes[i] as? ConsumableContentMessageAttribute {
-                    if !attribute.consumed {
+                    if !attribute.consumed && !deferViewOnceConsumption {
                         updatedAttributes[i] = ConsumableContentMessageAttribute(consumed: true)
                         updateMessage = true
                         
@@ -37,12 +58,14 @@ func _internal_markMessageContentAsConsumedInteractively(postbox: Postbox, messa
                                     }
                                 }
                             }
-                        } else {
+                        } else if !suppressRemoteConsumption {
                             addSynchronizeConsumeMessageContentsOperation(transaction: transaction, messageIds: [message.id])
                         }
                     }
                 } else if let attribute = updatedAttributes[i] as? ConsumablePersonalMentionMessageAttribute, !attribute.consumed {
-                    transaction.setPendingMessageAction(type: .consumeUnseenPersonalMessage, id: messageId, action: ConsumePersonalMessageAction())
+                    if !suppressRemoteConsumption {
+                        transaction.setPendingMessageAction(type: .consumeUnseenPersonalMessage, id: messageId, action: ConsumePersonalMessageAction())
+                    }
                     updatedAttributes[i] = ConsumablePersonalMentionMessageAttribute(consumed: attribute.consumed, pending: true)
                 }
             }
@@ -50,7 +73,7 @@ func _internal_markMessageContentAsConsumedInteractively(postbox: Postbox, messa
             let timestamp = Int32(CFAbsoluteTimeGetCurrent() + NSTimeIntervalSince1970)
             for i in 0 ..< updatedAttributes.count {
                 if let attribute = updatedAttributes[i] as? AutoremoveTimeoutMessageAttribute {
-                    if attribute.countdownBeginTime == nil || attribute.countdownBeginTime == 0 {
+                    if !deferViewOnceConsumption, attribute.countdownBeginTime == nil || attribute.countdownBeginTime == 0 {
                         var timeout = attribute.timeout
                         if let duration = message.secretMediaDuration {
                             timeout = max(timeout, Int32(duration))
@@ -81,7 +104,7 @@ func _internal_markMessageContentAsConsumedInteractively(postbox: Postbox, messa
                         }
                     }
                 } else if let attribute = updatedAttributes[i] as? AutoclearTimeoutMessageAttribute {
-                    if attribute.countdownBeginTime == nil || attribute.countdownBeginTime == 0 {
+                    if !deferViewOnceConsumption, attribute.countdownBeginTime == nil || attribute.countdownBeginTime == 0 {
                         var timeout = attribute.timeout
                         if let duration = message.secretMediaDuration, timeout != viewOnceTimeout {
                             timeout = max(timeout, Int32(duration))
@@ -129,6 +152,8 @@ func _internal_markMessageContentAsConsumedInteractively(postbox: Postbox, messa
 
 func _internal_markReactionsOrPollVotesAsSeenInteractively(postbox: Postbox, messageId: MessageId) -> Signal<Void, NoError> {
     return postbox.transaction { transaction -> Void in
+        let settings = ghostModeSettings(transaction: transaction)
+        let suppressRemoteConsumption = settings.hidesMessageReadReceipts && messageId.peerId.namespace != Namespaces.Peer.SecretChat
         if let message = transaction.getMessage(messageId), (message.tags.contains(.unseenReaction) || message.tags.contains(.unseenPollVote)) {
             var updateMessage = false
             var updatedAttributes = message.attributes
@@ -140,7 +165,7 @@ func _internal_markReactionsOrPollVotesAsSeenInteractively(postbox: Postbox, mes
                     updateMessage = true
                     
                     if message.id.peerId.namespace == Namespaces.Peer.SecretChat {
-                    } else {
+                    } else if !suppressRemoteConsumption {
                         transaction.setPendingMessageAction(type: .readReactionOrPollVote, id: messageId, action: ReadReactionAction())
                     }
                 }
@@ -151,7 +176,7 @@ func _internal_markReactionsOrPollVotesAsSeenInteractively(postbox: Postbox, mes
                     updateMessage = true
                     
                     if message.id.peerId.namespace == Namespaces.Peer.SecretChat {
-                    } else {
+                    } else if !suppressRemoteConsumption {
                         transaction.setPendingMessageAction(type: .readReactionOrPollVote, id: messageId, action: ReadReactionAction())
                     }
                 }
@@ -262,4 +287,3 @@ func markMessageContentAsConsumedRemotely(transaction: Transaction, messageId: M
         }
     }
 }
-

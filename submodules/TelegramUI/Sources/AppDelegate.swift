@@ -529,7 +529,13 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
         
         let baseAppBundleId = Bundle.main.bundleIdentifier!
         let appGroupName = "group.\(baseAppBundleId)"
-        let maybeAppGroupUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupName)
+        let appGroupUrl: URL
+        if let sharedContainerUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupName) {
+            appGroupUrl = sharedContainerUrl
+        } else {
+            appGroupUrl = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            try? FileManager.default.createDirectory(at: appGroupUrl, withIntermediateDirectories: true)
+        }
         
         let buildConfig = BuildConfig(baseAppBundleId: baseAppBundleId)
         self.buildConfig = buildConfig
@@ -640,11 +646,6 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
             useBetaFeatures: !buildConfig.isAppStoreBuild,
             isICloudEnabled: buildConfig.isICloudEnabled
         )
-        
-        guard let appGroupUrl = maybeAppGroupUrl else {
-            self.mainWindow?.presentNative(UIAlertController(title: nil, message: "Error 2", preferredStyle: .alert))
-            return true
-        }
         
         var isDebugConfiguration = false
         #if DEBUG
@@ -1996,6 +1997,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
              |> take(1)
              |> deliverOnMainQueue).start(next: { activeAccounts in
                 for (_, context, _) in activeAccounts.accounts {
+                    context.account.resetStateManagement()
                     (context.downloadedMediaStoreManager as? DownloadedMediaStoreManagerImpl)?.runTasks()
                 }
             })

@@ -58,7 +58,7 @@ final class PeerInfoSelectionPanelNode: ASDisplayNode {
         }, forwardSelectedMessages: {
             forwardMessages()
         }, forwardCurrentForwardMessages: {
-        }, forwardMessages: { _ in
+        }, forwardMessages: { _, _ in
         }, updateForwardOptionsState: { _ in
         }, presentForwardOptions: { _ in
         }, presentReplyOptions: { _ in

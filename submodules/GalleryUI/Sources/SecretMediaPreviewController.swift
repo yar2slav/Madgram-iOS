@@ -179,7 +179,9 @@ public final class SecretMediaPreviewController: ViewController {
     private var screenCaptureEventsDisposable: Disposable?
     
     private weak var tooltipController: TooltipScreen?
-    
+
+    private var ghostModeSettings = GhostModeSettings.defaultSettings
+
     public init(context: AccountContext, messageId: MessageId) {
         self.context = context
         self.messageId = messageId
@@ -192,15 +194,25 @@ public final class SecretMediaPreviewController: ViewController {
         
         self.statusBar.statusBarStyle = .White
         
-        self.disposable.set((context.account.postbox.messageView(messageId) |> deliverOnMainQueue).start(next: { [weak self] view in
-            if let strongSelf = self {
-                strongSelf.messageView = view
-                if strongSelf.isViewLoaded {
-                    strongSelf.applyMessageView()
-                }
+        self.disposable.set((combineLatest(
+            context.account.postbox.messageView(messageId),
+            context.engine.messages.ghostModeSettings()
+        )
+        |> deliverOnMainQueue).start(next: { [weak self] view, settings in
+            guard let strongSelf = self else {
+                return
+            }
+            let settingsChanged = strongSelf.ghostModeSettings != settings
+            strongSelf.messageView = view
+            strongSelf.ghostModeSettings = settings
+            if settingsChanged {
+                strongSelf.currentNodeMessageId = nil
+            }
+            if strongSelf.isViewLoaded {
+                strongSelf.applyMessageView()
             }
         }))
-        
+
         self.hiddenMediaManagerIndex = self.context.sharedContext.mediaManager.galleryHiddenMediaManager.addSource(self._hiddenMedia.get()
         |> map { messageIdAndMedia in
             if let (messageId, media) = messageIdAndMedia {
@@ -239,6 +251,41 @@ public final class SecretMediaPreviewController: ViewController {
     
     @objc func donePressed() {
         self.dismiss(forceAway: false)
+    }
+
+    private func updateBurnButton() {
+        var shouldDisplay = false
+        if self.ghostModeSettings.keepsViewOnceMedia, self.currentNodeMessageIsViewOnce, let message = self.messageView?.message, message.flags.contains(.Incoming) {
+            shouldDisplay = !message.attributes.contains(where: { ($0 as? ConsumableContentMessageAttribute)?.consumed == true })
+        }
+        if shouldDisplay {
+            if self.navigationItem.rightBarButtonItem == nil {
+                self.navigationItem.rightBarButtonItem = UIBarButtonItem(title: self.presentationData.strings.localFeatures.ghostMode.burnViewOnceMedia, style: .plain, target: self, action: #selector(self.burnPressed))
+            }
+        } else {
+            self.navigationItem.rightBarButtonItem = nil
+        }
+    }
+
+    @objc private func burnPressed() {
+        self.markMessageAsConsumedDisposable.set(self.context.engine.messages.markMessageContentAsConsumedInteractively(messageId: self.messageId, force: true).start())
+        self.dismiss(forceAway: false)
+    }
+
+    private func allowsCaptureOfViewOnceMedia(_ message: Message) -> Bool {
+        let isViewOnce = message.autoclearAttribute?.timeout == viewOnceTimeout
+            || message.autoremoveAttribute?.timeout == viewOnceTimeout
+        let isConsumed = message.attributes.contains(where: {
+            ($0 as? ConsumableContentMessageAttribute)?.consumed == true
+        })
+        return ghostModeAllowsViewOnceCapture(
+            settings: self.ghostModeSettings,
+            isViewOnce: isViewOnce,
+            isIncoming: message.flags.contains(.Incoming),
+            isConsumed: isConsumed,
+            hasExplicitCopyProtection: message.isCopyProtected(),
+            hasPaidContent: message.paidContent != nil
+        )
     }
     
     public override func loadDisplayNode() {
@@ -294,7 +341,7 @@ public final class SecretMediaPreviewController: ViewController {
         self.controllerNode.beginCustomDismiss = { [weak self] _ in
             if let strongSelf = self {
                 strongSelf._hiddenMedia.set(.single(nil))
-                
+
                 let animatedOutNode = true
                 
                 strongSelf.controllerNode.animateOut(animateContent: animatedOutNode, completion: {
@@ -424,7 +471,9 @@ public final class SecretMediaPreviewController: ViewController {
                     if strongSelf.messageId.peerId.namespace == Namespaces.Peer.CloudUser {
                         let _ = enqueueMessages(account: strongSelf.context.account, peerId: strongSelf.messageId.peerId, messages: [.message(text: "", attributes: [], inlineStickers: [:], mediaReference: .standalone(media: TelegramMediaAction(action: TelegramMediaActionType.historyScreenshot)), threadId: nil, replyToMessageId: nil, replyToStoryId: nil, localGroupingKey: nil, correlationId: nil, bubbleUpEmojiOrStickersets: [])]).start()
                     } else if strongSelf.messageId.peerId.namespace == Namespaces.Peer.SecretChat {
-                        let _ = strongSelf.context.engine.messages.addSecretChatMessageScreenshot(peerId: strongSelf.messageId.peerId).start()
+                        if let message = strongSelf.messageView?.message, !strongSelf.allowsCaptureOfViewOnceMedia(message) {
+                            let _ = strongSelf.context.engine.messages.addSecretChatMessageScreenshot(peerId: strongSelf.messageId.peerId).start()
+                        }
                     }
                 }
             })
@@ -512,6 +561,9 @@ public final class SecretMediaPreviewController: ViewController {
         if let message = message {
             if self.currentNodeMessageId != message.id {
                 self.currentNodeMessageId = message.id
+                self.currentNodeMessageIsViewOnce = message.autoclearAttribute?.timeout == viewOnceTimeout
+                    || message.autoremoveAttribute?.timeout == viewOnceTimeout
+                self.currentNodeMessageIsVideo = false
                 var tempFilePath: String?
                 var duration: Double = 0.0
                 for media in message.media {
@@ -526,9 +578,10 @@ public final class SecretMediaPreviewController: ViewController {
                         break
                     }
                 }
-                                
+
                 let entry = GalleryEntry(entry: MessageHistoryEntry(message: message, isRead: false, location: nil, monthLocation: nil, attributes: MutableMessageHistoryEntryAttributes(authorIsContact: false)))
-                guard let item = galleryItemForEntry(context: self.context, presentationData: self.presentationData, entry: entry, streamVideos: false, hideControls: true, isSecret: true, playbackRate: { nil }, peerIsCopyProtected: true, tempFilePath: tempFilePath, playbackCompleted: { [weak self] in
+                let allowCaptureOfViewOnceMedia = self.allowsCaptureOfViewOnceMedia(message)
+                guard let item = galleryItemForEntry(context: self.context, presentationData: self.presentationData, entry: entry, streamVideos: false, hideControls: true, isSecret: true, allowCaptureOfViewOnceMedia: allowCaptureOfViewOnceMedia, playbackRate: { nil }, peerIsCopyProtected: !allowCaptureOfViewOnceMedia, tempFilePath: tempFilePath, playbackCompleted: { [weak self] in
                     if let self {
                         if self.currentNodeMessageIsViewOnce || (duration < 30.0 && !self.currentMessageIsDismissed) {
                             if let node = self.controllerNode.pager.centralItemNode() as? UniversalVideoGalleryItemNode {
@@ -596,6 +649,7 @@ public final class SecretMediaPreviewController: ViewController {
             }
             self.currentMessageIsDismissed = true
         }
+        self.updateBurnButton()
     }
     
     private func dismissAllTooltips() {

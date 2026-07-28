@@ -1181,6 +1181,7 @@ public class Account {
     private var peerInputActivityManager: PeerInputActivityManager!
     private var localInputActivityManager: PeerInputActivityManager!
     private var accountPresenceManager: AccountPresenceManager!
+    private let ghostModeRuntime: GhostModeRuntimeCoordinator
     private var notificationAutolockReportManager: NotificationAutolockReportManager!
     fileprivate let managedContactsDisposable = MetaDisposable()
     fileprivate let managedStickerPacksDisposable = MetaDisposable()
@@ -1253,6 +1254,7 @@ public class Account {
         self.isSupportUser = isSupportUser
         
         self.networkStatsContext = NetworkStatsContext(postbox: postbox)
+        self.ghostModeRuntime = GhostModeRuntimeCoordinator(postbox: postbox)
         
         self.peerInputActivityManager = PeerInputActivityManager()
         
@@ -1291,7 +1293,16 @@ public class Account {
         
         self.contactSyncManager = ContactSyncManager(postbox: postbox, network: network, accountPeerId: peerId, stateManager: self.stateManager)
         self.localInputActivityManager = PeerInputActivityManager()
-        self.accountPresenceManager = AccountPresenceManager(shouldKeepOnlinePresence: self.shouldKeepOnlinePresence.get(), network: network)
+        let effectiveOnlinePresence = combineLatest(
+            self.shouldKeepOnlinePresence.get(),
+            self.ghostModeRuntime.settings,
+            self.ghostModeRuntime.temporaryOnline
+        )
+        |> map { shouldKeepOnlinePresence, settings, temporaryOnline -> Bool in
+            return shouldKeepOnlinePresence && (!settings.hidesOnlineStatus || temporaryOnline)
+        }
+        |> distinctUntilChanged
+        self.accountPresenceManager = AccountPresenceManager(shouldKeepOnlinePresence: effectiveOnlinePresence, network: network)
         let _ = (postbox.transaction { transaction -> Void in
             transaction.updatePeerPresencesInternal(presences: [peerId: TelegramUserPresence(status: .present(until: Int32.max - 1), lastActivity: 0)], merge: { _, updated in return updated })
             transaction.setNeedsPeerGroupMessageStatsSynchronization(groupId: Namespaces.PeerGroup.archive, namespace: Namespaces.Message.Cloud)
@@ -1305,6 +1316,9 @@ public class Account {
         self.messageMediaPreuploadManager = MessageMediaPreuploadManager()
         self.pendingMessageManager = PendingMessageManager(network: network, postbox: postbox, accountPeerId: peerId, auxiliaryMethods: auxiliaryMethods, stateManager: self.stateManager, localInputActivityManager: self.localInputActivityManager, messageMediaPreuploadManager: self.messageMediaPreuploadManager, revalidationContext: self.mediaReferenceRevalidationContext)
         let _ = _internal_failStaleEphemeralOutgoingMessages(postbox: postbox).start()
+        if !supplementary {
+            let _ = initializeDeletedMessageArchiveSession(postbox: postbox).start()
+        }
         if !supplementary {
             self.pendingStoryManager = PendingStoryManager(postbox: postbox, network: network, accountPeerId: peerId, stateManager: self.stateManager, messageMediaPreuploadManager: self.messageMediaPreuploadManager, revalidationContext: self.mediaReferenceRevalidationContext, auxiliaryMethods: self.auxiliaryMethods)
         } else {
@@ -1420,9 +1434,21 @@ public class Account {
         self.managedOperationsDisposable.add(managedAutoremoveMessageOperations(network: self.network, postbox: self.postbox, isRemove: false).start())
         self.managedOperationsDisposable.add(managedAutoexpireStoryOperations(network: self.network, postbox: self.postbox).start())
         self.managedOperationsDisposable.add(managedPeerTimestampAttributeOperations(network: self.network, postbox: self.postbox).start())
+        self.managedOperationsDisposable.add(managedGhostModeReadStateRepair(accountPeerId: peerId, postbox: self.postbox, network: self.network).start())
         self.managedOperationsDisposable.add(managedSynchronizeViewStoriesOperations(postbox: self.postbox, network: self.network, stateManager: self.stateManager).start())
         self.managedOperationsDisposable.add(managedSynchronizePeerStoriesOperations(postbox: self.postbox, network: self.network, stateManager: self.stateManager).start())
-        self.managedOperationsDisposable.add(managedLocalTypingActivities(activities: self.localInputActivityManager.allActivities(), postbox: self.stateManager.postbox, network: self.stateManager.network, accountPeerId: self.stateManager.accountPeerId).start())
+        let filteredTypingActivities = combineLatest(
+            self.localInputActivityManager.allActivities(),
+            self.ghostModeRuntime.settings
+        )
+        |> map { activities, settings -> [PeerActivitySpace: [(PeerId, PeerInputActivityRecord)]] in
+            if settings.hidesTypingStatus {
+                return [:]
+            } else {
+                return activities
+            }
+        }
+        self.managedOperationsDisposable.add(managedLocalTypingActivities(activities: filteredTypingActivities, postbox: self.stateManager.postbox, network: self.stateManager.network, accountPeerId: self.stateManager.accountPeerId).start())
         
         let extractedExpr1: [Signal<AccountRunningImportantTasks, NoError>] = [
             managedSynchronizeChatInputStateOperations(postbox: self.postbox, network: self.network, messageMediaPreuploadManager: self.messageMediaPreuploadManager, auxiliaryMethods: self.auxiliaryMethods) |> map { inputStates in
@@ -1649,6 +1675,10 @@ public class Account {
     
     public func acquireLocalInputActivity(peerId: PeerActivitySpace, activity: PeerInputActivity) -> Disposable {
         return self.localInputActivityManager.acquireActivity(chatPeerId: peerId, peerId: self.peerId, activity: activity)
+    }
+
+    public func temporarilyRevealGhostModePresence() {
+        self.ghostModeRuntime.revealPresence()
     }
     
     public func addUpdates(serializedData: Data) -> Void {

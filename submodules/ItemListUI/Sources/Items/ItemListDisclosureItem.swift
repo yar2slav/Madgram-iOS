@@ -58,6 +58,7 @@ public class ItemListDisclosureItem: ListViewItem, ItemListItem, ListItemCompone
     let titleColor: ItemListDisclosureItemTitleColor
     let titleFont: ItemListDisclosureItemTitleFont
     let titleIcon: UIImage?
+    let titleIconAction: ((UIView) -> Void)?
     let titleBadge: String?
     let enabled: Bool
     let label: String
@@ -86,6 +87,7 @@ public class ItemListDisclosureItem: ListViewItem, ItemListItem, ListItemCompone
         titleColor: ItemListDisclosureItemTitleColor = .primary,
         titleFont: ItemListDisclosureItemTitleFont = .regular,
         titleIcon: UIImage? = nil,
+        titleIconAction: ((UIView) -> Void)? = nil,
         titleBadge: String? = nil,
         label: String,
         attributedLabel: NSAttributedString? = nil,
@@ -111,6 +113,7 @@ public class ItemListDisclosureItem: ListViewItem, ItemListItem, ListItemCompone
         self.titleColor = titleColor
         self.titleFont = titleFont
         self.titleIcon = titleIcon
+        self.titleIconAction = titleIconAction
         self.titleBadge = titleBadge
         self.enabled = enabled
         self.labelStyle = labelStyle
@@ -209,6 +212,7 @@ public class ItemListDisclosureItemNode: ListViewItemNode, ItemListItemNode {
     let iconNode: ASImageNode
     let titleNode: TextNodeWithEntities
     let titleIconNode: ASImageNode
+    private let titleIconButtonNode: HighlightableButtonNode
     public let labelNode: TextNode
     var additionalDetailLabelNode: TextNode?
     let arrowNode: ASImageNode
@@ -264,6 +268,9 @@ public class ItemListDisclosureItemNode: ListViewItemNode, ItemListItemNode {
         self.titleIconNode = ASImageNode()
         self.titleIconNode.displayWithoutProcessing = true
         self.titleIconNode.displaysAsynchronously = false
+
+        self.titleIconButtonNode = HighlightableButtonNode()
+        self.titleIconButtonNode.isHidden = true
         
         self.labelNode = TextNode()
         self.labelNode.isUserInteractionEnabled = false
@@ -291,6 +298,12 @@ public class ItemListDisclosureItemNode: ListViewItemNode, ItemListItemNode {
         self.addSubnode(self.arrowNode)
         
         self.addSubnode(self.activateArea)
+        self.addSubnode(self.titleIconButtonNode)
+        self.titleIconButtonNode.addTarget(self, action: #selector(self.titleIconPressed), forControlEvents: .touchUpInside)
+    }
+
+    @objc private func titleIconPressed() {
+        self.item?.titleIconAction?(self.titleIconButtonNode.view)
     }
 
     override public func updateAbsoluteRect(_ rect: CGRect, within containerSize: CGSize) {
@@ -449,6 +462,9 @@ public class ItemListDisclosureItemNode: ListViewItemNode, ItemListItemNode {
             var maxTitleWidth: CGFloat = params.width - params.rightInset - 20.0 - leftInset - additionalTextRightInset
             if item.iconPeer != nil {
                 maxTitleWidth -= 12.0
+            }
+            if let titleIcon = item.titleIcon {
+                maxTitleWidth -= titleIcon.size.width + 5.0
             }
             
             var titleBadgeTextNodeLayout: (TextNodeLayout, () -> TextNode)?
@@ -825,11 +841,21 @@ public class ItemListDisclosureItemNode: ListViewItemNode, ItemListItemNode {
                         }
                         
                         strongSelf.titleIconNode.image = titleIcon
-                        strongSelf.titleIconNode.frame = CGRect(origin: CGPoint(x: titleFrame.maxX + 5.0, y: floor((layout.contentSize.height - titleIcon.size.height) / 2.0) - 1.0), size: titleIcon.size)
+                        let titleIconFrame = CGRect(origin: CGPoint(x: titleFrame.maxX + 5.0, y: floor((layout.contentSize.height - titleIcon.size.height) / 2.0) - 1.0), size: titleIcon.size)
+                        strongSelf.titleIconNode.frame = titleIconFrame
+                        if item.titleIconAction != nil {
+                            strongSelf.titleIconButtonNode.isHidden = false
+                            strongSelf.titleIconButtonNode.frame = titleIconFrame.insetBy(dx: -7.0, dy: -12.0)
+                            strongSelf.titleIconButtonNode.accessibilityLabel = item.presentationData.strings.Conversation_Info
+                            strongSelf.titleIconButtonNode.accessibilityTraits = .button
+                        } else {
+                            strongSelf.titleIconButtonNode.isHidden = true
+                        }
                     } else {
                         if strongSelf.titleIconNode.supernode != nil {
                             strongSelf.titleIconNode.removeFromSupernode()
                         }
+                        strongSelf.titleIconButtonNode.isHidden = true
                     }
  
                     if case .textWithIcon = item.labelStyle {

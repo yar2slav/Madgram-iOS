@@ -296,6 +296,7 @@ final class TelegramGlobalSettings {
     let hasPassport: Bool
     let hasWatchApp: Bool
     let enableQRLogin: Bool
+    let ghostModeSettings: GhostModeSettings
     
     init(
         suggestPhoneNumberConfirmation: Bool,
@@ -318,7 +319,8 @@ final class TelegramGlobalSettings {
         bots: [AttachMenuBot],
         hasPassport: Bool,
         hasWatchApp: Bool,
-        enableQRLogin: Bool
+        enableQRLogin: Bool,
+        ghostModeSettings: GhostModeSettings
     ) {
         self.suggestPhoneNumberConfirmation = suggestPhoneNumberConfirmation
         self.suggestPasswordConfirmation = suggestPasswordConfirmation
@@ -341,6 +343,7 @@ final class TelegramGlobalSettings {
         self.hasPassport = hasPassport
         self.hasWatchApp = hasWatchApp
         self.enableQRLogin = enableQRLogin
+        self.ghostModeSettings = ghostModeSettings
     }
 }
 
@@ -972,6 +975,12 @@ func peerInfoScreenSettingsData(context: AccountContext, peerId: EnginePeer.Id, 
         }
         return context.engine.data.get(TelegramEngine.EngineData.Item.Peer.Peer(id: botPeerId))
     }
+
+    let ghostModeSettings = context.account.postbox.preferencesView(keys: [PreferencesKeys.ghostModeSettings])
+    |> map { view -> GhostModeSettings in
+        return view.values[PreferencesKeys.ghostModeSettings]?.get(GhostModeSettings.self) ?? .defaultSettings
+    }
+    |> distinctUntilChanged
     
     return combineLatest(
         context.account.viewTracker.peerView(peerId, updateData: true),
@@ -999,9 +1008,10 @@ func peerInfoScreenSettingsData(context: AccountContext, peerId: EnginePeer.Id, 
         peerInfoPersonalOrLinkedChannel(context: context, peerId: peerId, isSettings: true),
         starsState,
         tonState,
-        businessConnectedBot
+        combineLatest(businessConnectedBot, ghostModeSettings)
     )
-    |> map { peerView, accountsAndPeers, accountSessions, privacySettings, sharedPreferences, notifications, stickerPacks, hasPassport, accountPreferences, suggestions, limits, hasPassword, isPowerSavingEnabled, hasStories, bots, personalChannel, starsState, tonState, businessConnectedBot -> PeerInfoScreenData in
+    |> map { peerView, accountsAndPeers, accountSessions, privacySettings, sharedPreferences, notifications, stickerPacks, hasPassport, accountPreferences, suggestions, limits, hasPassword, isPowerSavingEnabled, hasStories, bots, personalChannel, starsState, tonState, businessConnectedBotAndGhostMode -> PeerInfoScreenData in
+        let (businessConnectedBot, ghostModeSettings) = businessConnectedBotAndGhostMode
         let (notificationExceptions, notificationsAuthorizationStatus, notificationsWarningSuppressed) = notifications
         let (featuredStickerPacks, archivedStickerPacks) = stickerPacks
         
@@ -1045,7 +1055,8 @@ func peerInfoScreenSettingsData(context: AccountContext, peerId: EnginePeer.Id, 
             bots: bots,
             hasPassport: hasPassport,
             hasWatchApp: false,
-            enableQRLogin: enableQRLogin
+            enableQRLogin: enableQRLogin,
+            ghostModeSettings: ghostModeSettings
         )
         
         return PeerInfoScreenData(
@@ -1642,7 +1653,8 @@ func peerInfoScreenData(
                         bots: [],
                         hasPassport: false,
                         hasWatchApp: false,
-                        enableQRLogin: false)
+                        enableQRLogin: false,
+                        ghostModeSettings: .defaultSettings)
                 }
                 
                 let linkedCommunityData: Signal<PeerInfoLinkedCommunityData?, NoError>
