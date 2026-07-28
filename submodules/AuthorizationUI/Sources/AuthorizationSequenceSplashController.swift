@@ -24,6 +24,7 @@ public final class AuthorizationSequenceSplashController: ViewController {
     private var validLayout: ContainerViewLayout?
     
     var nextPressed: ((PresentationStrings?) -> Void)?
+    var localizationChanged: ((PresentationStrings) -> Void)?
     
     private let suggestedLocalization = Promise<SuggestedLocalizationInfo?>()
     private let activateLocalizationDisposable = MetaDisposable()
@@ -84,7 +85,7 @@ public final class AuthorizationSequenceSplashController: ViewController {
         self.statusBar.statusBarStyle = theme.intro.statusBarStyle.style
         
         self.controller.startMessaging = { [weak self] in
-            self?.activateLocalization("en")
+            self?.pressNext(strings: nil)
         }
         self.controller.startMessagingInAlternativeLanguage = { [weak self] code in
             if let code = code {
@@ -93,7 +94,7 @@ public final class AuthorizationSequenceSplashController: ViewController {
         }
         
         self.startButton.pressed = { [weak self] in
-            self?.activateLocalization("en")
+            self?.pressNext(strings: nil)
         }
         
         self.controller.createStartButton = { [weak self] width in
@@ -189,6 +190,8 @@ public final class AuthorizationSequenceSplashController: ViewController {
     }
     
     private func activateLocalization(_ code: String) {
+        self.applySplashLocalization(code)
+
         let currentCode = self.accountManager.transaction { transaction -> String in
             if let current = transaction.getSharedData(SharedDataKeys.localizationSettings)?.get(LocalizationSettings.self) {
                 return current.primaryComponent.languageCode
@@ -213,7 +216,6 @@ public final class AuthorizationSequenceSplashController: ViewController {
             }
             
             if currentCode == code {
-                strongSelf.pressNext(strings: nil)
                 return
             }
             
@@ -240,10 +242,64 @@ public final class AuthorizationSequenceSplashController: ViewController {
                 |> deliverOnMainQueue).start(next: { strings in
                     self?.controller.isEnabled = true
                     self?.startButton.alpha = 1.0
-                    self?.pressNext(strings: strings)
+                    if let strings {
+                        self?.localizationChanged?(strings)
+                    }
                 })
             }))
         })
+    }
+
+    private func applySplashLocalization(_ code: String) {
+        if code == "ru" {
+            self.controller.updateHeadlines([
+                "MadGram",
+                "Режим призрака",
+                "Архив сообщений",
+                "Снимок сообщений",
+                "Фильтры сообщений"
+            ], descriptions: [
+                "Приватность, сообщения и оформление —\nвсё под вашим контролем.",
+                "Читайте чаты и истории незаметно,\nне раскрывая статус «в сети».",
+                "Сохраняйте удалённые сообщения\nи историю их изменений.",
+                "Создавайте аккуратные снимки переписок\nв нужном вам стиле.",
+                "Скрывайте сообщения выбранных людей,\nне удаляя их из чата."
+            ])
+            self.startButton.title = "Начать в MadGram"
+            self.controller.setAlternativeLanguageButtonTitle("Continue in English", languageCode: "en")
+        } else if code == "uk" {
+            self.controller.updateHeadlines([
+                "MadGram",
+                "Режим привида",
+                "Архів повідомлень",
+                "Знімок повідомлень",
+                "Фільтри повідомлень"
+            ], descriptions: [
+                "Більше контролю над приватністю, повідомленнями\nта виглядом застосунку.",
+                "Читайте чати й історії, не розкриваючи\nсвій статус онлайн.",
+                "Зберігайте видалені повідомлення\nта попередні версії змін.",
+                "Створюйте охайні налаштовувані знімки\nланцюжків повідомлень.",
+                "Приховуйте повідомлення вибраних користувачів,\nне видаляючи їх."
+            ])
+            self.startButton.title = "Почати в MadGram"
+            self.controller.setAlternativeLanguageButtonTitle("Continue in English", languageCode: "en")
+        } else if code == "en" {
+            self.controller.updateHeadlines([
+                "MadGram",
+                "Ghost Mode",
+                "Message Archive",
+                "Message Shot",
+                "Message Filters"
+            ], descriptions: [
+                "More control over privacy, messages\nand the way the app looks.",
+                "Read chats and stories while keeping\nyour online status private.",
+                "Keep local copies of deleted messages\nand previous edited versions.",
+                "Create clean, customizable screenshots\nof message chains.",
+                "Hide messages from selected accounts\nwithout deleting them."
+            ])
+            self.startButton.title = "Start MadGram"
+            self.controller.setAlternativeLanguageButtonTitle("Продолжить на русском", languageCode: "ru")
+        }
     }
     
     private func pressNext(strings: PresentationStrings?) {

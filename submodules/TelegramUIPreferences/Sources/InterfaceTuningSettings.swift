@@ -20,6 +20,7 @@ public struct InterfaceTuningSettings: Codable, Equatable {
     public var allowStoryRepost: Bool
 
     public var startRoundVideoWithRearCamera: Bool
+    public var hideGalleryCamera: Bool?
     public var hidePhoneInSettings: Bool
 
     public static let defaultSettings = InterfaceTuningSettings(
@@ -38,6 +39,7 @@ public struct InterfaceTuningSettings: Codable, Equatable {
         confirmStoryOpen: false,
         allowStoryRepost: true,
         startRoundVideoWithRearCamera: false,
+        hideGalleryCamera: false,
         hidePhoneInSettings: false
     )
 }

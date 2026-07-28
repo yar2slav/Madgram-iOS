@@ -1943,6 +1943,7 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
              |> take(1)
              |> deliverOnMainQueue).start(next: { activeAccounts in
                 for (_, context, _) in activeAccounts.accounts {
+                    context.account.resetStateManagement()
                     context.account.postbox.clearCaches()
                 }
             })

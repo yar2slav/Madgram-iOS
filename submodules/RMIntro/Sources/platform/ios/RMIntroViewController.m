@@ -272,10 +272,6 @@ typedef enum {
 
 - (void)loadGL
 {
-#if TARGET_OS_SIMULATOR && defined(__aarch64__)
-    return;
-#endif
-    
     if (/*[[UIApplication sharedApplication] applicationState] != UIApplicationStateBackground*/true && !_isOpenGLLoaded)
     {
         _context = [[EAGLContext alloc] initWithAPI:kEAGLRenderingAPIOpenGLES2];
@@ -400,6 +396,38 @@ typedef enum {
     UIView *snapshotView = [_wrapperView snapshotViewAfterScreenUpdates:false];
     snapshotView.frame = _wrapperView.frame;
     return snapshotView;
+}
+
+- (void)updateHeadlines:(NSArray<NSString *> *)headlines descriptions:(NSArray<NSString *> *)descriptions {
+    if (headlines.count != _pageViews.count || descriptions.count != _pageViews.count) {
+        return;
+    }
+
+    _headlines = headlines;
+    _descriptions = descriptions;
+
+    NSMutableParagraphStyle *paragraphStyle = [[NSMutableParagraphStyle alloc] init];
+    paragraphStyle.lineSpacing = [UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPad ? 4.0 : 3.0;
+    paragraphStyle.lineBreakMode = NSLineBreakByWordWrapping;
+    paragraphStyle.alignment = NSTextAlignmentCenter;
+    NSDictionary *descriptionAttributes = @{
+        NSFontAttributeName: [UIFont systemFontOfSize:[UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPad ? 22.0 : 17.0],
+        NSParagraphStyleAttributeName: paragraphStyle,
+        NSForegroundColorAttributeName: _primaryColor
+    };
+    [_pageViews enumerateObjectsUsingBlock:^(RMIntroPageView *pageView, NSUInteger index, __unused BOOL *stop) {
+        pageView.headerLabel.text = headlines[index];
+        pageView.descriptionLabel.attributedText = [[NSAttributedString alloc] initWithString:descriptions[index] attributes:descriptionAttributes];
+    }];
+}
+
+- (void)setAlternativeLanguageButtonTitle:(NSString *)title languageCode:(NSString *)languageCode {
+    TGAvailableLocalization *localization = [[TGAvailableLocalization alloc] initWithTitle:title localizedTitle:title code:languageCode];
+    _alternativeLocalizationInfo = [[TGSuggestedLocalization alloc] initWithInfo:localization continueWithLanguageString:title chooseLanguageString:title chooseLanguageOtherString:title englishLanguageNameString:@"English"];
+    [_alternativeLanguageButton setTitle:title forState:UIControlStateNormal];
+    [_alternativeLanguageButton sizeToFit];
+    _alternativeLanguageButton.hidden = false;
+    [self viewWillLayoutSubviews];
 }
 
 - (BOOL)shouldAutorotate

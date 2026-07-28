@@ -152,6 +152,8 @@ public struct InterfaceTuningFeatureStrings {
 
     public let startRoundVideoWithRearCamera: String
     public let startRoundVideoWithRearCameraInfo: String
+    public let hideGalleryCamera: String
+    public let hideGalleryCameraInfo: String
     public let hidePhoneInSettings: String
     public let hidePhoneInSettingsInfo: String
 
@@ -251,7 +253,7 @@ public struct LocalFeatureStrings {
                 tabsSection: "НИЖНЯЯ ПАНЕЛЬ",
                 profilesSection: "ПРОФИЛИ",
                 storiesSection: "ИСТОРИИ",
-                mediaSection: "КРУГЛЫЕ ВИДЕО",
+                mediaSection: "МЕДИА",
                 privacySection: "ЛОКАЛЬНАЯ ПРИВАТНОСТЬ",
                 concealBottomBar: "Скрывать нижнюю панель",
                 concealBottomBarInfo: "Убирает нижнюю панель навигации. Изменение полностью применяется после перезапуска приложения.",
@@ -287,6 +289,8 @@ public struct LocalFeatureStrings {
                 allowStoryRepostInfo: "Показывает действие репоста в историю в системном экране пересылки.",
                 startRoundVideoWithRearCamera: "Начинать с задней камеры",
                 startRoundVideoWithRearCameraInfo: "Открывает запись круглого видео сразу на задней камере.",
+                hideGalleryCamera: "Скрывать камеру в галерее",
+                hideGalleryCameraInfo: "Убирает плитку камеры из галереи при выборе фотографий и видео. Обычная отправка файлов из медиатеки продолжает работать.",
                 hidePhoneInSettings: "Скрывать номер в настройках",
                 hidePhoneInSettingsInfo: "Скрывает ваш номер только на экране настроек этого приложения. Настройки видимости номера для других людей не меняются.",
                 restartNotice: "Некоторые параметры нижней панели и номера применяются после перезапуска приложения.",
@@ -415,7 +419,7 @@ public struct LocalFeatureStrings {
                 tabsSection: "НИЖНЯ ПАНЕЛЬ",
                 profilesSection: "ПРОФІЛІ",
                 storiesSection: "ІСТОРІЇ",
-                mediaSection: "КРУГЛІ ВІДЕО",
+                mediaSection: "МЕДІА",
                 privacySection: "ЛОКАЛЬНА ПРИВАТНІСТЬ",
                 concealBottomBar: "Приховувати нижню панель",
                 concealBottomBarInfo: "Прибирає нижню панель навігації. Зміна повністю застосовується після перезапуску застосунку.",
@@ -451,6 +455,8 @@ public struct LocalFeatureStrings {
                 allowStoryRepostInfo: "Показує дію репосту в історію на екрані пересилання.",
                 startRoundVideoWithRearCamera: "Починати із задньої камери",
                 startRoundVideoWithRearCameraInfo: "Відкриває запис круглого відео одразу на задній камері.",
+                hideGalleryCamera: "Приховувати камеру в галереї",
+                hideGalleryCameraInfo: "Прибирає плитку камери з галереї під час вибору фотографій і відео. Звичайне надсилання файлів із медіатеки працює без змін.",
                 hidePhoneInSettings: "Приховувати номер у налаштуваннях",
                 hidePhoneInSettingsInfo: "Приховує ваш номер лише на екрані налаштувань цього застосунку. Видимість номера для інших людей не змінюється.",
                 restartNotice: "Деякі параметри нижньої панелі та номера застосовуються після перезапуску застосунку.",
@@ -569,7 +575,7 @@ public struct LocalFeatureStrings {
                 tabsSection: "BOTTOM BAR",
                 profilesSection: "PROFILES",
                 storiesSection: "STORIES",
-                mediaSection: "ROUND VIDEOS",
+                mediaSection: "MEDIA",
                 privacySection: "LOCAL PRIVACY",
                 concealBottomBar: "Conceal Bottom Bar",
                 concealBottomBarInfo: "Removes the bottom navigation bar. Restart the app to apply this change everywhere.",
@@ -605,6 +611,8 @@ public struct LocalFeatureStrings {
                 allowStoryRepostInfo: "Shows the repost-to-story action on the forwarding screen.",
                 startRoundVideoWithRearCamera: "Start With Rear Camera",
                 startRoundVideoWithRearCameraInfo: "Starts round-video recording with the rear camera.",
+                hideGalleryCamera: "Hide Camera in Gallery",
+                hideGalleryCameraInfo: "Removes the camera tile from the photo and video picker. Sending existing media from the library continues to work normally.",
                 hidePhoneInSettings: "Hide Phone in Settings",
                 hidePhoneInSettingsInfo: "Hides your number only in this app's settings UI. It does not change who can see it.",
                 restartNotice: "Some bottom-bar and phone-number changes apply after restarting the app.",

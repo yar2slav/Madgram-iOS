@@ -72,6 +72,9 @@
 - (UIView *)createAnimationSnapshot;
 - (UIView *)createTextSnapshot;
 
+- (void)updateHeadlines:(NSArray<NSString *> *)headlines descriptions:(NSArray<NSString *> *)descriptions;
+- (void)setAlternativeLanguageButtonTitle:(NSString *)title languageCode:(NSString *)languageCode;
+
 - (void)animateIn;
 
 @property (nonatomic) bool isEnabled;

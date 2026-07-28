@@ -31,6 +31,7 @@ private enum InterfaceTuningKey: Int32 {
     case confirmStoryOpen
     case allowStoryRepost
     case startRoundVideoWithRearCamera
+    case hideGalleryCamera
     case hidePhoneInSettings
 }
 
@@ -77,6 +78,7 @@ private enum InterfaceTuningEntry: ItemListNodeEntry {
             case .confirmStoryOpen: return 23
             case .allowStoryRepost: return 24
             case .startRoundVideoWithRearCamera: return 31
+            case .hideGalleryCamera: return 32
             case .hidePhoneInSettings: return 41
             }
         }
@@ -164,6 +166,8 @@ private func updatedInterfaceTuningSettings(
         current.allowStoryRepost = value
     case .startRoundVideoWithRearCamera:
         current.startRoundVideoWithRearCamera = value
+    case .hideGalleryCamera:
+        current.hideGalleryCamera = value
     case .hidePhoneInSettings:
         current.hidePhoneInSettings = value
     }
@@ -216,6 +220,7 @@ public func interfaceTuningSettingsController(context: AccountContext) -> ViewCo
 
             .header(30, .media, strings.mediaSection),
             .toggle(.startRoundVideoWithRearCamera, .media, strings.startRoundVideoWithRearCamera, strings.startRoundVideoWithRearCameraInfo, settings.startRoundVideoWithRearCamera, true),
+            .toggle(.hideGalleryCamera, .media, strings.hideGalleryCamera, strings.hideGalleryCameraInfo, settings.hideGalleryCamera ?? false, true),
 
             .header(40, .privacy, strings.privacySection),
             .toggle(.hidePhoneInSettings, .privacy, strings.hidePhoneInSettings, strings.hidePhoneInSettingsInfo, settings.hidePhoneInSettings, true)

@@ -154,6 +154,12 @@ public final class AuthorizationSequenceController: NavigationController, ASAuth
                     let _ = strongSelf.engine.auth.setState(state: UnauthorizedAccountState(isTestingEnvironment: isTestingEnvironment, masterDatacenterId: masterDatacenterId, contents: .phoneEntry(countryCode: countryCode, number: ""))).startStandalone()
                 }
             }
+            controller.localizationChanged = { [weak self] strings in
+                guard let self else {
+                    return
+                }
+                self.presentationData = self.presentationData.withStrings(strings)
+            }
         }
         return controller
     }

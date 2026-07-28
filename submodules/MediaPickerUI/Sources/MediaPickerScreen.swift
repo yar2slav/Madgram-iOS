@@ -1720,7 +1720,8 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
             
             var cutoutRects: [CGRect] = []
             var cameraRect: CGRect? = CGRect(origin: CGPoint(x: layout.safeInsets.left, y: 0.0), size: CGSize(width: itemWidth, height: itemWidth * 2.0 + 1.0))
-            if self.cameraView == nil && self.modernCameraView == nil {
+            let hideGalleryCamera = InterfaceTuningSettingsStore.shared.current.hideGalleryCamera == true
+            if hideGalleryCamera || (self.cameraView == nil && self.modernCameraView == nil) {
                 cameraRect = nil
             }
                         
@@ -1929,7 +1930,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
             if case let .noAccess(cameraAccess) = self.state {
                 self.controller?.titleView.isEnabled = false
                 
-                var hasCamera = cameraAccess == .authorized
+                var hasCamera = cameraAccess == .authorized && !hideGalleryCamera
                 var story = false
                 if let subject = self.controller?.subject {
                     if case .assets(_, .story) = subject {
