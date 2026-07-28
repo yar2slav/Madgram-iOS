@@ -423,7 +423,7 @@
 
 // Login
 "Login.PhoneAndCountryHelp" = "Please confirm your country code\nand enter your phone number.";
-"Login.CodeSentInternal" = "We've sent the code to the **Telegram** app on your other device";
+"Login.CodeSentInternal" = "Enter the code sent to the app on your other device";
 "Login.HaveNotReceivedCodeInternal" = "Didn't get the code?";
 "Login.CodeSentSms" = "We've sent you an SMS with the code";
 "Login.Code" = "Code";
@@ -8113,7 +8113,7 @@ Sorry for the inconvenience.";
 "Login.EnterCodeSMSText" = "We've sent an SMS with an activation code to your phone **%@**.";
 "Login.SendCodeAsSMS" = "Send the code as an SMS";
 "Login.EnterCodeTelegramTitle" = "Enter Code";
-"Login.EnterCodeTelegramText" = "We've sent the code to the **Telegram app** for %@ on your other device.";
+"Login.EnterCodeTelegramText" = "Enter the code sent to the app on your other device for **%@**.";
 "Login.AddEmailTitle" = "Add Email";
 "Login.AddEmailText" = "Please enter your valid email address to protect your account.";
 "Login.AddEmailPlaceholder" = "Enter your email";
