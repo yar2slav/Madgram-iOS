@@ -945,6 +945,10 @@ final class AuthorizedApplicationContext {
     }
     
     func openUrl(_ url: URL, external: Bool = false) {
+        if let controller = madgramControllerForDeepLink(context: self.context, url: url) {
+            self.rootController.pushViewController(controller)
+            return
+        }
         if self.rootController.rootTabController != nil {
             let presentationData = self.context.sharedContext.currentPresentationData.with { $0 }
             self.context.sharedContext.openExternalUrl(context: self.context, urlContext: external ? .external : .generic, url: url.absoluteString, forceExternal: false, presentationData: presentationData, navigationController: self.rootController, dismissInput: { [weak self] in

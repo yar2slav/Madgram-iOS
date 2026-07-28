@@ -15,6 +15,7 @@ private let whitelistedHosts: Set<String> = Set([
 private let dataDetector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType([.link]).rawValue)
 private let dataAndPhoneNumberDetector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType([.link, .phoneNumber]).rawValue)
 private let phoneNumberDetector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType([.phoneNumber]).rawValue)
+private let madgramUrlDetector = try? NSRegularExpression(pattern: #"(?i)(?<![\p{L}\p{N}_])mad://[^\s<>"“”]*"#)
 
 private let validHashtagSet: CharacterSet = {
     var set = CharacterSet.alphanumerics
@@ -299,9 +300,57 @@ public func generateTextEntities(_ text: String, enabledTypes: EnabledEntityType
                         } else {
                             type = .PhoneNumber
                         }
-                        entities.append(MessageTextEntity(range: utf16.distance(from: text.startIndex, to: lowerBound) ..< utf16.distance(from: text.startIndex, to: upperBound), type: type))
+                        let entityRange = utf16.distance(from: text.startIndex, to: lowerBound) ..< utf16.distance(from: text.startIndex, to: upperBound)
+                        let hasExistingUrl = entities.contains(where: { entity in
+                            guard entity.range.overlaps(entityRange) else {
+                                return false
+                            }
+                            switch entity.type {
+                            case .Url, .TextUrl:
+                                return true
+                            default:
+                                return false
+                            }
+                        })
+                        if type != .Url || !hasExistingUrl {
+                            entities.append(MessageTextEntity(range: entityRange, type: type))
+                        }
                     }
                 }
+            }
+        })
+    }
+
+    if enabledTypes.contains(.allUrl) || enabledTypes.contains(.internalUrl), let madgramUrlDetector {
+        let nsText = text as NSString
+        let trailingCharacters = CharacterSet(charactersIn: ".,;:!)]}")
+        madgramUrlDetector.enumerateMatches(in: text, range: NSRange(location: 0, length: nsText.length), using: { result, _, _ in
+            guard var range = result?.range else {
+                return
+            }
+            while range.length > 6 {
+                let finalRange = NSRange(location: NSMaxRange(range) - 1, length: 1)
+                let finalCharacter = nsText.substring(with: finalRange)
+                if finalCharacter.unicodeScalars.allSatisfy(trailingCharacters.contains) {
+                    range.length -= 1
+                } else {
+                    break
+                }
+            }
+            let entityRange = range.location ..< NSMaxRange(range)
+            let hasExistingUrl = entities.contains(where: { entity in
+                guard entity.range.overlaps(entityRange) else {
+                    return false
+                }
+                switch entity.type {
+                case .Url, .TextUrl:
+                    return true
+                default:
+                    return false
+                }
+            })
+            if !hasExistingUrl {
+                entities.append(MessageTextEntity(range: entityRange, type: .Url))
             }
         })
     }

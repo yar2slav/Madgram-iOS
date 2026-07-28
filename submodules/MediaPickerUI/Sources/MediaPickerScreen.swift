@@ -314,6 +314,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
         
         private var requestedMediaAccess = false
         private var requestedCameraAccess = false
+        private let hideGalleryCamera: Bool
         
         private let containerNode: ASDisplayNode
         private let backgroundView: GlassBackgroundView?
@@ -378,6 +379,11 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
         init(controller: MediaPickerScreenImpl) {
             self.controller = controller
             self.presentationData = controller.presentationData
+            if case .assets(nil, .default) = controller.subject {
+                self.hideGalleryCamera = InterfaceTuningSettingsStore.shared.current.hideGalleryCamera == true
+            } else {
+                self.hideGalleryCamera = false
+            }
             
             var assetType: PHAssetMediaType?
             if case let .assets(_, mode) = controller.subject, [.wallpaper, .addImage, .cover, .createSticker].contains(mode) {
@@ -456,7 +462,13 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                 } else {
                     drafts = .single([])
                 }
-                updatedState = combineLatest(mediaAssetsContext.mediaAccess(), mediaAssetsContext.cameraAccess())
+                let cameraAccess: Signal<AVAuthorizationStatus?, NoError>
+                if self.hideGalleryCamera {
+                    cameraAccess = .single(nil)
+                } else {
+                    cameraAccess = mediaAssetsContext.cameraAccess()
+                }
+                updatedState = combineLatest(mediaAssetsContext.mediaAccess(), cameraAccess)
                 |> mapToSignal { mediaAccess, cameraAccess -> Signal<State, NoError> in
                     if case .notDetermined = mediaAccess {
                         return .single(.assets(fetchResult: nil, preload: false, drafts: [], mediaAccess: mediaAccess, cameraAccess: cameraAccess))
@@ -700,7 +712,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
             
             var useLegacyCamera = false
             var useModernCamera = false
-            if case .assets(nil, .default) = controller.subject {
+            if case .assets(nil, .default) = controller.subject, !self.hideGalleryCamera {
                 useLegacyCamera = true
             } else if case .assets(nil, let mode) = controller.subject {
                 switch mode {
@@ -995,7 +1007,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                 } else if case let .noAccess(previousCameraAccess) = previousState, previousCameraAccess != cameraAccess {
                     updateLayout = true
                 }
-                if case .notDetermined = cameraAccess, !self.requestedCameraAccess {
+                if !self.hideGalleryCamera, case .notDetermined = cameraAccess, !self.requestedCameraAccess {
                     self.requestedCameraAccess = true
                     self.mediaAssetsContext.requestCameraAccess()
                 }
@@ -1036,7 +1048,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                     }
                     #endif
                     
-                    if !stories, case .notDetermined = cameraAccess, !self.requestedCameraAccess {
+                    if !self.hideGalleryCamera, !stories, case .notDetermined = cameraAccess, !self.requestedCameraAccess {
                         self.requestedCameraAccess = true
                         self.mediaAssetsContext.requestCameraAccess()
                     }
@@ -1720,8 +1732,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
             
             var cutoutRects: [CGRect] = []
             var cameraRect: CGRect? = CGRect(origin: CGPoint(x: layout.safeInsets.left, y: 0.0), size: CGSize(width: itemWidth, height: itemWidth * 2.0 + 1.0))
-            let hideGalleryCamera = InterfaceTuningSettingsStore.shared.current.hideGalleryCamera == true
-            if hideGalleryCamera || (self.cameraView == nil && self.modernCameraView == nil) {
+            if self.hideGalleryCamera || (self.cameraView == nil && self.modernCameraView == nil) {
                 cameraRect = nil
             }
                         
@@ -1930,7 +1941,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
             if case let .noAccess(cameraAccess) = self.state {
                 self.controller?.titleView.isEnabled = false
                 
-                var hasCamera = cameraAccess == .authorized && !hideGalleryCamera
+                var hasCamera = cameraAccess == .authorized && !self.hideGalleryCamera
                 var story = false
                 if let subject = self.controller?.subject {
                     if case .assets(_, .story) = subject {

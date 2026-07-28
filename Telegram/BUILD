@@ -434,6 +434,16 @@ plist_fragment(
                 <string>tonsite</string>
             </array>
         </dict>
+        <dict>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>CFBundleURLName</key>
+            <string>{telegram_bundle_id}.madgram</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>mad</string>
+            </array>
+        </dict>
     </array>
     """.format(
         telegram_bundle_id = telegram_bundle_id,

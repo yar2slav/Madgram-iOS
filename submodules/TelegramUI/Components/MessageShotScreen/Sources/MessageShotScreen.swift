@@ -265,16 +265,31 @@ private final class MessageShotScreenNode: ASDisplayNode {
         return EngineMessage(updatedMessage)
     }
 
+    private var groupedMessages: [[EngineMessage]] {
+        var result: [[EngineMessage]] = []
+        for message in self.messages {
+            if let groupingKey = message.groupingKey,
+               let lastGroupingKey = result.last?.first?.groupingKey,
+               groupingKey == lastGroupingKey {
+                result[result.count - 1].append(message)
+            } else {
+                result.append([message])
+            }
+        }
+        return result
+    }
+
     private func updateMessagesLayout(layout: ContainerViewLayout, containerSize: CGSize, transition: ContainedViewLayoutTransition) {
         let presentationData = self.effectivePresentationData
         let theme = presentationData.theme.withUpdated(preview: true)
+        let groupedMessages = self.groupedMessages
 
         var items: [ListViewItem] = []
-        for message in self.messages {
-            let displayMessage = self.displayMessage(message)
+        for group in groupedMessages {
+            let displayMessages = group.map(self.displayMessage)
             items.append(self.context.sharedContext.makeChatMessagePreviewItem(
                 context: self.context,
-                messages: [displayMessage._asMessage()],
+                messages: displayMessages.map { $0._asMessage() },
                 theme: theme,
                 strings: presentationData.strings,
                 wallpaper: presentationData.chatWallpaper,
@@ -298,8 +313,8 @@ private final class MessageShotScreenNode: ASDisplayNode {
         }
 
         let leftInset: CGFloat = self.options.showAvatar ? 37.0 : 0.0
-        let width = containerSize.width
-        let params = ListViewItemLayoutParams(width: width, leftInset: 0.0, rightInset: 0.0, availableHeight: layout.size.height)
+        let contentWidth = max(1.0, containerSize.width - leftInset)
+        let params = ListViewItemLayoutParams(width: contentWidth, leftInset: 0.0, rightInset: 0.0, availableHeight: layout.size.height)
 
         if let messageNodes = self.messageNodes {
             for i in 0 ..< items.count {
@@ -311,7 +326,7 @@ private final class MessageShotScreenNode: ASDisplayNode {
                 }, params: params, previousItem: previousItem, nextItem: nextItem, animation: .None, completion: { (itemLayout, apply) in
                     itemNode.contentSize = itemLayout.contentSize
                     itemNode.insets = itemLayout.insets
-                    itemNode.frame = CGRect(origin: itemNode.frame.origin, size: CGSize(width: width, height: itemLayout.size.height))
+                    itemNode.frame = CGRect(origin: itemNode.frame.origin, size: CGSize(width: contentWidth, height: itemLayout.size.height))
                     itemNode.isUserInteractionEnabled = false
                     apply(ListViewItemApply(isOnScreen: true))
                 })
@@ -352,12 +367,14 @@ private final class MessageShotScreenNode: ASDisplayNode {
 
         if self.options.showAvatar, let messageNodes = self.messageNodes {
             var avatarMessages: [(index: Int, message: EngineMessage)] = []
-            for index in self.messages.indices {
-                let message = self.messages[index]
+            for index in groupedMessages.indices {
+                guard let message = groupedMessages[index].first else {
+                    continue
+                }
                 guard message.author != nil else {
                     continue
                 }
-                let nextAuthorId = index + 1 < self.messages.count ? self.messages[index + 1].author?.id : nil
+                let nextAuthorId = index + 1 < groupedMessages.count ? groupedMessages[index + 1].first?.author?.id : nil
                 if message.author?.id != nextAuthorId {
                     avatarMessages.append((index, message))
                 }
@@ -402,7 +419,7 @@ private final class MessageShotScreenNode: ASDisplayNode {
                 let messageFrame = messageNodes[avatarMessage.index].frame
                 let avatarFrame = CGRect(
                     origin: CGPoint(x: 0.0, y: messageFrame.minY - 7.0),
-                    size: CGSize(width: width, height: avatarHeaderItem.height)
+                    size: CGSize(width: containerSize.width, height: avatarHeaderItem.height)
                 )
                 avatarHeaderNode.frame = avatarFrame
                 avatarHeaderNode.updateLayout(size: containerSize, leftInset: 0.0, rightInset: 0.0, transition: .immediate)
@@ -438,7 +455,7 @@ private final class MessageShotScreenNode: ASDisplayNode {
                 self.messagesContainerNode.addSubnode(dateHeaderNode)
                 self.dateHeaderNode = dateHeaderNode
             }
-            let headerFrame = CGRect(origin: CGPoint(x: 0.0, y: bottomOffset), size: CGSize(width: width, height: headerItem.height))
+            let headerFrame = CGRect(origin: CGPoint(x: 0.0, y: bottomOffset), size: CGSize(width: containerSize.width, height: headerItem.height))
             transition.updateFrame(node: dateHeaderNode, frame: headerFrame)
             dateHeaderNode.updateLayout(size: containerSize, leftInset: 0.0, rightInset: 0.0, transition: .immediate)
             maxY = max(maxY, headerFrame.maxY)

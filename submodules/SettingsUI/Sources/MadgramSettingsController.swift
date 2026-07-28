@@ -9,6 +9,78 @@ import TelegramPresentationData
 import TelegramUIPreferences
 import UIKit
 
+public enum MadgramDeepLinkRoute: String, CaseIterable {
+    case settings
+    case ghost
+    case filters
+    case archive
+    case interface
+    case powerSaving = "power-saving"
+    case premium
+    case messageShot = "message-shot"
+    case forwardWithoutAuthor = "forward-without-author"
+
+    fileprivate static func parse(_ url: URL) -> MadgramDeepLinkRoute? {
+        guard url.scheme?.lowercased() == "mad" else {
+            return nil
+        }
+
+        var components: [String] = []
+        if let host = url.host, !host.isEmpty {
+            components.append(host.lowercased())
+        }
+        components.append(contentsOf: url.pathComponents.filter { $0 != "/" }.map { $0.lowercased() })
+
+        if components.first == "settings" {
+            components.removeFirst()
+        }
+        guard let route = components.first else {
+            return .settings
+        }
+
+        switch route {
+        case "settings", "madgram":
+            return .settings
+        case "ghost", "ghost-mode":
+            return .ghost
+        case "filters", "message-filters":
+            return .filters
+        case "archive", "local-archive", "local-message-archive":
+            return .archive
+        case "interface", "tuning", "tabs", "profiles", "stories", "camera", "media", "privacy":
+            return .interface
+        case "power", "power-saving":
+            return .powerSaving
+        case "premium", "local-premium":
+            return .premium
+        case "message-shot", "messageshot":
+            return .messageShot
+        case "forward-without-author", "anonymous-forward":
+            return .forwardWithoutAuthor
+        default:
+            return nil
+        }
+    }
+}
+
+public func madgramControllerForDeepLink(context: AccountContext, url: URL) -> ViewController? {
+    guard let route = MadgramDeepLinkRoute.parse(url) else {
+        return nil
+    }
+    switch route {
+    case .ghost:
+        return ghostModeSettingsController(context: context)
+    case .filters:
+        return messageFilterSettingsController(context: context)
+    case .archive:
+        return localMessageArchiveSettingsController(context: context)
+    case .interface:
+        return interfaceTuningSettingsController(context: context)
+    case .settings, .powerSaving, .premium, .messageShot, .forwardWithoutAuthor:
+        return madgramSettingsController(context: context)
+    }
+}
+
 private final class MadgramControllerArguments {
     let openGhostMode: () -> Void
     let openMessageFilters: () -> Void
