@@ -17,6 +17,45 @@ private let dataAndPhoneNumberDetector = try? NSDataDetector(types: NSTextChecki
 private let phoneNumberDetector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType([.phoneNumber]).rawValue)
 private let madgramUrlDetector = try? NSRegularExpression(pattern: #"(?i)(?<![\p{L}\p{N}_])mad://[^\s<>"“”]*"#)
 
+private func appendMadgramUrlEntities(_ text: String, enabledTypes: EnabledEntityTypes, entities: inout [MessageTextEntity]) {
+    guard enabledTypes.contains(.allUrl) || enabledTypes.contains(.internalUrl), let madgramUrlDetector else {
+        return
+    }
+
+    let nsText = text as NSString
+    let trailingCharacters = CharacterSet(charactersIn: ".,;:!)]}")
+    madgramUrlDetector.enumerateMatches(in: text, range: NSRange(location: 0, length: nsText.length), using: { result, _, _ in
+        guard var range = result?.range else {
+            return
+        }
+        while range.length > 6 {
+            let finalRange = NSRange(location: NSMaxRange(range) - 1, length: 1)
+            let finalCharacter = nsText.substring(with: finalRange)
+            if finalCharacter.unicodeScalars.allSatisfy(trailingCharacters.contains) {
+                range.length -= 1
+            } else {
+                break
+            }
+        }
+
+        let entityRange = range.location ..< NSMaxRange(range)
+        let hasExistingUrl = entities.contains(where: { entity in
+            guard entity.range.overlaps(entityRange) else {
+                return false
+            }
+            switch entity.type {
+            case .Url, .TextUrl:
+                return true
+            default:
+                return false
+            }
+        })
+        if !hasExistingUrl {
+            entities.append(MessageTextEntity(range: entityRange, type: .Url))
+        }
+    })
+}
+
 private let validHashtagSet: CharacterSet = {
     var set = CharacterSet.alphanumerics
     set.insert("_")
@@ -321,39 +360,7 @@ public func generateTextEntities(_ text: String, enabledTypes: EnabledEntityType
         })
     }
 
-    if enabledTypes.contains(.allUrl) || enabledTypes.contains(.internalUrl), let madgramUrlDetector {
-        let nsText = text as NSString
-        let trailingCharacters = CharacterSet(charactersIn: ".,;:!)]}")
-        madgramUrlDetector.enumerateMatches(in: text, range: NSRange(location: 0, length: nsText.length), using: { result, _, _ in
-            guard var range = result?.range else {
-                return
-            }
-            while range.length > 6 {
-                let finalRange = NSRange(location: NSMaxRange(range) - 1, length: 1)
-                let finalCharacter = nsText.substring(with: finalRange)
-                if finalCharacter.unicodeScalars.allSatisfy(trailingCharacters.contains) {
-                    range.length -= 1
-                } else {
-                    break
-                }
-            }
-            let entityRange = range.location ..< NSMaxRange(range)
-            let hasExistingUrl = entities.contains(where: { entity in
-                guard entity.range.overlaps(entityRange) else {
-                    return false
-                }
-                switch entity.type {
-                case .Url, .TextUrl:
-                    return true
-                default:
-                    return false
-                }
-            })
-            if !hasExistingUrl {
-                entities.append(MessageTextEntity(range: entityRange, type: .Url))
-            }
-        })
-    }
+    appendMadgramUrlEntities(text, enabledTypes: enabledTypes, entities: &entities)
     
     var index = utf16.startIndex
     var currentEntity: (CurrentEntityType, Range<String.UTF16View.Index>)?
@@ -435,6 +442,7 @@ public func generateTextEntities(_ text: String, enabledTypes: EnabledEntityType
 
 public func addLocallyGeneratedEntities(_ text: String, enabledTypes: EnabledEntityTypes, entities: [MessageTextEntity], mediaDuration: Double? = nil) -> [MessageTextEntity]? {
     var resultEntities = entities
+    appendMadgramUrlEntities(text, enabledTypes: enabledTypes, entities: &resultEntities)
     
     var hasDigits = false
     var hasColons = false

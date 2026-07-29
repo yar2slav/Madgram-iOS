@@ -11,8 +11,6 @@ import AccountContext
 import WallpaperBackgroundNode
 import UndoUI
 
-public let messageShotMessageLimit: Int = 20
-
 public struct MessageShotOptions: Equatable {
     public var showWallpaper: Bool = true
     public var darkTheme: Bool = false
@@ -108,6 +106,8 @@ private final class MessageShotScreenNode: ASDisplayNode {
     private var options = MessageShotOptions()
 
     private let previewContainerNode: ASDisplayNode
+    private let previewScrollNode: ASScrollNode
+    private let previewContentNode: ASDisplayNode
     private let wallpaperBackgroundNode: WallpaperBackgroundNode
     private let messagesContainerNode: ASDisplayNode
     private var messageNodes: [ListViewItemNode]?
@@ -138,6 +138,17 @@ private final class MessageShotScreenNode: ASDisplayNode {
         self.previewContainerNode = ASDisplayNode()
         self.previewContainerNode.clipsToBounds = true
 
+        self.previewScrollNode = ASScrollNode()
+        self.previewScrollNode.view.alwaysBounceVertical = true
+        self.previewScrollNode.view.showsVerticalScrollIndicator = true
+        self.previewScrollNode.view.showsHorizontalScrollIndicator = false
+        self.previewScrollNode.view.scrollsToTop = false
+        if #available(iOS 11.0, *) {
+            self.previewScrollNode.view.contentInsetAdjustmentBehavior = .never
+        }
+
+        self.previewContentNode = ASDisplayNode()
+
         self.wallpaperBackgroundNode = createWallpaperBackgroundNode(context: context, forChatDisplay: false)
         self.wallpaperBackgroundNode.displaysAsynchronously = false
 
@@ -158,8 +169,10 @@ private final class MessageShotScreenNode: ASDisplayNode {
         self.panelSeparatorNode.backgroundColor = self.presentationData.theme.list.itemBlocksSeparatorColor
 
         self.addSubnode(self.previewContainerNode)
-        self.previewContainerNode.addSubnode(self.wallpaperBackgroundNode)
-        self.previewContainerNode.addSubnode(self.messagesContainerNode)
+        self.previewContainerNode.addSubnode(self.previewScrollNode)
+        self.previewScrollNode.addSubnode(self.previewContentNode)
+        self.previewContentNode.addSubnode(self.wallpaperBackgroundNode)
+        self.previewContentNode.addSubnode(self.messagesContainerNode)
         self.addSubnode(self.panelNode)
         self.addSubnode(self.panelSeparatorNode)
 
@@ -279,7 +292,7 @@ private final class MessageShotScreenNode: ASDisplayNode {
         return result
     }
 
-    private func updateMessagesLayout(layout: ContainerViewLayout, containerSize: CGSize, transition: ContainedViewLayoutTransition) {
+    private func updateMessagesLayout(layout: ContainerViewLayout, containerSize: CGSize, transition: ContainedViewLayoutTransition) -> CGFloat {
         let presentationData = self.effectivePresentationData
         let theme = presentationData.theme.withUpdated(preview: true)
         let groupedMessages = self.groupedMessages
@@ -312,8 +325,7 @@ private final class MessageShotScreenNode: ASDisplayNode {
             ))
         }
 
-        let leftInset: CGFloat = self.options.showAvatar ? 37.0 : 0.0
-        let contentWidth = max(1.0, containerSize.width - leftInset)
+        let contentWidth = containerSize.width
         let params = ListViewItemLayoutParams(width: contentWidth, leftInset: 0.0, rightInset: 0.0, availableHeight: layout.size.height)
 
         if let messageNodes = self.messageNodes {
@@ -356,9 +368,8 @@ private final class MessageShotScreenNode: ASDisplayNode {
         var maxY: CGFloat = 0.0
         if let messageNodes = self.messageNodes {
             for itemNode in messageNodes.reversed() {
-                let itemFrame = CGRect(origin: CGPoint(x: leftInset, y: bottomOffset), size: itemNode.frame.size)
+                let itemFrame = CGRect(origin: CGPoint(x: 0.0, y: bottomOffset), size: itemNode.frame.size)
                 transition.updateFrame(node: itemNode, frame: itemFrame)
-                itemNode.updateFrame(itemFrame, within: layout.size)
                 minY = min(minY, itemFrame.minY)
                 maxY = max(maxY, itemFrame.maxY)
                 bottomOffset += itemNode.frame.height
@@ -462,12 +473,21 @@ private final class MessageShotScreenNode: ASDisplayNode {
             bottomOffset += headerItem.height
         }
 
+        let contentHeight = max(containerSize.height, maxY + 10.0)
+        let contentSize = CGSize(width: containerSize.width, height: contentHeight)
+        if let messageNodes = self.messageNodes {
+            for itemNode in messageNodes {
+                itemNode.updateFrame(itemNode.frame, within: contentSize)
+            }
+        }
+
         if minY <= maxY {
             let height = maxY - minY
-            self.messagesBoundingFrame = CGRect(x: 0.0, y: containerSize.height - maxY, width: containerSize.width, height: height)
+            self.messagesBoundingFrame = CGRect(x: 0.0, y: contentHeight - maxY, width: containerSize.width, height: height)
         } else {
             self.messagesBoundingFrame = nil
         }
+        return contentHeight
     }
 
     private func updatePanel(layout: ContainerViewLayout, transition: ContainedViewLayoutTransition) -> CGFloat {
@@ -529,11 +549,21 @@ private final class MessageShotScreenNode: ASDisplayNode {
             size: CGSize(width: layout.size.width, height: max(1.0, panelFrame.minY - navigationBarHeight))
         )
         transition.updateFrame(node: self.previewContainerNode, frame: previewFrame)
-        self.wallpaperBackgroundNode.frame = CGRect(origin: CGPoint(), size: previewFrame.size)
-        self.wallpaperBackgroundNode.updateLayout(size: previewFrame.size, displayMode: .aspectFill, transition: transition)
-        self.messagesContainerNode.frame = CGRect(origin: CGPoint(), size: previewFrame.size)
+        transition.updateFrame(node: self.previewScrollNode, frame: CGRect(origin: CGPoint(), size: previewFrame.size))
 
-        self.updateMessagesLayout(layout: layout, containerSize: previewFrame.size, transition: transition)
+        let contentHeight = self.updateMessagesLayout(layout: layout, containerSize: previewFrame.size, transition: transition)
+        let contentSize = CGSize(width: previewFrame.width, height: contentHeight)
+        self.previewContentNode.frame = CGRect(origin: CGPoint(), size: contentSize)
+        self.previewScrollNode.view.contentSize = contentSize
+        self.wallpaperBackgroundNode.frame = CGRect(origin: CGPoint(), size: contentSize)
+        self.wallpaperBackgroundNode.updateLayout(size: contentSize, displayMode: .aspectFill, transition: transition)
+        self.messagesContainerNode.frame = CGRect(origin: CGPoint(), size: contentSize)
+
+        let maximumOffset = max(0.0, contentHeight - previewFrame.height)
+        let contentOffset = min(maximumOffset, max(0.0, self.previewScrollNode.view.contentOffset.y))
+        if self.previewScrollNode.view.contentOffset.y != contentOffset {
+            self.previewScrollNode.view.contentOffset = CGPoint(x: 0.0, y: contentOffset)
+        }
     }
 
     private func renderImage() -> UIImage? {
@@ -542,12 +572,17 @@ private final class MessageShotScreenNode: ASDisplayNode {
         }
         let padding: CGFloat = 8.0
         var cropFrame = boundingFrame.insetBy(dx: 0.0, dy: -padding)
-        cropFrame = cropFrame.intersection(CGRect(origin: CGPoint(), size: self.previewContainerNode.frame.size))
+        cropFrame = cropFrame.intersection(self.previewContentNode.bounds)
         guard cropFrame.width > 1.0, cropFrame.height > 1.0 else {
             return nil
         }
 
-        let scale: CGFloat = 3.0
+        let preferredScale: CGFloat = 3.0
+        let maximumPixelDimension: CGFloat = 16_384.0
+        let maximumPixelCount: CGFloat = 64_000_000.0
+        let dimensionScale = maximumPixelDimension / max(cropFrame.width, cropFrame.height)
+        let pixelCountScale = sqrt(maximumPixelCount / max(1.0, cropFrame.width * cropFrame.height))
+        let scale = max(0.1, min(preferredScale, min(dimensionScale, pixelCountScale)))
         UIGraphicsBeginImageContextWithOptions(cropFrame.size, false, scale)
         defer {
             UIGraphicsEndImageContext()
@@ -556,7 +591,7 @@ private final class MessageShotScreenNode: ASDisplayNode {
             return nil
         }
         context.translateBy(x: -cropFrame.minX, y: -cropFrame.minY)
-        self.previewContainerNode.view.drawHierarchy(in: CGRect(origin: CGPoint(), size: self.previewContainerNode.frame.size), afterScreenUpdates: true)
+        self.previewContentNode.view.drawHierarchy(in: self.previewContentNode.bounds, afterScreenUpdates: true)
         return UIGraphicsGetImageFromCurrentImageContext()
     }
 
@@ -615,7 +650,7 @@ public final class MessageShotScreen: ViewController {
 
     public init(context: AccountContext, messages: [EngineMessage], wallpaper: TelegramWallpaper) {
         self.context = context
-        self.messages = Array(messages.prefix(messageShotMessageLimit))
+        self.messages = messages
         self.wallpaper = wallpaper
         self.presentationData = context.sharedContext.currentPresentationData.with { $0 }
 
@@ -625,12 +660,6 @@ public final class MessageShotScreen: ViewController {
         self.navigationPresentation = .modal
         self.navigationItem.leftBarButtonItem = UIBarButtonItem(title: self.presentationData.strings.Common_Cancel, style: .plain, target: self, action: #selector(self.cancelPressed))
 
-        if messages.count > messageShotMessageLimit {
-            let text = self.presentationData.strings.localFeatures.messageShot.selectionLimit(messageShotMessageLimit)
-            Queue.mainQueue().after(0.3, { [weak self] in
-                self?.presentToast(text)
-            })
-        }
     }
 
     required public init(coder aDecoder: NSCoder) {

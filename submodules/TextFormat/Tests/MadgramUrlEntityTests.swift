@@ -47,4 +47,29 @@ final class MadgramUrlEntityTests: XCTestCase {
             return false
         }.isEmpty)
     }
+
+    func testMadgramLinkIsAddedToServerEntities() {
+        let text = "Open mad://ghost"
+        let serverEntity = MessageTextEntity(range: 0 ..< 4, type: .Bold)
+        guard let entities = addLocallyGeneratedEntities(text, enabledTypes: .all, entities: [serverEntity]) else {
+            return XCTFail("Expected a locally generated URL")
+        }
+        XCTAssertEqual(entities.count, 2)
+        XCTAssertTrue(entities.contains(where: { entity in
+            if case .Url = entity.type {
+                return String(decoding: Array(text.utf16)[entity.range], as: UTF16.self) == "mad://ghost"
+            }
+            return false
+        }))
+    }
+
+    func testMadgramLinkIsAddedWithoutServerEntities() {
+        let text = "mad://settings/interface"
+        guard let entities = addLocallyGeneratedEntities(text, enabledTypes: .allUrl, entities: []) else {
+            return XCTFail("Expected a locally generated URL")
+        }
+        XCTAssertEqual(entities, [
+            MessageTextEntity(range: 0 ..< text.utf16.count, type: .Url)
+        ])
+    }
 }

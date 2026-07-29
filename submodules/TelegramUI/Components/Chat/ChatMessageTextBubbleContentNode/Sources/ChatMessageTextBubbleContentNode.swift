@@ -511,6 +511,8 @@ public class ChatMessageTextBubbleContentNode: ChatMessageBubbleContentNode {
                             if !parsedEntities.isEmpty {
                                 entities = parsedEntities
                             }
+                        } else if let localEntities = addLocallyGeneratedEntities(rawText, enabledTypes: .allUrl, entities: []) {
+                            entities = localEntities
                         }
                     }
                     
