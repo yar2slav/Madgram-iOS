@@ -636,7 +636,7 @@ public class ChatMessageTextBubbleContentNode: ChatMessageBubbleContentNode {
                                 
                 var customTruncationToken: ((UIFont, Bool) -> NSAttributedString?)?
                 var maximumNumberOfLines: Int = 0
-                if item.presentationData.isPreview {
+                if item.presentationData.isPreview && !item.message.attributes.contains(where: { $0 is MessagePreviewForceIncomingAttribute }) {
                     if item.message.groupingKey != nil {
                         maximumNumberOfLines = 6
                     } else if let image = item.message.media.first(where: { $0 is TelegramMediaImage }) as? TelegramMediaImage, let dimensions = image.representations.first?.dimensions {

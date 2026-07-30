@@ -46,7 +46,33 @@ struct ChatTopVisibleMessageRange: Equatable {
     var isLoading: Bool
 }
 
-private let historyMessageCount: Int = 44
+private var historyMessageCount: Int {
+    return MessageFilterSettingsStore.shared.current.isActive ? 512 : 44
+}
+
+private extension ChatHistoryLocation {
+    func withMessageCount(_ count: Int) -> ChatHistoryLocation? {
+        switch self {
+        case let .Initial(currentCount):
+            guard currentCount != count else {
+                return nil
+            }
+            return .Initial(count: count)
+        case let .InitialSearch(subject, currentCount, highlight, setupReply):
+            guard currentCount != count else {
+                return nil
+            }
+            return .InitialSearch(subject: subject, count: count, highlight: highlight, setupReply: setupReply)
+        case let .Navigation(index, anchorIndex, currentCount, highlight):
+            guard currentCount != count else {
+                return nil
+            }
+            return .Navigation(index: index, anchorIndex: anchorIndex, count: count, highlight: highlight)
+        case .Scroll:
+            return nil
+        }
+    }
+}
 
 enum ChatHistoryViewScrollPosition {
     case unread(index: MessageIndex)
@@ -1948,6 +1974,11 @@ public final class ChatHistoryListNodeImpl: ASDisplayNode, ChatHistoryNode, Chat
         ) |> debug_measureTimeToFirstEvent(label: "chatHistoryNode_firstChatHistoryTransition")).startStrict(next: { [weak self] update, chatPresentationData, selectedMessages, updatingMedia, networkType, preferredStoryHighQuality, animatedEmojiStickers, additionalAnimatedEmojiStickers, customChannelDiscussionReadState, customThreadOutgoingReadState, availableReactions, availableMessageEffects, savedMessageTags, defaultReaction, accountPeer, accountCountry, suggestAudioTranscription, promises, topicAuthorId, translationState, maxReadStoryId, recommendedChannels, audioTranscriptionTrial, chatThemes, deviceContactsNumbers, contentSettingsAndMessageFilter in
             let (contentSettings, messageFilterSettings, deletedMessageArchiveSettings) = contentSettingsAndMessageFilter
             let (historyAppearsCleared, pendingUnpinnedAllMessages, pendingRemovedMessages, currentlyPlayingMessageIdAndType, scrollToMessageId, chatHasBots, allAdMessages) = promises
+
+            if messageFilterSettings.isActive, let strongSelf = self, let location = update.2, let expandedLocation = location.content.withMessageCount(historyMessageCount) {
+                strongSelf.chatHistoryLocationValue = ChatHistoryLocationInput(content: expandedLocation, id: strongSelf.takeNextHistoryLocationId())
+                return
+            }
             
             if measure_isFirstTime {
                 measure_isFirstTime = false

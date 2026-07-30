@@ -257,7 +257,10 @@ private final class MessageShotScreenNode: ASDisplayNode {
             attributes = attributes.filter { !($0 is ReactionsMessageAttribute) }
         }
         if self.options.revealSpoilers {
-            attributes = attributes.map { attribute in
+            attributes = attributes.compactMap { attribute in
+                if attribute is MediaSpoilerMessageAttribute {
+                    return nil
+                }
                 if let entities = attribute as? TextEntitiesMessageAttribute {
                     return TextEntitiesMessageAttribute(entities: entities.entities.filter { entity in
                         if case .Spoiler = entity.type {
@@ -326,7 +329,7 @@ private final class MessageShotScreenNode: ASDisplayNode {
         }
 
         let contentWidth = containerSize.width
-        let params = ListViewItemLayoutParams(width: contentWidth, leftInset: 0.0, rightInset: 0.0, availableHeight: layout.size.height)
+        let params = ListViewItemLayoutParams(width: contentWidth, leftInset: self.options.showAvatar ? 37.0 : 0.0, rightInset: 0.0, availableHeight: layout.size.height)
 
         if let messageNodes = self.messageNodes {
             for i in 0 ..< items.count {
