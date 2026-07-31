@@ -82,6 +82,12 @@ bool_flag(
 )
 
 bool_flag(
+    name = "disableAppGroups",
+    build_setting_default = False,
+    visibility = ["//visibility:public"],
+)
+
+bool_flag(
     name = "projectIncludeRelease",
     build_setting_default = False,
     visibility = ["//visibility:public"],
@@ -98,6 +104,13 @@ config_setting(
     name = "disableProvisioningProfilesSetting",
     flag_values = {
         ":disableProvisioningProfiles": "True",
+    },
+)
+
+config_setting(
+    name = "disableAppGroupsSetting",
+    flag_values = {
+        ":disableAppGroups": "True",
     },
 )
 
@@ -550,6 +563,12 @@ app_groups_fragment = """
     <array>
         <string>group.{telegram_bundle_id}</string>
     </array>
+""".format(
+    telegram_bundle_id=telegram_bundle_id
+)
+
+# Required by every signed build, so it is kept apart from the optional app groups above.
+application_identifier_fragment = """
     <key>application-identifier</key>
     <string>{telegram_team_id}.{telegram_bundle_id}</string>
 """.format(
@@ -583,12 +602,8 @@ official_background_gpu_fragment = """
 """
 background_gpu_fragment = official_background_gpu_fragment if telegram_bundle_id == "ph.telegra.Telegraph" else ""
 
-plist_fragment(
-    name = "TelegramEntitlements",
-    extension = "entitlements",
-    template = "".join([
+telegram_entitlements_common = [
         aps_fragment,
-        app_groups_fragment,
         siri_fragment,
         associated_domains_fragment,
         icloud_fragment,
@@ -599,7 +614,15 @@ plist_fragment(
         notification_filtering_fragment,
         signin_fragment,
         background_gpu_fragment,
-    ])
+]
+
+plist_fragment(
+    name = "TelegramEntitlements",
+    extension = "entitlements",
+    template = select({
+        ":disableAppGroupsSetting": "".join([application_identifier_fragment] + telegram_entitlements_common),
+        "//conditions:default": "".join([app_groups_fragment, application_identifier_fragment] + telegram_entitlements_common),
+    }),
 )
 
 genrule(

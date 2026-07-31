@@ -281,6 +281,15 @@ public struct EnergyUsageSettings: Codable, Equatable {
         
         let isCapable = cpuCount >= 4
         
+        // Everything visible stays on — autoplay, looping stickers and emoji, blur.
+        //
+        // extendBackgroundWork must stay on: without it the app never asks iOS for extra background
+        // time, so it is suspended moments after leaving the foreground and the connection dies.
+        // Messages that arrive while it sleeps then only show up after the app is reopened, which
+        // stock Telegram does not do.
+        //
+        // autodownloadInBackground stays off — it only pre-fetches media, so its cost is battery and
+        // traffic rather than a broken connection.
         return EnergyUsageSettings(
             activationThreshold: 15,
             autoplayVideo: true,
@@ -288,7 +297,7 @@ public struct EnergyUsageSettings: Codable, Equatable {
             loopStickers: true,
             loopEmoji: isCapable,
             fullTranslucency: isCapable,
-            extendBackgroundWork: false,
+            extendBackgroundWork: true,
             autodownloadInBackground: false
         )
     }()
