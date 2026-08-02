@@ -1,4 +1,5 @@
 import Foundation
+import Postbox
 import UIKit
 import Display
 import AsyncDisplayKit
@@ -15,6 +16,7 @@ import BundleIconComponent
 import ContextUI
 import SwiftSignalKit
 import LegacyChatHeaderPanelComponent
+import TelegramUIPreferences
 
 private final class ChatManagingBotTitlePanelComponent: Component {
     let context: AccountContext
@@ -293,6 +295,19 @@ final class ChatManagingBotTitlePanelNode: ChatTitleAccessoryPanelNode {
         let strings = self.context.sharedContext.currentPresentationData.with { $0 }.strings
         
         var items: [ContextMenuItem] = []
+
+        items.append(.action(ContextMenuActionItem(text: strings.localFeatures.interfaceTuning.businessBotPanelHideInChat, icon: { theme in
+            return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Hide"), color: theme.contextMenu.primaryColor)
+        }, action: { _, a in
+            a(.dismissWithoutContent)
+            Queue.mainQueue().after(0.1) {
+                InterfaceTuningSettingsStore.shared.update { current in
+                    var current = current
+                    current.businessBotPanelVisibilityOverrides[chatPeerId.toInt64()] = false
+                    return current
+                }
+            }
+        })))
         
         items.append(.action(ContextMenuActionItem(text: strings.Chat_BusinessBotPanel_Menu_RemoveBot, textColor: .destructive, icon: { theme in
             return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Clear"), color: theme.contextMenu.destructiveColor)

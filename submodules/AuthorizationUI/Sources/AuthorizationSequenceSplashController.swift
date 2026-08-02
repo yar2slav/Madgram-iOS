@@ -219,8 +219,6 @@ public final class AuthorizationSequenceSplashController: ViewController {
                 return
             }
             
-            strongSelf.controller.isEnabled = false
-            strongSelf.startButton.alpha = 0.6
             let accountManager = strongSelf.accountManager
             
             strongSelf.activateLocalizationDisposable.set(TelegramEngineUnauthorized(account: strongSelf.account).localization.downloadAndApplyLocalization(accountManager: accountManager, languageCode: code).start(completed: {
@@ -240,8 +238,6 @@ public final class AuthorizationSequenceSplashController: ViewController {
                     return stringsValue
                 }
                 |> deliverOnMainQueue).start(next: { strings in
-                    self?.controller.isEnabled = true
-                    self?.startButton.alpha = 1.0
                     if let strings {
                         self?.localizationChanged?(strings)
                     }

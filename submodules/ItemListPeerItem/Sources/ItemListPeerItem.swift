@@ -1046,7 +1046,12 @@ public class ItemListPeerItemNode: ItemListRevealOptionsItemNode, ItemListItemNo
             var additionalLeftInset: CGFloat = 0.0
             var leftInset: CGFloat = params.leftInset
             var rightInset: CGFloat = params.rightInset
-            var switchSize = CGSize(width: 51.0, height: 31.0)
+            let switchSize: CGSize
+            if #available(iOS 26.0, *) {
+                switchSize = CGSize(width: 63.0, height: 28.0)
+            } else {
+                switchSize = CGSize(width: 51.0, height: 31.0)
+            }
             var checkImage: UIImage?
             
             if let switchValue = item.switchValue {
@@ -1073,13 +1078,6 @@ public class ItemListPeerItemNode: ItemListRevealOptionsItemNode, ItemListItemNo
             } else {
                 currentSwitchNode = nil
                 currentCheckNode = nil
-            }
-            
-            if let currentSwitchNode, let switchView = currentSwitchNode.view as? UISwitch {
-                if currentSwitchNode.bounds.size.width.isZero {
-                    switchView.sizeToFit()
-                }
-                switchSize = switchView.bounds.size
             }
             
             let titleColor: UIColor
@@ -1625,7 +1623,7 @@ public class ItemListPeerItemNode: ItemListRevealOptionsItemNode, ItemListItemNo
                                 }
                             }
                         }
-                        currentSwitchNode.frame = CGRect(origin: CGPoint(x: revealOffset + params.width - switchSize.width - 15.0, y: floor((contentSize.height - switchSize.height) / 2.0)), size: switchSize)
+                        currentSwitchNode.frame = CGRect(origin: CGPoint(x: revealOffset + params.width - params.rightInset - switchSize.width - 15.0, y: floor((contentSize.height - switchSize.height) / 2.0)), size: switchSize)
                         if let switchValue = item.switchValue {
                             currentSwitchNode.setOn(switchValue.value, animated: animated)
                         }

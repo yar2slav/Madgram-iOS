@@ -674,6 +674,7 @@ private final class SparseItemGridBindingImpl: SparseItemGridBinding, ListShimme
     let chatControllerInteraction: ChatControllerInteraction
     var chatPresentationData: ChatPresentationData
     var checkNodeTheme: CheckNodeTheme
+    var revealSpoilers: Bool = false
 
     var loadHoleImpl: ((SparseItemGrid.HoleAnchor, SparseItemGrid.HoleLocation) -> Signal<Never, NoError>)?
     var onTapImpl: ((VisualMediaItem) -> Void)?
@@ -853,6 +854,50 @@ private final class SparseItemGridBindingImpl: SparseItemGridBinding, ListShimme
         return (list.map(\.0), list.map(\.1))
     }()
 
+    private func hasSpoiler(message: Message) -> Bool {
+        if self.revealSpoilers {
+            return false
+        }
+        if message.isSensitiveContent(platform: "ios") {
+            return true
+        }
+        return message.attributes.contains(where: { $0 is MediaSpoilerMessageAttribute }) && !self.revealedSpoilerMessageIds.contains(message.id)
+    }
+
+    func updateSpoilerState(item: VisualMediaItem, layer: ItemLayer) {
+        let hasSpoiler = self.hasSpoiler(message: item.message)
+        layer.updateHasSpoiler(hasSpoiler: hasSpoiler)
+        guard hasSpoiler else {
+            return
+        }
+
+        var imageWidthSpec: Int = SparseItemGridBindingImpl.widthSpecs.1[0]
+        for i in 0 ..< SparseItemGridBindingImpl.widthSpecs.0.count {
+            if Int(layer.bounds.width) <= SparseItemGridBindingImpl.widthSpecs.0[i] {
+                imageWidthSpec = SparseItemGridBindingImpl.widthSpecs.1[i]
+                break
+            }
+        }
+
+        var selectedMedia: Media?
+        for media in item.message.effectiveMedia {
+            if let image = media as? TelegramMediaImage {
+                selectedMedia = image
+                break
+            } else if let file = media as? TelegramMediaFile {
+                if let cover = file.videoCover {
+                    selectedMedia = cover
+                } else {
+                    selectedMedia = file
+                }
+                break
+            }
+        }
+        if let selectedMedia, let result = self.directMediaImageCache.getImage(message: item.message, media: selectedMedia, width: imageWidthSpec, possibleWidths: SparseItemGridBindingImpl.widthSpecs.1, includeBlurred: true, synchronous: true), let blurredImage = result.blurredImage {
+            layer.setSpoilerContents(blurredImage)
+        }
+    }
+
     func bindLayers(items: [SparseItemGrid.Item], layers: [SparseItemGridDisplayItem], size: CGSize, insets: UIEdgeInsets, synchronous: SparseItemGrid.Synchronous) {
         for i in 0 ..< items.count {
             guard let item = items[i] as? VisualMediaItem else {
@@ -892,10 +937,7 @@ private final class SparseItemGridBindingImpl: SparseItemGridBinding, ListShimme
                 }
 
                 let message = item.message
-                var hasSpoiler = message.attributes.contains(where: { $0 is MediaSpoilerMessageAttribute }) && !self.revealedSpoilerMessageIds.contains(message.id)
-                if message.isSensitiveContent(platform: "ios") {
-                    hasSpoiler = true
-                }
+                let hasSpoiler = self.hasSpoiler(message: message)
                 layer.updateHasSpoiler(hasSpoiler: hasSpoiler)
                 
                 var selectedMedia: Media?
@@ -1769,6 +1811,24 @@ public final class PeerInfoVisualMediaPaneNode: ASDisplayNode, PeerInfoPaneNode,
         self.listSource = self.context.engine.messages.sparseMessageList(peerId: self.peerId, threadId: threadId, tag: tagMaskForType(self.contentType))
         self.isRequestingView = false
         self.requestHistoryAroundVisiblePosition(synchronous: true, reloadAtTop: true)
+    }
+
+    public var revealSpoilers: Bool {
+        return self.itemGridBinding.revealSpoilers
+    }
+
+    public func updateRevealSpoilers(_ revealSpoilers: Bool) {
+        if self.itemGridBinding.revealSpoilers == revealSpoilers {
+            return
+        }
+        self.itemGridBinding.revealSpoilers = revealSpoilers
+
+        self.itemGrid.forEachVisibleItem { item in
+            guard let itemLayer = item.layer as? ItemLayer, let item = itemLayer.item else {
+                return
+            }
+            self.itemGridBinding.updateSpoilerState(item: item, layer: itemLayer)
+        }
     }
 
     public func updateZoomLevel(level: ZoomLevel) {

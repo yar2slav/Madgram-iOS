@@ -302,6 +302,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
     var secondaryRightNavigationButton: ChatNavigationButton?
     var ghostModeReadButtonItem: UIBarButtonItem?
     let ghostModeSettingsDisposable = MetaDisposable()
+    let interfaceTuningSettingsDisposable = MetaDisposable()
     var chatInfoNavigationButton: ChatNavigationButton?
     
     var moreBarButton: MoreHeaderButton
@@ -6362,6 +6363,14 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
                 }
                 self.updateRightNavigationButtons(presentationInterfaceState: self.presentationInterfaceState, transition: .animated(duration: 0.2, curve: .easeInOut))
             }))
+
+            self.interfaceTuningSettingsDisposable.set((interfaceTuningSettingsSignal()
+            |> deliverOnMainQueue).start(next: { [weak self] _ in
+                guard let self else {
+                    return
+                }
+                self.updateChatPresentationInterfaceState(transition: .animated(duration: 0.25, curve: .easeInOut), interactive: false, force: true, { $0 })
+            }))
         }
         
         self.navigationItem.titleView = self.chatTitleView
@@ -7003,6 +7012,7 @@ public final class ChatControllerImpl: TelegramBaseController, ChatController, G
         }
 
         self.historyStateDisposable?.dispose()
+        self.interfaceTuningSettingsDisposable.dispose()
         self.messageIndexDisposable.dispose()
         self.navigationActionDisposable.dispose()
         self.galleryHiddenMesageAndMediaDisposable.dispose()

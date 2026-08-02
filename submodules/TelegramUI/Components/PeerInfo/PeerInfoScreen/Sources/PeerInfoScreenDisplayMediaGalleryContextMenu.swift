@@ -406,6 +406,26 @@ extension PeerInfoScreenNode {
                         pane.updateContentType(contentType: updatedContentType)
                     })))
                 }
+
+                switch pane.contentType {
+                case .photoOrVideo, .photo, .video:
+                    if photoCount == 0 || videoCount == 0 {
+                        items.append(.separator)
+                    }
+
+                    let revealSpoilers = pane.revealSpoilers
+                    items.append(.action(ContextMenuActionItem(text: strings.localFeatures.messageShot.revealSpoilers, icon: { theme in
+                        if !revealSpoilers {
+                            return UIImage()
+                        }
+                        return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Check"), color: theme.contextMenu.primaryColor)
+                    }, action: { [weak pane] _, a in
+                        a(.default)
+                        pane?.updateRevealSpoilers(!revealSpoilers)
+                    })))
+                default:
+                    break
+                }
                 
                 var sourceView: UIView = source.view
                 if sourceView.isDescendant(of: strongSelf.headerNode.navigationButtonContainer.rightButtonsBackground) {

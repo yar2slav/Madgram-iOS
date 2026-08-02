@@ -92,7 +92,7 @@ public func attributedString(from content: ChatInputContent) -> NSAttributedStri
                 ]))
             } else {
                 let start = result.length
-                result.append(NSAttributedString(string: bq.content.plainText))
+                result.append(attributedString(from: bq.content))
                 let len = result.length - start
                 if len > 0 {
                     result.addAttribute(ChatTextInputAttributes.block,

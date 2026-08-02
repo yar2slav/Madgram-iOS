@@ -2754,7 +2754,19 @@ public final class ChatListNode: ListViewImpl {
         let engine = context.engine
         let previousPeerCache = Atomic<[EnginePeer.Id: EnginePeer]>(value: [:])
         let previousActivities = Atomic<ChatListNodePeerInputActivities?>(value: nil)
-        self.activityStatusesDisposable = (context.account.allPeerInputActivities()
+        self.activityStatusesDisposable = (combineLatest(
+            context.account.allPeerInputActivities(),
+            messageFilterSettingsSignal()
+        )
+        |> map { activitiesByPeerId, filterSettings in
+            var activitiesByPeerId = activitiesByPeerId
+            for key in activitiesByPeerId.keys {
+                activitiesByPeerId[key]?.removeAll(where: { peerId, _ in
+                    return filterSettings.hidesMessages(fromAuthorId: peerId.toInt64())
+                })
+            }
+            return activitiesByPeerId
+        }
         |> mapToSignal { activitiesByPeerId -> Signal<[ChatListNodePeerInputActivities.ItemId: [(EnginePeer, PeerInputActivity)]], NoError> in
             var activitiesByPeerId = activitiesByPeerId
             for key in activitiesByPeerId.keys {

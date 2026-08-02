@@ -22,6 +22,88 @@ public struct InterfaceTuningSettings: Codable, Equatable {
     public var startRoundVideoWithRearCamera: Bool
     public var hideGalleryCamera: Bool?
     public var hidePhoneInSettings: Bool
+    public var hideBusinessBotPanel: Bool
+    public var businessBotPanelVisibilityOverrides: [Int64: Bool]
+
+    public init(
+        concealBottomBar: Bool,
+        showContactsShortcut: Bool,
+        showCallsShortcut: Bool,
+        showTabLabels: Bool,
+        showSearchShortcut: Bool,
+        stretchBottomBar: Bool,
+        showProfileIdentifiers: Bool,
+        showDataCenter: Bool,
+        showRegistrationDate: Bool,
+        showChatCreationDate: Bool,
+        hideStoryStrip: Bool,
+        disableStoryCameraSwipe: Bool,
+        confirmStoryOpen: Bool,
+        allowStoryRepost: Bool,
+        startRoundVideoWithRearCamera: Bool,
+        hideGalleryCamera: Bool?,
+        hidePhoneInSettings: Bool,
+        hideBusinessBotPanel: Bool = false,
+        businessBotPanelVisibilityOverrides: [Int64: Bool] = [:]
+    ) {
+        self.concealBottomBar = concealBottomBar
+        self.showContactsShortcut = showContactsShortcut
+        self.showCallsShortcut = showCallsShortcut
+        self.showTabLabels = showTabLabels
+        self.showSearchShortcut = showSearchShortcut
+        self.stretchBottomBar = stretchBottomBar
+        self.showProfileIdentifiers = showProfileIdentifiers
+        self.showDataCenter = showDataCenter
+        self.showRegistrationDate = showRegistrationDate
+        self.showChatCreationDate = showChatCreationDate
+        self.hideStoryStrip = hideStoryStrip
+        self.disableStoryCameraSwipe = disableStoryCameraSwipe
+        self.confirmStoryOpen = confirmStoryOpen
+        self.allowStoryRepost = allowStoryRepost
+        self.startRoundVideoWithRearCamera = startRoundVideoWithRearCamera
+        self.hideGalleryCamera = hideGalleryCamera
+        self.hidePhoneInSettings = hidePhoneInSettings
+        self.hideBusinessBotPanel = hideBusinessBotPanel
+        self.businessBotPanelVisibilityOverrides = businessBotPanelVisibilityOverrides
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case concealBottomBar, showContactsShortcut, showCallsShortcut, showTabLabels, showSearchShortcut, stretchBottomBar
+        case showProfileIdentifiers, showDataCenter, showRegistrationDate, showChatCreationDate
+        case hideStoryStrip, disableStoryCameraSwipe, confirmStoryOpen, allowStoryRepost
+        case startRoundVideoWithRearCamera, hideGalleryCamera, hidePhoneInSettings
+        case hideBusinessBotPanel, businessBotPanelVisibilityOverrides
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.concealBottomBar = try container.decodeIfPresent(Bool.self, forKey: .concealBottomBar) ?? false
+        self.showContactsShortcut = try container.decodeIfPresent(Bool.self, forKey: .showContactsShortcut) ?? true
+        self.showCallsShortcut = try container.decodeIfPresent(Bool.self, forKey: .showCallsShortcut) ?? true
+        self.showTabLabels = try container.decodeIfPresent(Bool.self, forKey: .showTabLabels) ?? true
+        self.showSearchShortcut = try container.decodeIfPresent(Bool.self, forKey: .showSearchShortcut) ?? true
+        self.stretchBottomBar = try container.decodeIfPresent(Bool.self, forKey: .stretchBottomBar) ?? false
+        self.showProfileIdentifiers = try container.decodeIfPresent(Bool.self, forKey: .showProfileIdentifiers) ?? false
+        self.showDataCenter = try container.decodeIfPresent(Bool.self, forKey: .showDataCenter) ?? false
+        self.showRegistrationDate = try container.decodeIfPresent(Bool.self, forKey: .showRegistrationDate) ?? false
+        self.showChatCreationDate = try container.decodeIfPresent(Bool.self, forKey: .showChatCreationDate) ?? false
+        self.hideStoryStrip = try container.decodeIfPresent(Bool.self, forKey: .hideStoryStrip) ?? false
+        self.disableStoryCameraSwipe = try container.decodeIfPresent(Bool.self, forKey: .disableStoryCameraSwipe) ?? false
+        self.confirmStoryOpen = try container.decodeIfPresent(Bool.self, forKey: .confirmStoryOpen) ?? false
+        self.allowStoryRepost = try container.decodeIfPresent(Bool.self, forKey: .allowStoryRepost) ?? true
+        self.startRoundVideoWithRearCamera = try container.decodeIfPresent(Bool.self, forKey: .startRoundVideoWithRearCamera) ?? false
+        self.hideGalleryCamera = try container.decodeIfPresent(Bool.self, forKey: .hideGalleryCamera) ?? false
+        self.hidePhoneInSettings = try container.decodeIfPresent(Bool.self, forKey: .hidePhoneInSettings) ?? false
+        self.hideBusinessBotPanel = try container.decodeIfPresent(Bool.self, forKey: .hideBusinessBotPanel) ?? false
+        self.businessBotPanelVisibilityOverrides = try container.decodeIfPresent([Int64: Bool].self, forKey: .businessBotPanelVisibilityOverrides) ?? [:]
+    }
+
+    public func isBusinessBotPanelVisible(peerId: Int64) -> Bool {
+        if let value = self.businessBotPanelVisibilityOverrides[peerId] {
+            return value
+        }
+        return !self.hideBusinessBotPanel
+    }
 
     public static let defaultSettings = InterfaceTuningSettings(
         concealBottomBar: false,
@@ -40,7 +122,9 @@ public struct InterfaceTuningSettings: Codable, Equatable {
         allowStoryRepost: true,
         startRoundVideoWithRearCamera: false,
         hideGalleryCamera: false,
-        hidePhoneInSettings: false
+        hidePhoneInSettings: false,
+        hideBusinessBotPanel: false,
+        businessBotPanelVisibilityOverrides: [:]
     )
 }
 

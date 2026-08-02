@@ -88,6 +88,38 @@ import ChatListHeaderComponent
 import ChatControllerInteraction
 import FeaturedStickersScreen
 import ChatEntityKeyboardInputNode
+
+private func enqueueMessageForMixedForward(_ message: EngineRawMessage, threadId: Int64?) -> EnqueueMessage {
+    if message.id.namespace != Namespaces.Message.Archived {
+        return .forward(source: message.id, threadId: threadId, grouping: .auto, attributes: [], correlationId: nil)
+    }
+
+    var mediaReference: AnyMediaReference?
+    for media in message.effectiveMedia {
+        if let image = media as? TelegramMediaImage {
+            mediaReference = ImageMediaReference.standalone(media: image).abstract
+            break
+        } else if let file = media as? TelegramMediaFile {
+            mediaReference = FileMediaReference.standalone(media: file).abstract
+            break
+        }
+    }
+    let attributes: [MessageAttribute] = message.attributes.compactMap { attribute in
+        return attribute is TextEntitiesMessageAttribute ? attribute : nil
+    }
+    return .message(
+        text: message.text,
+        attributes: attributes,
+        inlineStickers: [:],
+        mediaReference: mediaReference,
+        threadId: threadId,
+        replyToMessageId: nil,
+        replyToStoryId: nil,
+        localGroupingKey: nil,
+        correlationId: nil,
+        bubbleUpEmojiOrStickersets: []
+    )
+}
 import StorageUsageScreen
 import AvatarEditorScreen
 import ChatScheduleTimeController
@@ -1848,18 +1880,27 @@ extension ChatControllerImpl {
         }, deleteSelectedMessages: { [weak self] sourceView in
             if let strongSelf = self {
                 if let messageIds = strongSelf.presentationInterfaceState.interfaceState.selectionState?.selectedIds, !messageIds.isEmpty {
-                    strongSelf.messageContextDisposable.set((strongSelf.context.sharedContext.chatAvailableMessageActions(engine: strongSelf.context.engine, accountPeerId: strongSelf.context.account.peerId, messageIds: messageIds, keepUpdated: false)
+                    let archivedIds = messageIds.filter { $0.namespace == Namespaces.Message.Archived }
+                    let serverIds = messageIds.subtracting(archivedIds)
+                    for id in archivedIds {
+                        let _ = strongSelf.context.engine.messages.deleteArchivedMessage(id: id).startStandalone()
+                    }
+                    if serverIds.isEmpty {
+                        strongSelf.updateChatPresentationInterfaceState(animated: true, interactive: true, { $0.updatedInterfaceState { $0.withoutSelectionState() } })
+                        return
+                    }
+                    strongSelf.messageContextDisposable.set((strongSelf.context.sharedContext.chatAvailableMessageActions(engine: strongSelf.context.engine, accountPeerId: strongSelf.context.account.peerId, messageIds: serverIds, keepUpdated: false)
                     |> deliverOnMainQueue).startStrict(next: { actions in
                         if let strongSelf = self, !actions.options.isEmpty {
                             if let banAuthor = actions.banAuthor {
-                                strongSelf.presentBanMessageOptions(accountPeerId: strongSelf.context.account.peerId, author: banAuthor, messageIds: messageIds, options: actions.options)
+                                strongSelf.presentBanMessageOptions(accountPeerId: strongSelf.context.account.peerId, author: banAuthor, messageIds: serverIds, options: actions.options)
                             } else if !actions.banAuthors.isEmpty {
-                                strongSelf.presentMultiBanMessageOptions(accountPeerId: strongSelf.context.account.peerId, authors: actions.banAuthors, messageIds: messageIds, options: actions.options)
+                                strongSelf.presentMultiBanMessageOptions(accountPeerId: strongSelf.context.account.peerId, authors: actions.banAuthors, messageIds: serverIds, options: actions.options)
                             } else {
                                 if actions.options.intersection([.deleteLocally, .deleteGlobally]).isEmpty {
                                     strongSelf.presentClearCacheSuggestion()
                                 } else {
-                                    strongSelf.presentDeleteMessageOptions(messageIds: messageIds, options: actions.options, contextController: nil, sourceView: sourceView, completion: { _ in })
+                                    strongSelf.presentDeleteMessageOptions(messageIds: serverIds, options: actions.options, contextController: nil, sourceView: sourceView, completion: { _ in })
                                 }
                             }
                         }
@@ -1868,6 +1909,10 @@ extension ChatControllerImpl {
             }
         }, reportSelectedMessages: { [weak self] in
             if let strongSelf = self, let messageIds = strongSelf.presentationInterfaceState.interfaceState.selectionState?.selectedIds, !messageIds.isEmpty {
+                let messageIds = Set(messageIds.filter { $0.namespace != Namespaces.Message.Archived })
+                guard !messageIds.isEmpty else {
+                    return
+                }
                 if let reportReason = strongSelf.presentationInterfaceState.reportReason {
                     let presentationData = strongSelf.presentationData
                     strongSelf.updateChatPresentationInterfaceState(animated: true, interactive: true, { $0.updatedInterfaceState { $0.withoutSelectionState() } }, completion: { _ in
@@ -2066,7 +2111,37 @@ extension ChatControllerImpl {
                 strongSelf.commitPurposefulAction()
                 if let forwardMessageIdsSet = strongSelf.presentationInterfaceState.interfaceState.selectionState?.selectedIds {
                     let forwardMessageIds = Array(forwardMessageIdsSet).sorted()
-                    strongSelf.forwardMessages(messageIds: forwardMessageIds)
+                    if forwardMessageIds.contains(where: { $0.namespace == Namespaces.Message.Archived }) {
+                        let _ = (strongSelf.context.engine.data.get(EngineDataMap(forwardMessageIds.map { TelegramEngine.EngineData.Item.Messages.Message(id: $0) }))
+                        |> deliverOnMainQueue).startStandalone(next: { [weak strongSelf] messageMap in
+                            guard let strongSelf else {
+                                return
+                            }
+                            let messages: [EngineRawMessage] = forwardMessageIds.compactMap { id in
+                                guard let maybeMessage = messageMap[id], let message = maybeMessage else {
+                                    return nil
+                                }
+                                return message._asMessage()
+                            }
+                            guard !messages.isEmpty else {
+                                return
+                            }
+                            let controller = strongSelf.context.sharedContext.makePeerSelectionController(PeerSelectionControllerParams(
+                                context: strongSelf.context,
+                                filter: [.onlyWriteable, .excludeDisabled, .doNotSearchMessages],
+                                hasFilters: true,
+                                selectForumThreads: true
+                            ))
+                            controller.peerSelected = { [weak controller] peer, threadId in
+                                let outgoingMessages = messages.map { enqueueMessageForMixedForward($0, threadId: threadId) }
+                                let _ = enqueueMessages(account: strongSelf.context.account, peerId: peer.id, messages: outgoingMessages).startStandalone()
+                                controller?.dismiss()
+                            }
+                            strongSelf.push(controller)
+                        })
+                    } else {
+                        strongSelf.forwardMessages(messageIds: forwardMessageIds)
+                    }
                 }
             }
         }, forwardCurrentForwardMessages: { [weak self] in
@@ -5149,7 +5224,15 @@ extension ChatControllerImpl {
                 
                 if let activitySpace = activitySpace, let peerId = peerId {
                     self.peerInputActivitiesDisposable?.dispose()
-                    self.peerInputActivitiesDisposable = (self.context.account.peerInputActivities(peerId: activitySpace)
+                    self.peerInputActivitiesDisposable = (combineLatest(
+                        self.context.account.peerInputActivities(peerId: activitySpace),
+                        messageFilterSettingsSignal()
+                    )
+                    |> map { activities, filterSettings in
+                        return activities.filter { activityPeerId, _ in
+                            return !filterSettings.hidesMessages(fromAuthorId: activityPeerId.toInt64())
+                        }
+                    }
                     |> mapToSignal { activities -> Signal<[(EnginePeer, PeerInputActivity)], NoError> in
                         var foundAllPeers = true
                         var cachedResult: [(EnginePeer, PeerInputActivity)] = []

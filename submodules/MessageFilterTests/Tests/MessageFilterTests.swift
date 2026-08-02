@@ -71,4 +71,46 @@ final class MessageFilterTests: XCTestCase {
         XCTAssertEqual(activeSettings.paginationAnchor(visible: 20, unfiltered: 10), 10)
         XCTAssertEqual(activeSettings.paginationAnchor(visible: 20, unfiltered: nil), 20)
     }
+
+    func testLegacyInterfaceTuningSettingsUseVisibleBusinessPanels() throws {
+        let legacy = """
+        {
+          "concealBottomBar": false,
+          "showContactsShortcut": true,
+          "showCallsShortcut": true,
+          "showTabLabels": true,
+          "showSearchShortcut": true,
+          "stretchBottomBar": false,
+          "showProfileIdentifiers": false,
+          "showDataCenter": false,
+          "showRegistrationDate": false,
+          "showChatCreationDate": false,
+          "hideStoryStrip": false,
+          "disableStoryCameraSwipe": false,
+          "confirmStoryOpen": false,
+          "allowStoryRepost": true,
+          "startRoundVideoWithRearCamera": false,
+          "hideGalleryCamera": false,
+          "hidePhoneInSettings": false
+        }
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(InterfaceTuningSettings.self, from: legacy)
+        XCTAssertFalse(decoded.hideBusinessBotPanel)
+        XCTAssertTrue(decoded.businessBotPanelVisibilityOverrides.isEmpty)
+        XCTAssertTrue(decoded.isBusinessBotPanelVisible(peerId: 42))
+    }
+
+    func testBusinessPanelOverrideHasPriorityOverGlobalSetting() {
+        var settings = InterfaceTuningSettings.defaultSettings
+        settings.hideBusinessBotPanel = true
+        XCTAssertFalse(settings.isBusinessBotPanelVisible(peerId: 42))
+
+        settings.businessBotPanelVisibilityOverrides[42] = true
+        XCTAssertTrue(settings.isBusinessBotPanelVisible(peerId: 42))
+
+        settings.hideBusinessBotPanel = false
+        settings.businessBotPanelVisibilityOverrides[42] = false
+        XCTAssertFalse(settings.isBusinessBotPanelVisible(peerId: 42))
+        XCTAssertTrue(settings.isBusinessBotPanelVisible(peerId: 43))
+    }
 }

@@ -13,6 +13,7 @@ private enum InterfaceTuningSection: Int32 {
     case stories
     case media
     case privacy
+    case business
 }
 
 private enum InterfaceTuningKey: Int32 {
@@ -33,33 +34,37 @@ private enum InterfaceTuningKey: Int32 {
     case startRoundVideoWithRearCamera
     case hideGalleryCamera
     case hidePhoneInSettings
+    case hideBusinessBotPanel
 }
 
 private final class InterfaceTuningArguments {
     let update: (InterfaceTuningKey, Bool) -> Void
     let showInfo: (String, UIView) -> Void
+    let openBusinessBotExceptions: () -> Void
 
-    init(update: @escaping (InterfaceTuningKey, Bool) -> Void, showInfo: @escaping (String, UIView) -> Void) {
+    init(update: @escaping (InterfaceTuningKey, Bool) -> Void, showInfo: @escaping (String, UIView) -> Void, openBusinessBotExceptions: @escaping () -> Void) {
         self.update = update
         self.showInfo = showInfo
+        self.openBusinessBotExceptions = openBusinessBotExceptions
     }
 }
 
 private enum InterfaceTuningEntry: ItemListNodeEntry {
     case header(Int32, InterfaceTuningSection, String)
     case toggle(InterfaceTuningKey, InterfaceTuningSection, String, String, Bool, Bool)
+    case disclosure(Int32, InterfaceTuningSection, String, String)
     case footer(Int32, InterfaceTuningSection, String)
 
     var section: ItemListSectionId {
         switch self {
-        case let .header(_, section, _), let .toggle(_, section, _, _, _, _), let .footer(_, section, _):
+        case let .header(_, section, _), let .toggle(_, section, _, _, _, _), let .disclosure(_, section, _, _), let .footer(_, section, _):
             return section.rawValue
         }
     }
 
     var stableId: Int32 {
         switch self {
-        case let .header(id, _, _), let .footer(id, _, _):
+        case let .header(id, _, _), let .disclosure(id, _, _, _), let .footer(id, _, _):
             return id
         case let .toggle(key, _, _, _, _, _):
             switch key {
@@ -80,6 +85,7 @@ private enum InterfaceTuningEntry: ItemListNodeEntry {
             case .startRoundVideoWithRearCamera: return 31
             case .hideGalleryCamera: return 32
             case .hidePhoneInSettings: return 41
+            case .hideBusinessBotPanel: return 51
             }
         }
     }
@@ -90,6 +96,8 @@ private enum InterfaceTuningEntry: ItemListNodeEntry {
             return lhsId == rhsId && lhsSection == rhsSection && lhsText == rhsText
         case let (.toggle(lhsKey, lhsSection, lhsTitle, lhsInfo, lhsValue, lhsEnabled), .toggle(rhsKey, rhsSection, rhsTitle, rhsInfo, rhsValue, rhsEnabled)):
             return lhsKey == rhsKey && lhsSection == rhsSection && lhsTitle == rhsTitle && lhsInfo == rhsInfo && lhsValue == rhsValue && lhsEnabled == rhsEnabled
+        case let (.disclosure(lhsId, lhsSection, lhsTitle, lhsLabel), .disclosure(rhsId, rhsSection, rhsTitle, rhsLabel)):
+            return lhsId == rhsId && lhsSection == rhsSection && lhsTitle == rhsTitle && lhsLabel == rhsLabel
         case let (.footer(lhsId, lhsSection, lhsText), .footer(rhsId, rhsSection, rhsText)):
             return lhsId == rhsId && lhsSection == rhsSection && lhsText == rhsText
         default:
@@ -123,6 +131,10 @@ private enum InterfaceTuningEntry: ItemListNodeEntry {
                     arguments.update(key, value)
                 }
             )
+        case let .disclosure(_, _, title, label):
+            return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: title, label: label, sectionId: self.section, style: .blocks, action: {
+                arguments.openBusinessBotExceptions()
+            })
         case let .footer(_, _, text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         }
@@ -170,29 +182,31 @@ private func updatedInterfaceTuningSettings(
         current.hideGalleryCamera = value
     case .hidePhoneInSettings:
         current.hidePhoneInSettings = value
+    case .hideBusinessBotPanel:
+        current.hideBusinessBotPanel = value
     }
     return current
 }
 
 public func interfaceTuningSettingsController(context: AccountContext) -> ViewController {
-    let stateValue = Atomic(value: InterfaceTuningSettingsStore.shared.current)
-    let statePromise = ValuePromise(stateValue.with { $0 }, ignoreRepeated: true)
     var presentTooltip: ((String, UIView) -> Void)?
+    var pushControllerImpl: ((ViewController) -> Void)?
 
     let arguments = InterfaceTuningArguments(
         update: { key, value in
-            let updated = stateValue.modify { current in
+            InterfaceTuningSettingsStore.shared.update { current in
                 return updatedInterfaceTuningSettings(current, key: key, value: value)
             }
-            InterfaceTuningSettingsStore.shared.update { _ in updated }
-            statePromise.set(updated)
         },
         showInfo: { text, sourceView in
             presentTooltip?(text, sourceView)
+        },
+        openBusinessBotExceptions: {
+            pushControllerImpl?(businessBotPanelExceptionsController(context: context))
         }
     )
 
-    let signal = combineLatest(context.sharedContext.presentationData, statePromise.get())
+    let signal = combineLatest(context.sharedContext.presentationData, interfaceTuningSettingsSignal())
     |> map { presentationData, settings -> (ItemListControllerState, (ItemListNodeState, Any)) in
         let strings = presentationData.strings.localFeatures.interfaceTuning
         let barControlsEnabled = !settings.concealBottomBar
@@ -223,7 +237,12 @@ public func interfaceTuningSettingsController(context: AccountContext) -> ViewCo
             .toggle(.hideGalleryCamera, .media, strings.hideGalleryCamera, strings.hideGalleryCameraInfo, settings.hideGalleryCamera ?? false, true),
 
             .header(40, .privacy, strings.privacySection),
-            .toggle(.hidePhoneInSettings, .privacy, strings.hidePhoneInSettings, strings.hidePhoneInSettingsInfo, settings.hidePhoneInSettings, true)
+            .toggle(.hidePhoneInSettings, .privacy, strings.hidePhoneInSettings, strings.hidePhoneInSettingsInfo, settings.hidePhoneInSettings, true),
+
+            .header(50, .business, strings.businessSection),
+            .toggle(.hideBusinessBotPanel, .business, strings.hideBusinessBotPanel, strings.hideBusinessBotPanelInfo, settings.hideBusinessBotPanel, true),
+            .disclosure(52, .business, strings.businessBotPanelExceptions, settings.businessBotPanelVisibilityOverrides.isEmpty ? "" : "\(settings.businessBotPanelVisibilityOverrides.count)"),
+            .footer(53, .business, strings.businessBotPanelExceptionsInfo)
         ]
         return (
             ItemListControllerState(
@@ -246,6 +265,9 @@ public func interfaceTuningSettingsController(context: AccountContext) -> ViewCo
     }
 
     let controller = ItemListController(context: context, state: signal)
+    pushControllerImpl = { [weak controller] child in
+        controller?.push(child)
+    }
     var currentTooltipController: TooltipController?
     presentTooltip = { [weak controller] text, sourceView in
         guard let controller else {

@@ -114,6 +114,7 @@ public struct InterfaceTuningFeatureStrings {
     public let storiesSection: String
     public let mediaSection: String
     public let privacySection: String
+    public let businessSection: String
 
     public let concealBottomBar: String
     public let concealBottomBarInfo: String
@@ -156,6 +157,14 @@ public struct InterfaceTuningFeatureStrings {
     public let hideGalleryCameraInfo: String
     public let hidePhoneInSettings: String
     public let hidePhoneInSettingsInfo: String
+    public let hideBusinessBotPanel: String
+    public let hideBusinessBotPanelInfo: String
+    public let businessBotPanelExceptions: String
+    public let businessBotPanelExceptionsInfo: String
+    public let businessBotPanelAddException: String
+    public let businessBotPanelNotManaged: String
+    public let businessBotPanelShow: String
+    public let businessBotPanelHideInChat: String
 
     public let restartNotice: String
     public let storyConfirmationTitle: String
@@ -255,6 +264,7 @@ public struct LocalFeatureStrings {
                 storiesSection: "ИСТОРИИ",
                 mediaSection: "МЕДИА",
                 privacySection: "ЛОКАЛЬНАЯ ПРИВАТНОСТЬ",
+                businessSection: "БИЗНЕС-БОТ",
                 concealBottomBar: "Скрывать нижнюю панель",
                 concealBottomBarInfo: "Убирает нижнюю панель навигации. Изменение полностью применяется после перезапуска приложения.",
                 showContactsShortcut: "Показывать «Контакты»",
@@ -293,6 +303,14 @@ public struct LocalFeatureStrings {
                 hideGalleryCameraInfo: "Убирает плитку камеры из галереи при выборе фотографий и видео. Обычная отправка файлов из медиатеки продолжает работать.",
                 hidePhoneInSettings: "Скрывать номер в настройках",
                 hidePhoneInSettingsInfo: "Скрывает ваш номер только на экране настроек этого приложения. Настройки видимости номера для других людей не меняются.",
+                hideBusinessBotPanel: "Скрывать панель бизнес-бота",
+                hideBusinessBotPanelInfo: "Скрывает верхнюю панель управления бизнес-ботом в личных чатах. Карточка внутри истории остаётся видимой.",
+                businessBotPanelExceptions: "Исключения",
+                businessBotPanelExceptionsInfo: "Для выбранных чатов можно задать поведение, отличающееся от глобальной настройки.",
+                businessBotPanelAddException: "Добавить чат",
+                businessBotPanelNotManaged: "Этот чат не управляется бизнес-ботом.",
+                businessBotPanelShow: "Показывать панель",
+                businessBotPanelHideInChat: "Скрыть в этом чате",
                 restartNotice: "Некоторые параметры нижней панели и номера применяются после перезапуска приложения.",
                 storyConfirmationTitle: "Открыть историю?",
                 storyConfirmationText: "Автор может увидеть ваш просмотр.",
@@ -421,6 +439,7 @@ public struct LocalFeatureStrings {
                 storiesSection: "ІСТОРІЇ",
                 mediaSection: "МЕДІА",
                 privacySection: "ЛОКАЛЬНА ПРИВАТНІСТЬ",
+                businessSection: "БІЗНЕС-БОТ",
                 concealBottomBar: "Приховувати нижню панель",
                 concealBottomBarInfo: "Прибирає нижню панель навігації. Зміна повністю застосовується після перезапуску застосунку.",
                 showContactsShortcut: "Показувати «Контакти»",
@@ -459,6 +478,14 @@ public struct LocalFeatureStrings {
                 hideGalleryCameraInfo: "Прибирає плитку камери з галереї під час вибору фотографій і відео. Звичайне надсилання файлів із медіатеки працює без змін.",
                 hidePhoneInSettings: "Приховувати номер у налаштуваннях",
                 hidePhoneInSettingsInfo: "Приховує ваш номер лише на екрані налаштувань цього застосунку. Видимість номера для інших людей не змінюється.",
+                hideBusinessBotPanel: "Приховувати панель бізнес-бота",
+                hideBusinessBotPanelInfo: "Приховує верхню панель керування бізнес-ботом в особистих чатах. Картка в історії залишається видимою.",
+                businessBotPanelExceptions: "Винятки",
+                businessBotPanelExceptionsInfo: "Для вибраних чатів можна встановити поведінку, відмінну від глобального налаштування.",
+                businessBotPanelAddException: "Додати чат",
+                businessBotPanelNotManaged: "Цей чат не керується бізнес-ботом.",
+                businessBotPanelShow: "Показувати панель",
+                businessBotPanelHideInChat: "Приховати в цьому чаті",
                 restartNotice: "Деякі параметри нижньої панелі та номера застосовуються після перезапуску застосунку.",
                 storyConfirmationTitle: "Відкрити історію?",
                 storyConfirmationText: "Автор може побачити ваш перегляд.",
@@ -577,6 +604,7 @@ public struct LocalFeatureStrings {
                 storiesSection: "STORIES",
                 mediaSection: "MEDIA",
                 privacySection: "LOCAL PRIVACY",
+                businessSection: "BUSINESS BOT",
                 concealBottomBar: "Conceal Bottom Bar",
                 concealBottomBarInfo: "Removes the bottom navigation bar. Restart the app to apply this change everywhere.",
                 showContactsShortcut: "Show Contacts Shortcut",
@@ -615,6 +643,14 @@ public struct LocalFeatureStrings {
                 hideGalleryCameraInfo: "Removes the camera tile from the photo and video picker. Sending existing media from the library continues to work normally.",
                 hidePhoneInSettings: "Hide Phone in Settings",
                 hidePhoneInSettingsInfo: "Hides your number only in this app's settings UI. It does not change who can see it.",
+                hideBusinessBotPanel: "Hide Business Bot Panel",
+                hideBusinessBotPanelInfo: "Hides the business bot control panel at the top of private chats. The information card in chat history remains visible.",
+                businessBotPanelExceptions: "Exceptions",
+                businessBotPanelExceptionsInfo: "Selected chats can use behavior different from the global setting.",
+                businessBotPanelAddException: "Add Chat",
+                businessBotPanelNotManaged: "This chat is not managed by a business bot.",
+                businessBotPanelShow: "Show Panel",
+                businessBotPanelHideInChat: "Hide in This Chat",
                 restartNotice: "Some bottom-bar and phone-number changes apply after restarting the app.",
                 storyConfirmationTitle: "Open this story?",
                 storyConfirmationText: "The author may be able to see your view.",

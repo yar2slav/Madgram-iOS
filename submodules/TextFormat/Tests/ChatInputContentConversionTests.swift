@@ -60,6 +60,29 @@ final class ChatInputContentConversionTests: XCTestCase {
         // This is documented lossy behavior of the legacy NSAttributedString path.
     }
 
+    func test_attributedString_blockQuote_preservesTextMention() {
+        let peerId = EnginePeer.Id(9)
+        var mention = ChatInputInlineAttributes()
+        mention.entity = .mention(peerId)
+        let content = ChatInputContent(blocks: [
+            .blockQuote(ChatInputBlockQuote(
+                content: ChatInputContent(blocks: [
+                    .paragraph(ChatInputParagraph(style: .body, runs: [
+                        ChatInputRun(text: "Author", attributes: mention),
+                        ChatInputRun(text: "\u{2028}message")
+                    ]))
+                ]),
+                collapsed: false
+            ))
+        ])
+
+        let attributedText = attributedString(from: content)
+        XCTAssertEqual(attributedText.string, "Author\u{2028}message")
+        let attribute = attributedText.attribute(ChatTextInputAttributes.textMention, at: 0, effectiveRange: nil) as? ChatTextInputTextMentionAttribute
+        XCTAssertEqual(attribute?.peerId, peerId)
+        XCTAssertNotNil(attributedText.attribute(ChatTextInputAttributes.block, at: 0, effectiveRange: nil))
+    }
+
     /// Per-line `.quote`-attributed spans map to separate `.blockQuote` blocks on parse (Task 16b). The resulting
     /// content's attributed-string projection then emits each blockQuote as its own range. No coalescing.
     func test_chatCurrencyRoundTrip_perLineQuoteAttrs_mapToSeparateBlockQuotes() {

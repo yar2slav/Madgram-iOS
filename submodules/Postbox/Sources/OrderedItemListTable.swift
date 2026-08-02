@@ -125,6 +125,11 @@ final class OrderedItemListTable: Table {
     }
     
     func replaceItems(collectionId: Int32, items: [OrderedItemListEntry], operations: inout [Int32: [OrderedItemListOperation]]) {
+        var itemIds = Set<Data>()
+        let items = items.filter { item in
+            return itemIds.insert(item.id.makeData()).inserted
+        }
+
         if operations[collectionId] == nil {
             operations[collectionId] = [.replace(items)]
         } else {
@@ -142,13 +147,22 @@ final class OrderedItemListTable: Table {
         for index in currentIndices {
             self.valueBox.remove(self.table, key: self.keyIndexToId(collectionId: collectionId, itemIndex: index), secure: false)
         }
-        for id in currentIds {
+
+        var storedIds = currentIds
+        storedIds.append(contentsOf: self.indexTable.getAllItemIds(collectionId: collectionId))
+        self.valueBox.range(self.table, start: self.keyIdToIndexLowerBound(collectionId: collectionId), end: self.keyIdToIndexUpperBound(collectionId: collectionId), values: { key, _ in
+            let idLength = key.length - 5
+            let id = MemoryBuffer(memory: malloc(idLength)!, capacity: idLength, length: idLength, freeWhenDone: true)
+            memcpy(id.memory, key.memory.advanced(by: 5), idLength)
+            storedIds.append(id)
+            return true
+        }, limit: 0)
+
+        for id in storedIds {
             self.valueBox.remove(self.table, key: self.keyIdToIndex(collectionId: collectionId, id: id), secure: false)
             self.indexTable.remove(collectionId: collectionId, id: id)
         }
         
-
-        assert(Set(items.map({ $0.id.makeData() })).count == items.count)
         for i in 0 ..< items.count {
             self.valueBox.set(self.table, key: self.keyIndexToId(collectionId: collectionId, itemIndex: UInt32(i)), value: items[i].id)
             var indexValue: UInt32 = UInt32(i)

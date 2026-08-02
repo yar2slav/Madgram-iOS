@@ -24,6 +24,7 @@ import AdUI
 import TelegramNotices
 import ReactionListContextMenuContent
 import TelegramUIPreferences
+import TextFormat
 import TranslateUI
 import DebugSettingsUI
 import ChatPresentationInterfaceState
@@ -49,6 +50,65 @@ private struct MessageContextMenuData {
     let resourceStatus: EngineMediaResource.FetchStatus?
     let messageActions: ChatAvailableMessageActions
     let keepsViewOnceMedia: Bool
+}
+
+private func archivedMessageQuoteText(_ message: EngineRawMessage, strings: PresentationStrings) -> String {
+    if !message.text.isEmpty {
+        return message.text
+    }
+    if let richText = message.attributes.first(where: { $0 is RichTextMessageAttribute }) as? RichTextMessageAttribute {
+        let markdown = markdownStringFromInstantPage(richText.instantPage)
+        if !markdown.isEmpty {
+            return markdown
+        }
+    }
+    for media in message.effectiveMedia {
+        if media is TelegramMediaImage {
+            return strings.Message_Photo
+        } else if let file = media as? TelegramMediaFile {
+            if file.isInstantVideo {
+                return strings.Message_VideoMessage
+            } else if file.isVoice {
+                return strings.Message_Audio
+            } else if file.isVideo {
+                return strings.Message_Video
+            } else if file.isSticker {
+                return strings.Message_Sticker
+            } else if file.isAnimated {
+                return strings.Message_Animation
+            } else {
+                return file.fileName ?? strings.Message_File
+            }
+        }
+    }
+    return strings.localFeatures.localMessageArchive.emptyMessage
+}
+
+private func enqueueCopyOfArchivedMessage(_ message: EngineRawMessage, peerId: EnginePeer.Id, threadId: Int64?, context: AccountContext) {
+    var mediaReference: AnyMediaReference?
+    for media in message.effectiveMedia {
+        if let image = media as? TelegramMediaImage {
+            mediaReference = ImageMediaReference.standalone(media: image).abstract
+            break
+        } else if let file = media as? TelegramMediaFile {
+            mediaReference = FileMediaReference.standalone(media: file).abstract
+            break
+        }
+    }
+    let attributes = message.attributes.filter { $0 is TextEntitiesMessageAttribute }
+    let enqueueMessage = EnqueueMessage.message(
+        text: message.text,
+        attributes: attributes,
+        inlineStickers: [:],
+        mediaReference: mediaReference,
+        threadId: threadId,
+        replyToMessageId: nil,
+        replyToStoryId: nil,
+        localGroupingKey: nil,
+        correlationId: nil,
+        bubbleUpEmojiOrStickersets: []
+    )
+    let _ = enqueueMessages(account: context.account, peerId: peerId, messages: [enqueueMessage]).startStandalone()
 }
 
 private func canForwardWithoutAuthor(
@@ -591,16 +651,128 @@ func contextMenuForChatPresentationInterfaceState(chatPresentationInterfaceState
 
     if messages.count == 1, let message = messages.first, message.isArchivedDeletedMessage {
         let archiveStrings = chatPresentationInterfaceState.strings.localFeatures.localMessageArchive
-        var items: [ContextMenuItem] = [historyAction(for: message)]
+        let quoteText = archivedMessageQuoteText(message, strings: chatPresentationInterfaceState.strings)
+        let includeAuthorInQuote: Bool
+        if let peerId = chatPresentationInterfaceState.chatLocation.peerId {
+            includeAuthorInQuote = peerId.namespace != Namespaces.Peer.CloudUser && peerId.namespace != Namespaces.Peer.SecretChat
+        } else {
+            includeAuthorInQuote = true
+        }
+        var items: [ContextMenuItem] = []
+
+        if let author = message.author {
+            items.append(.action(ContextMenuActionItem(text: chatPresentationInterfaceState.strings.Conversation_ContextMenuReply, icon: { theme in
+                return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Reply"), color: theme.actionSheet.primaryTextColor)
+            }, action: { _, completion in
+                interfaceInteraction.updateTextInputStateAndMode { currentState, _ in
+                    let prefix = NSMutableAttributedString()
+                    let quoteStart = prefix.length
+                    if includeAuthorInQuote {
+                        prefix.append(NSAttributedString(string: EnginePeer(author).compactDisplayTitle, attributes: [
+                            ChatTextInputAttributes.textMention: ChatTextInputTextMentionAttribute(peerId: author.id)
+                        ]))
+                        prefix.append(NSAttributedString(string: "\u{2028}"))
+                    }
+                    prefix.append(NSAttributedString(string: quoteText))
+                    prefix.addAttribute(
+                        ChatTextInputAttributes.block,
+                        value: ChatTextInputTextQuoteAttribute(kind: .quote, isCollapsed: false),
+                        range: NSRange(location: quoteStart, length: prefix.length - quoteStart)
+                    )
+                    prefix.append(NSAttributedString(string: "\n\n"))
+                    prefix.append(currentState.inputText)
+                    return (ChatTextInputState(inputText: prefix), .text)
+                }
+                completion(.dismissWithoutContent)
+            })))
+        }
+
+        items.append(.action(ContextMenuActionItem(text: chatPresentationInterfaceState.strings.Conversation_ContextMenuCopy, icon: { theme in
+            return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Copy"), color: theme.actionSheet.primaryTextColor)
+        }, action: { _, completion in
+            storeMessageTextInPasteboard(quoteText, entities: nil)
+            controllerInteraction.displayUndo(.copy(text: chatPresentationInterfaceState.strings.Conversation_MessageCopied))
+            completion(.dismissWithoutContent)
+        })))
+
+        if !message.isCopyProtected() {
+            var savableMedia: (AnyMediaReference, Bool)?
+            for media in message.effectiveMedia {
+                if let image = media as? TelegramMediaImage {
+                    savableMedia = (ImageMediaReference.standalone(media: image).abstract, false)
+                    break
+                } else if let file = media as? TelegramMediaFile, file.isVideo {
+                    savableMedia = (FileMediaReference.standalone(media: file).abstract, true)
+                    break
+                }
+            }
+            if let (mediaReference, isVideo) = savableMedia {
+                items.append(.action(ContextMenuActionItem(text: isVideo ? chatPresentationInterfaceState.strings.Gallery_SaveVideo : chatPresentationInterfaceState.strings.Gallery_SaveImage, icon: { theme in
+                    return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Save"), color: theme.actionSheet.primaryTextColor)
+                }, action: { _, completion in
+                    let _ = (saveToCameraRoll(context: context, userLocation: .peer(message.id.peerId), mediaReference: mediaReference)
+                    |> deliverOnMainQueue).startStandalone(completed: {
+                        let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+                        controllerInteraction.presentControllerInCurrent(UndoOverlayController(
+                            presentationData: presentationData,
+                            content: .mediaSaved(text: isVideo ? presentationData.strings.Gallery_VideoSaved : presentationData.strings.Gallery_ImageSaved),
+                            elevatedLayout: false,
+                            animateInAsReplacement: false,
+                            action: { _ in true }
+                        ), nil)
+                    })
+                    completion(.dismissWithoutContent)
+                })))
+            }
+            if message.effectiveMedia.contains(where: { media in
+                guard let file = media as? TelegramMediaFile else {
+                    return false
+                }
+                return !file.isVideo
+            }) {
+                items.append(.action(ContextMenuActionItem(text: chatPresentationInterfaceState.strings.Conversation_SaveToFiles, icon: { theme in
+                    return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Save"), color: theme.actionSheet.primaryTextColor)
+                }, action: { _, completion in
+                    controllerInteraction.saveMediaToFiles(message.id)
+                    completion(.dismissWithoutContent)
+                })))
+            }
+        }
+
+        if !message.isCopyProtected(), message.effectiveMedia.allSatisfy({ $0 is TelegramMediaImage || $0 is TelegramMediaFile }) {
+            items.append(.action(ContextMenuActionItem(text: chatPresentationInterfaceState.strings.Conversation_ContextMenuForward, icon: { theme in
+                return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Forward"), color: theme.actionSheet.primaryTextColor)
+            }, action: { _, completion in
+                let controller = context.sharedContext.makePeerSelectionController(PeerSelectionControllerParams(
+                    context: context,
+                    filter: [.onlyWriteable, .excludeDisabled, .doNotSearchMessages],
+                    hasFilters: true,
+                    selectForumThreads: true
+                ))
+                controller.peerSelected = { [weak controller] peer, threadId in
+                    enqueueCopyOfArchivedMessage(message, peerId: peer.id, threadId: threadId, context: context)
+                    controller?.dismiss()
+                }
+                controllerInteraction.navigationController()?.pushViewController(controller)
+                completion(.dismissWithoutContent)
+            })))
+        }
+
+        items.append(.action(ContextMenuActionItem(text: chatPresentationInterfaceState.strings.Conversation_ContextMenuSelect, icon: { theme in
+            return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Select"), color: theme.actionSheet.primaryTextColor)
+        }, action: { _, completion in
+            interfaceInteraction.beginMessageSelection([message.id], { transition in
+                completion(.custom(transition))
+            })
+        })))
+
+        items.append(historyAction(for: message))
         items.append(.action(ContextMenuActionItem(text: archiveStrings.deleteForMe, textColor: .destructive, icon: { theme in
             return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Delete"), color: theme.actionSheet.destructiveActionTextColor)
         }, action: { _, completion in
             let _ = context.engine.messages.deleteArchivedMessage(id: message.id).start()
             completion(.dismissWithoutContent)
         })))
-        items.append(.separator)
-        let noAction: ((ContextMenuActionItem.Action) -> Void)? = nil
-        items.append(.action(ContextMenuActionItem(text: archiveStrings.deletedMessageSavedLocally, textLayout: .multiline, textFont: .small, icon: { _ in nil }, action: noAction)))
         return .single(ContextController.Items(content: .list(items)))
     }
     
