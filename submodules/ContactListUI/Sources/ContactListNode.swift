@@ -245,7 +245,13 @@ private enum ContactListNodeEntry: Comparable, Identifiable {
                 if case .blocks = listStyle, let id = header?.id.id.base as? Int64 {
                     sectionId = Int32(clamping: id)
                 }
-                return ContactsPeerItem(presentationData: ItemListPresentationData(presentationData), style: listStyle, systemStyle: .glass, sectionId: listStyle == .blocks ? sectionId : 0, sortOrder: nameSortOrder, displayOrder: nameDisplayOrder, context: context, peerMode: isSearch ? .generalSearch(isSavedMessages: false) : .peer, peer: itemPeer, status: status, requiresPremiumForMessaging: requiresPremiumForMessaging, enabled: enabled, selection: selection, selectionPosition: .left, editing: ContactsPeerItemEditing(editable: false, editing: false, revealed: false), additionalActions: additionalActions, index: nil, header: listStyle == .blocks ? nil : header, action: { _ in
+                let aliasHandling: ContactsPeerItemAliasHandling
+                if !isSearch, case let .peer(peer, _) = itemPeer, peer?.id == context.account.peerId {
+                    aliasHandling = .standard
+                } else {
+                    aliasHandling = .treatSelfAsSaved
+                }
+                return ContactsPeerItem(presentationData: ItemListPresentationData(presentationData), style: listStyle, systemStyle: .glass, sectionId: listStyle == .blocks ? sectionId : 0, sortOrder: nameSortOrder, displayOrder: nameDisplayOrder, context: context, peerMode: isSearch ? .generalSearch(isSavedMessages: false) : .peer, aliasHandling: aliasHandling, peer: itemPeer, status: status, requiresPremiumForMessaging: requiresPremiumForMessaging, enabled: enabled, selection: selection, selectionPosition: .left, editing: ContactsPeerItemEditing(editable: false, editing: false, revealed: false), additionalActions: additionalActions, index: nil, header: listStyle == .blocks ? nil : header, action: { _ in
                         interaction.openPeer(peer, .generic, nil, nil)
                 }, disabledAction: { _ in
                     if case let .peer(peer, _, _) = peer {
@@ -424,6 +430,7 @@ private enum ContactListNodeEntry: Comparable, Identifiable {
 private func contactListNodeEntries(
     listStyle: ItemListStyle = .plain,
     accountPeer: EnginePeer?,
+    displayPinnedSelf: Bool = false,
     peers: [ContactListPeer],
     presences: [EnginePeer.Id: EnginePeer.Presence],
     presentation: ContactListPresentation,
@@ -768,7 +775,17 @@ private func contactListNodeEntries(
     }
     
     var index: Int64 = 0
-    
+
+    if displayPinnedSelf, selectionState == nil, let accountPeer, !existingPeerIds.contains(.peer(accountPeer.id)) {
+        existingPeerIds.insert(.peer(accountPeer.id))
+        let selfHeader = ChatListSearchItemHeader(type: .text(strings.Settings_MyProfile.uppercased(), AnyHashable(2)), theme: theme, strings: strings, actionTitle: nil, action: nil)
+        entries.append(.peer(index, .peer(peer: accountPeer, isGlobal: false, participantCount: nil), presences[accountPeer.id], selfHeader, .none, theme, strings, dateTimeFormat, sortOrder, displayOrder, false, false, true, nil, false, nil))
+        index += 1
+        if commonHeader == nil, case .orderedByPresence = presentation {
+            commonHeader = ChatListSearchItemHeader(type: .text(strings.Contacts_TopSection, AnyHashable(1)), theme: theme, strings: strings, actionTitle: nil, action: nil)
+        }
+    }
+
     if let selectionState = selectionState {
         for peer in selectionState.foundPeers {
             if existingPeerIds.contains(peer.id) {
@@ -1017,6 +1034,8 @@ public final class ContactListNode: ASDisplayNode {
     private var presentation: ContactListPresentation?
     private let filters: [ContactListFilter]
     private let onlyWriteable: Bool
+    private let displayPinnedSelf: Bool
+    private let selfPresencePollDisposable = MetaDisposable()
     
     public let listNode: ListView
     private var indexNode: CollectionIndexNode
@@ -1142,32 +1161,49 @@ public final class ContactListNode: ASDisplayNode {
                     }
                 }
                     
+                let accountPeerId = self.context.engine.account.peerId
+                let mergeAccountPresence: (EngineContactList, EnginePeer.Presence?) -> EngineContactList = { list, accountPresence in
+                    guard let accountPresence else {
+                        return list
+                    }
+                    var presences = list.presences
+                    presences[accountPeerId] = accountPresence
+                    return EngineContactList(peers: list.peers, presences: presences)
+                }
                 if value {
                     self.contactPeersViewPromise.set(combineLatest(
                         self.context.engine.data.subscribe(
                             TelegramEngine.EngineData.Item.Contacts.List(includePresences: true),
-                            TelegramEngine.EngineData.Item.Peer.Peer(id: self.context.engine.account.peerId)
+                            TelegramEngine.EngineData.Item.Peer.Peer(id: self.context.engine.account.peerId),
+                            TelegramEngine.EngineData.Item.Peer.Presence(id: self.context.engine.account.peerId)
                         ),
                         contactsWithPremiumRequired,
                         contactsWithStories
                     )
                     |> mapToThrottled { next, contactsWithPremiumRequired, contactsWithStories -> Signal<(EngineContactList, EnginePeer?, [EnginePeer.Id: Bool], [EnginePeer.Id: EngineChatList.StoryStats]), NoError> in
-                        return .single((next.0, next.1, contactsWithPremiumRequired, contactsWithStories))
+                        return .single((mergeAccountPresence(next.0, next.2), next.1, contactsWithPremiumRequired, contactsWithStories))
                         |> then(
                             .complete()
                             |> delay(5.0, queue: Queue.concurrentDefaultQueue())
                         )
                     })
+                    if self.displayPinnedSelf {
+                        self.selfPresencePollDisposable.set(((self.context.engine.peers.refreshAccountPresence()
+                        |> then(.complete() |> suspendAwareDelay(30.0, queue: Queue.concurrentDefaultQueue())))
+                        |> restart).start())
+                    }
                 } else {
                     self.contactPeersViewPromise.set(combineLatest(self.context.engine.data.subscribe(
                         TelegramEngine.EngineData.Item.Contacts.List(includePresences: true),
-                        TelegramEngine.EngineData.Item.Peer.Peer(id: self.context.engine.account.peerId)
+                        TelegramEngine.EngineData.Item.Peer.Peer(id: self.context.engine.account.peerId),
+                        TelegramEngine.EngineData.Item.Peer.Presence(id: self.context.engine.account.peerId)
                     ),
                     contactsWithPremiumRequired, contactsWithStories)
                     |> map { next, contactsWithPremiumRequired, contactsWithStories -> (EngineContactList, EnginePeer?, [EnginePeer.Id: Bool], [EnginePeer.Id: EngineChatList.StoryStats]) in
-                        return (next.0, next.1, contactsWithPremiumRequired, contactsWithStories)
+                        return (mergeAccountPresence(next.0, next.2), next.1, contactsWithPremiumRequired, contactsWithStories)
                     }
                     |> take(1))
+                    self.selfPresencePollDisposable.set(nil)
                 }
             }
         }
@@ -1209,6 +1245,7 @@ public final class ContactListNode: ASDisplayNode {
         listStyle: ItemListStyle = .plain,
         presentation: Signal<ContactListPresentation, NoError>,
         filters: [ContactListFilter] = [.excludeSelf],
+        displayPinnedSelf: Bool = false,
         onlyWriteable: Bool,
         isGroupInvitation: Bool,
         isPeerEnabled: ((EnginePeer) -> Bool)? = nil,
@@ -1223,6 +1260,7 @@ public final class ContactListNode: ASDisplayNode {
         self.context = context
         self.listStyle = listStyle
         self.filters = filters
+        self.displayPinnedSelf = displayPinnedSelf
         self.displayPermissionPlaceholder = displayPermissionPlaceholder
         self.contextAction = contextAction
         self.multipleSelection = multipleSelection
@@ -1992,6 +2030,7 @@ public final class ContactListNode: ASDisplayNode {
                             let entries = contactListNodeEntries(
                                 listStyle: listStyle,
                                 accountPeer: view.1,
+                                displayPinnedSelf: displayPinnedSelf,
                                 peers: peers,
                                 presences: presences,
                                 presentation: presentation,
@@ -2168,6 +2207,7 @@ public final class ContactListNode: ASDisplayNode {
     deinit {
         self.disposable.dispose()
         self.presentationDataDisposable?.dispose()
+        self.selfPresencePollDisposable.dispose()
     }
         
     public func updateSelectionState(_ f: (ContactListNodeGroupSelectionState?) -> ContactListNodeGroupSelectionState?) {

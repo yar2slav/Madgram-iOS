@@ -2598,7 +2598,19 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
             }
             
             let contentData: ContentData
-            
+
+            // The message itself is hidden inside the chat; the chat list must not leak its
+            // content either — neither the text preview nor the media thumbnails. Read from the
+            // store rather than from presentationData: the latter only exists to force a
+            // re-layout when the settings change.
+            let messageFilterSettings = MessageFilterSettingsStore.shared.current
+            let containsFilteredMessages = messageFilterSettings.isActive && messages.contains(where: { message in
+                guard let author = message.author else {
+                    return false
+                }
+                return messageFilterSettings.hidesMessages(fromAuthorId: author.id.toInt64())
+            })
+
             var hideAuthor = false
             switch contentPeer {
                 case let .chat(itemPeer):
@@ -2610,13 +2622,9 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                         richTextPreview = nil
                     }
 
-                    let messageFilterSettings = MessageFilterSettingsStore.shared.current
-                    if messageFilterSettings.isActive, messages.contains(where: { message in
-                        guard let author = message.author else {
-                            return false
-                        }
-                        return messageFilterSettings.hidesMessages(fromAuthorId: author.id.toInt64())
-                    }) {
+                    // chatListItemStrings composes the preview from every message in the array,
+                    // so any hidden author blanks it.
+                    if containsFilteredMessages {
                         initialHideAuthor = true
                         messageText = ""
                         messageEntities = []
@@ -3095,7 +3103,9 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                         }
                 
                         var displayMediaPreviews = true
-                        if message._asMessage().containsSecretMedia {
+                        if containsFilteredMessages {
+                            displayMediaPreviews = false
+                        } else if message._asMessage().containsSecretMedia {
                             displayMediaPreviews = false
                         } else if let _ = message.peers[message.id.peerId] as? TelegramSecretChat {
                             displayMediaPreviews = false

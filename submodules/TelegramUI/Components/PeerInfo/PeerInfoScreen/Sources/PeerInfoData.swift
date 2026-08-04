@@ -1251,7 +1251,7 @@ func peerInfoScreenData(
                     guard let user = view.peers[userPeerId] as? TelegramUser else {
                         return .none
                     }
-                    if user.id == context.account.peerId {
+                    if user.id == context.account.peerId && !isMyProfile {
                         return .none
                     }
                     if user.isDeleted {
@@ -1306,6 +1306,15 @@ func peerInfoScreenData(
                         notify()
                     }
                 })
+                if isMyProfile {
+                    let refreshDisposable = ((context.engine.peers.refreshAccountPresence()
+                    |> then(.complete() |> suspendAwareDelay(30.0, queue: Queue.concurrentDefaultQueue())))
+                    |> restart).start()
+                    return ActionDisposable {
+                        disposable.dispose()
+                        refreshDisposable.dispose()
+                    }
+                }
                 return disposable
             }
             |> distinctUntilChanged

@@ -256,6 +256,10 @@ public extension TelegramEngine {
             |> map(EnginePeer.init)
         }
 
+        public func refreshAccountPresence() -> Signal<Never, NoError> {
+            return _internal_refreshAccountPresence(account: self.account)
+        }
+
         public func chatOnlineMembers(peerId: PeerId) -> Signal<Int32, NoError> {
             return _internal_chatOnlineMembers(postbox: self.account.postbox, network: self.account.network, peerId: peerId)
         }
