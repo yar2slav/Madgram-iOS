@@ -480,6 +480,7 @@ public class ContactsPeerItemNode: ItemListRevealOptionsItemNode {
     private var emojiStatusIconView: ComponentHostView<Empty>?
     private var emojiStatusIconComponent: EmojiStatusComponent?
     private var peerBadgeView: ComponentHostView<Empty>?
+    private var shadowBanIconNode: ASImageNode?
     public let statusNode: TextNodeWithEntities
     private var statusIconNode: ASImageNode?
     private var badgeBackgroundNode: ASImageNode?
@@ -862,11 +863,15 @@ public class ContactsPeerItemNode: ItemListRevealOptionsItemNode {
             var emojiStatusIcon: EmojiStatusComponent.Content?
             var emojiStatusParticleColor: UIColor?
             var peerBadge: PeerBadge?
+            var shadowBanIconImage: UIImage?
             
             switch item.peer {
             case let .peer(peer, _):
                 if let peer = peer, (peer.id != item.context.account.peerId || item.peerMode == .memberList || item.aliasHandling == .standard) {
                     peerBadge = PeerBadgeRegistryStore.shared.badge(peerId: peer.id)
+                    if MessageFilterSettingsStore.shared.current.isShadowBanned(peer.id.toInt64()) {
+                        shadowBanIconImage = PresentationResourcesChatList.shadowBanIcon(item.presentationData.theme)
+                    }
                     if peer.isScam {
                         credibilityStatusIcon = .text(color: item.presentationData.theme.chat.message.incoming.scamColor, string: item.presentationData.strings.Message_ScamAccount.uppercased())
                     } else if peer.isFake {
@@ -1146,6 +1151,9 @@ public class ContactsPeerItemNode: ItemListRevealOptionsItemNode {
             if peerBadge != nil {
                 additionalTitleInset += 3.0
                 additionalTitleInset += 18.0
+            }
+            if let shadowBanIconImage {
+                additionalTitleInset += 4.0 + shadowBanIconImage.size.width
             }
             if let actionButtons = actionButtons {
                 additionalTitleInset += 3.0
@@ -1743,6 +1751,27 @@ public class ContactsPeerItemNode: ItemListRevealOptionsItemNode {
                             } else if let peerBadgeView = strongSelf.peerBadgeView {
                                 strongSelf.peerBadgeView = nil
                                 peerBadgeView.removeFromSuperview()
+                            }
+
+                            if let shadowBanIconImage {
+                                let shadowBanIconNode: ASImageNode
+                                if let current = strongSelf.shadowBanIconNode {
+                                    shadowBanIconNode = current
+                                } else {
+                                    shadowBanIconNode = ASImageNode()
+                                    shadowBanIconNode.isLayerBacked = true
+                                    shadowBanIconNode.displaysAsynchronously = false
+                                    shadowBanIconNode.displayWithoutProcessing = true
+                                    strongSelf.shadowBanIconNode = shadowBanIconNode
+                                    strongSelf.offsetContainerNode.addSubnode(shadowBanIconNode)
+                                }
+                                shadowBanIconNode.image = shadowBanIconImage
+                                nextIconX += 4.0
+                                transition.updateFrame(node: shadowBanIconNode, frame: CGRect(origin: CGPoint(x: nextIconX, y: floorToScreenPixels(titleFrame.midY - shadowBanIconImage.size.height / 2.0)), size: shadowBanIconImage.size))
+                                nextIconX += shadowBanIconImage.size.width
+                            } else if let shadowBanIconNode = strongSelf.shadowBanIconNode {
+                                strongSelf.shadowBanIconNode = nil
+                                shadowBanIconNode.removeFromSupernode()
                             }
                             
                             if let (titleBadgeLayout, titleBadgeApply) = titleBadgeLayoutAndApply {

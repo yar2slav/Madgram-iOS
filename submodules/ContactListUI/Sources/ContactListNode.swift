@@ -1228,6 +1228,7 @@ public final class ContactListNode: ASDisplayNode {
     
     private var presentationData: PresentationData
     private var presentationDataDisposable: Disposable?
+    private let messageFilterSettingsDisposable = MetaDisposable()
     private let presentationDataPromise: Promise<PresentationData>
     
     private var authorizationNode: PermissionContentNode
@@ -1311,6 +1312,15 @@ public final class ContactListNode: ASDisplayNode {
         self.authorizationNode.isHidden = true
         
         super.init()
+
+        self.messageFilterSettingsDisposable.set((messageFilterSettingsSignal()
+        |> distinctUntilChanged
+        |> deliverOnMainQueue).start(next: { [weak self] _ in
+            guard let self else {
+                return
+            }
+            self.presentationDataPromise.set(.single(self.presentationData))
+        }))
         
         self.backgroundColor = listStyle == .blocks ? self.presentationData.theme.list.blocksBackgroundColor : self.presentationData.theme.chatList.backgroundColor
         
@@ -2207,6 +2217,7 @@ public final class ContactListNode: ASDisplayNode {
     deinit {
         self.disposable.dispose()
         self.presentationDataDisposable?.dispose()
+        self.messageFilterSettingsDisposable.dispose()
         self.selfPresencePollDisposable.dispose()
     }
         

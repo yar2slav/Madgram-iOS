@@ -48,6 +48,7 @@ public final class StoryPeerListComponent: Component {
     public let titleHasLock: Bool
     public let titleHasActivity: Bool
     public let titlePeerStatus: PeerStatus?
+    public let ghostModeEnabled: Bool
     public let minTitleX: CGFloat
     public let maxTitleX: CGFloat
     public let useHiddenList: Bool
@@ -71,6 +72,7 @@ public final class StoryPeerListComponent: Component {
         titleHasLock: Bool,
         titleHasActivity: Bool,
         titlePeerStatus: PeerStatus?,
+        ghostModeEnabled: Bool,
         minTitleX: CGFloat,
         maxTitleX: CGFloat,
         useHiddenList: Bool,
@@ -93,6 +95,7 @@ public final class StoryPeerListComponent: Component {
         self.titleHasLock = titleHasLock
         self.titleHasActivity = titleHasActivity
         self.titlePeerStatus = titlePeerStatus
+        self.ghostModeEnabled = ghostModeEnabled
         self.minTitleX = minTitleX
         self.maxTitleX = maxTitleX
         self.useHiddenList = useHiddenList
@@ -130,6 +133,9 @@ public final class StoryPeerListComponent: Component {
             return false
         }
         if lhs.titlePeerStatus != rhs.titlePeerStatus {
+            return false
+        }
+        if lhs.ghostModeEnabled != rhs.ghostModeEnabled {
             return false
         }
         if lhs.minTitleX != rhs.minTitleX {
@@ -330,6 +336,7 @@ public final class StoryPeerListComponent: Component {
         private let titleView: UIImageView
         private var titleState: TitleState?
         private var titleViewAnimation: TitleAnimationState?
+        private let ghostModeIconView: UIImageView
         
         private var disappearingTitleViews: [TitleAnimationState] = []
         
@@ -384,6 +391,10 @@ public final class StoryPeerListComponent: Component {
             
             self.titleView = UIImageView()
             self.titleView.layer.anchorPoint = CGPoint(x: 0.0, y: 0.5)
+            self.ghostModeIconView = UIImageView()
+            self.ghostModeIconView.contentMode = .scaleAspectFit
+            self.ghostModeIconView.isUserInteractionEnabled = false
+            self.ghostModeIconView.isAccessibilityElement = true
             
             super.init(frame: frame)
             
@@ -396,6 +407,7 @@ public final class StoryPeerListComponent: Component {
             self.addSubview(self.scrollContainerView)
             self.addSubview(self.collapsedButton)
             self.addSubview(self.titleView)
+            self.addSubview(self.ghostModeIconView)
             
             self.collapsedButton.highligthedChanged = { [weak self] highlighted in
                 guard let self else {
@@ -524,7 +536,7 @@ public final class StoryPeerListComponent: Component {
         public func titleFrame() -> CGRect {
             return self.titleView.frame
         }
-        
+
         public func lockViewFrame() -> CGRect? {
             if let titleLockView = self.titleLockView {
                 return titleLockView.frame
@@ -1435,6 +1447,7 @@ public final class StoryPeerListComponent: Component {
             }
             
             let titleFrame = CGRect(origin: CGPoint(x: titleContentOffset + titleLockOffset, y: collapsedItemOffsetY + 14.0 + floor((56.0 - titleSize.height) * 0.5)), size: titleSize)
+            var currentTitleContentFrame = titleFrame
             if let image = self.titleView.image {
                 self.titleView.center = CGPoint(x: titleFrame.minX, y: titleFrame.midY)
                 self.titleView.bounds = CGRect(origin: CGPoint(), size: image.size)
@@ -1465,6 +1478,7 @@ public final class StoryPeerListComponent: Component {
                 
                 let lockFrame = CGRect(x: titleFrame.minX - 6.0 - 12.0, y: titleFrame.minY + 3.0, width: 2.0, height: 2.0)
                 titleLockView.frame = lockFrame
+                currentTitleContentFrame = currentTitleContentFrame.union(lockFrame)
                 
                 let titleLockButton: HighlightTrackingButton
                 if let current = self.titleLockButton {
@@ -1514,6 +1528,25 @@ public final class StoryPeerListComponent: Component {
                 let titleIconScale: CGFloat = titleIconFraction * 1.0 + (1.0 - titleIconFraction) * 0.1
                 titleIconView.alpha = titleIconAlpha
                 titleIconView.layer.transform = CATransform3DMakeScale(titleIconScale, titleIconScale, 1.0)
+                if titleIconFraction > 0.01 {
+                    currentTitleContentFrame = currentTitleContentFrame.union(titleIconFrame)
+                }
+            }
+
+            let ghostIconSize = CGSize(width: 11.0, height: 13.0)
+            self.ghostModeIconView.image = UIImage(bundleImageName: "Avatar/DeletedIcon")?.withRenderingMode(.alwaysTemplate)
+            self.ghostModeIconView.tintColor = component.theme.rootController.navigationBar.primaryTextColor
+            self.ghostModeIconView.accessibilityLabel = component.strings.localFeatures.ghostMode.activeIndicator
+            self.ghostModeIconView.isHidden = !component.ghostModeEnabled
+            if component.ghostModeEnabled {
+                let ghostIconFrame = CGRect(
+                    origin: CGPoint(
+                        x: min(currentTitleContentFrame.maxX + 14.0, component.maxTitleX - ghostIconSize.width),
+                        y: floor(titleFrame.midY - ghostIconSize.height * 0.5)
+                    ),
+                    size: ghostIconSize
+                )
+                self.ghostModeIconView.frame = ghostIconFrame
             }
             
             titleContentOffset += collapsedState.titleWidth

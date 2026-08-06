@@ -264,6 +264,13 @@ public struct PresentationResourcesChatList {
             return generateTintedImage(image: UIImage(bundleImageName: "Chat List/HiddenIcon"), color: theme.chatList.muteIconColor)
         })
     }
+
+    public static func shadowBanIcon(_ theme: PresentationTheme) -> UIImage? {
+        return theme.image(PresentationResourceKey.chatListShadowBanIcon.rawValue, { theme in
+            let configuration = UIImage.SymbolConfiguration(pointSize: 11.0, weight: .semibold)
+            return generateTintedImage(image: UIImage(systemName: "eye.slash", withConfiguration: configuration), color: theme.chatList.muteIconColor)
+        })
+    }
     
     public static func forwardedIcon(_ theme: PresentationTheme) -> UIImage? {
         return theme.image(PresentationResourceKey.chatListForwardedIcon.rawValue, { theme in

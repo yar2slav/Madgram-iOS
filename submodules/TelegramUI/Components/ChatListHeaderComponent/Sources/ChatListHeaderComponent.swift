@@ -139,6 +139,7 @@ public final class ChatListHeaderComponent: Component {
     public let context: AccountContext
     public let theme: PresentationTheme
     public let strings: PresentationStrings
+    public let ghostModeEnabled: Bool
     
     public let openStatusSetup: (UIView) -> Void
     public let toggleIsLocked: () -> Void
@@ -157,6 +158,7 @@ public final class ChatListHeaderComponent: Component {
         context: AccountContext,
         theme: PresentationTheme,
         strings: PresentationStrings,
+        ghostModeEnabled: Bool = false,
         openStatusSetup: @escaping (UIView) -> Void,
         toggleIsLocked: @escaping () -> Void
     ) {
@@ -173,6 +175,7 @@ public final class ChatListHeaderComponent: Component {
         self.uploadProgress = uploadProgress
         self.theme = theme
         self.strings = strings
+        self.ghostModeEnabled = ghostModeEnabled
         self.openStatusSetup = openStatusSetup
         self.toggleIsLocked = toggleIsLocked
     }
@@ -215,6 +218,9 @@ public final class ChatListHeaderComponent: Component {
             return false
         }
         if lhs.strings !== rhs.strings {
+            return false
+        }
+        if lhs.ghostModeEnabled != rhs.ghostModeEnabled {
             return false
         }
         return true
@@ -734,6 +740,7 @@ public final class ChatListHeaderComponent: Component {
         
         private let storyPeerListExternalState = StoryPeerListComponent.ExternalState()
         private var storyPeerList: ComponentView<Empty>?
+        private let ghostModeIconView: UIImageView
         public var storyPeerAction: ((EnginePeer?) -> Void)?
         public var storyContextPeerAction: ((ContextExtractedContentContainingNode, ContextGesture, EnginePeer) -> Void)?
         public var storyComposeAction: ((CGFloat) -> Void)?
@@ -746,10 +753,15 @@ public final class ChatListHeaderComponent: Component {
             self.leftButtonsContainer = UIView()
             self.rightButtonsContainer = UIView()
             self.rightButtonsContainer.layer.anchorPoint = CGPoint(x: 1.0, y: 0.0)
+            self.ghostModeIconView = UIImageView()
+            self.ghostModeIconView.contentMode = .scaleAspectFit
+            self.ghostModeIconView.isUserInteractionEnabled = false
+            self.ghostModeIconView.isAccessibilityElement = true
 
             super.init(frame: frame)
             
             self.storyOffsetFraction = 1.0
+            self.addSubview(self.ghostModeIconView)
         }
         
         required public init?(coder: NSCoder) {
@@ -936,6 +948,7 @@ public final class ChatListHeaderComponent: Component {
                         titleHasLock: primaryTitleHasLock,
                         titleHasActivity: primaryTitleHasActivity,
                         titlePeerStatus: primaryTitlePeerStatus,
+                        ghostModeEnabled: component.ghostModeEnabled,
                         minTitleX: self.primaryContentView?.centerContentLeftInset ?? 0.0,
                         maxTitleX: availableSize.width - (self.primaryContentView?.centerContentRightInset ?? 0.0),
                         useHiddenList: component.storiesIncludeHidden,
@@ -1169,6 +1182,30 @@ public final class ChatListHeaderComponent: Component {
                         rightButtonsBackgroundContainer?.removeFromSuperview()
                     })
                 }
+            }
+
+            let ghostIconSize = CGSize(width: 11.0, height: 13.0)
+            self.ghostModeIconView.image = UIImage(bundleImageName: "Avatar/DeletedIcon")?.withRenderingMode(.alwaysTemplate)
+            self.ghostModeIconView.tintColor = component.theme.rootController.navigationBar.primaryTextColor
+            self.ghostModeIconView.accessibilityLabel = component.strings.localFeatures.ghostMode.activeIndicator
+            self.ghostModeIconView.isHidden = !component.ghostModeEnabled || component.storySubscriptions != nil
+            if component.ghostModeEnabled && component.storySubscriptions == nil {
+                var titleContentFrame: CGRect?
+                if let primaryContentView = self.primaryContentView, primaryContentView.centerContentWidth > 0.0 {
+                    titleContentFrame = CGRect(x: primaryContentView.centerContentOrigin, y: 0.0, width: primaryContentView.centerContentWidth, height: 44.0)
+                }
+                let maximumX = availableSize.width - component.sideInset - max(44.0, rightButtonsEffectiveWidth) - ghostIconSize.width - 8.0
+                let originX = min(titleContentFrame.map { $0.maxX + 19.0 } ?? maximumX, maximumX)
+                let ghostIconFrame = CGRect(
+                    origin: CGPoint(
+                        x: originX,
+                        y: floor((titleContentFrame?.midY ?? 22.0) - ghostIconSize.height * 0.5)
+                    ),
+                    size: ghostIconSize
+                )
+                transition.setFrame(view: self.ghostModeIconView, frame: ghostIconFrame)
+                transition.setAlpha(view: self.ghostModeIconView, alpha: 1.0 - component.secondaryTransition)
+                self.bringSubviewToFront(self.ghostModeIconView)
             }
             
             return availableSize

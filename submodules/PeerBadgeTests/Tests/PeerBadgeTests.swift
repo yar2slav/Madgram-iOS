@@ -15,7 +15,9 @@ final class PeerBadgeTests: XCTestCase {
             media: .image(
                 image64: "https://b.mad.tg/assets/a-64.webp",
                 image128: "https://b.mad.tg/assets/a-128.webp",
-                contentHash: "a"
+                contentHash: String(repeating: "a", count: 64),
+                image64Hash: String(repeating: "b", count: 64),
+                image128Hash: String(repeating: "c", count: 64)
             ),
             updatedAt: 100
         )

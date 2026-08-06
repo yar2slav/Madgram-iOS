@@ -190,6 +190,10 @@ API_AVAILABLE(ios(10))
     return @(APP_SPECIFIC_URL_SCHEME);
 }
 
+- (NSString *)apsEnvironment {
+    return @(APP_CONFIG_APS_ENVIRONMENT);
+}
+
 - (bool)isICloudEnabled {
     return APP_CONFIG_IS_ICLOUD_ENABLED;
 }

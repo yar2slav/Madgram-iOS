@@ -1436,6 +1436,7 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
     var statusIconComponent: EmojiStatusComponent?
     var peerBadgeView: ComponentHostView<Empty>?
     let hiddenPeerIconNode: ASImageNode
+    let shadowBanIconNode: ASImageNode
     let mutedIconNode: ASImageNode
     var itemTagList: ComponentView<Empty>?
     var actionButtonTitleNode: TextNode?
@@ -1739,6 +1740,11 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
         self.hiddenPeerIconNode.displaysAsynchronously = false
         self.hiddenPeerIconNode.displayWithoutProcessing = true
 
+        self.shadowBanIconNode = ASImageNode()
+        self.shadowBanIconNode.isLayerBacked = true
+        self.shadowBanIconNode.displaysAsynchronously = false
+        self.shadowBanIconNode.displayWithoutProcessing = true
+
         self.mutedIconNode = ASImageNode()
         self.mutedIconNode.isLayerBacked = true
         self.mutedIconNode.displaysAsynchronously = false
@@ -1772,6 +1778,7 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
         self.mainContentContainerNode.addSubnode(self.badgeNode)
         self.mainContentContainerNode.addSubnode(self.mentionBadgeNode)
         self.mainContentContainerNode.addSubnode(self.hiddenPeerIconNode)
+        self.mainContentContainerNode.addSubnode(self.shadowBanIconNode)
         self.mainContentContainerNode.addSubnode(self.mutedIconNode)
         
         self.peerPresenceManager = PeerPresenceStatusManager(update: { [weak self] in
@@ -2507,6 +2514,7 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
             var currentMentionBadgeImage: UIImage?
             var currentPinnedIconImage: UIImage?
             var currentHiddenIconImage: UIImage?
+            var currentShadowBanIconImage: UIImage?
             var currentMutedIconImage: UIImage?
             var currentCredibilityIconContent: EmojiStatusComponent.Content?
             var currentVerifiedIconContent: EmojiStatusComponent.Content?
@@ -2604,6 +2612,9 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
             // store rather than from presentationData: the latter only exists to force a
             // re-layout when the settings change.
             let messageFilterSettings = MessageFilterSettingsStore.shared.current
+            if case let .chat(itemPeer) = contentPeer, let peer = itemPeer.chatOrMonoforumMainPeer, messageFilterSettings.isShadowBanned(peer.id.toInt64()) {
+                currentShadowBanIconImage = PresentationResourcesChatList.shadowBanIcon(item.presentationData.theme)
+            }
             let containsFilteredMessages = messageFilterSettings.isActive && messages.contains(where: { message in
                 guard let author = message.author else {
                     return false
@@ -3540,10 +3551,18 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                 }
                 titleIconsWidth += currentHiddenIconImage.size.width
             }
+            if let currentShadowBanIconImage = currentShadowBanIconImage {
+                if titleIconsWidth.isZero {
+                    titleIconsWidth += 4.0
+                } else {
+                    titleIconsWidth += 1.0
+                }
+                titleIconsWidth += currentShadowBanIconImage.size.width
+            }
             if let currentMutedIconImage = currentMutedIconImage {
                 if titleIconsWidth.isZero {
                     titleIconsWidth += 4.0
-                } else if currentHiddenIconImage != nil {
+                } else if currentHiddenIconImage != nil || currentShadowBanIconImage != nil {
                     titleIconsWidth += 1.0
                 }
                 titleIconsWidth += currentMutedIconImage.size.width
@@ -5393,10 +5412,21 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                         strongSelf.hiddenPeerIconNode.isHidden = true
                     }
 
+                    if let currentShadowBanIconImage = currentShadowBanIconImage {
+                        strongSelf.shadowBanIconNode.image = currentShadowBanIconImage
+                        strongSelf.shadowBanIconNode.isHidden = false
+                        let shadowBanIconFrame = CGRect(origin: CGPoint(x: nextTitleIconOrigin, y: floorToScreenPixels(titleFrame.maxY - lastLineRect.height * 0.5 - currentShadowBanIconImage.size.height / 2.0)), size: currentShadowBanIconImage.size)
+                        transition.updateFrame(node: strongSelf.shadowBanIconNode, frame: shadowBanIconFrame)
+                        nextTitleIconOrigin = shadowBanIconFrame.maxX + 1.0
+                    } else {
+                        strongSelf.shadowBanIconNode.image = nil
+                        strongSelf.shadowBanIconNode.isHidden = true
+                    }
+
                     if let currentMutedIconImage = currentMutedIconImage {
                         strongSelf.mutedIconNode.image = currentMutedIconImage
                         strongSelf.mutedIconNode.isHidden = false
-                        let mutedIconOriginX = currentHiddenIconImage != nil ? nextTitleIconOrigin : nextTitleIconOrigin - 5.0
+                        let mutedIconOriginX = currentHiddenIconImage != nil || currentShadowBanIconImage != nil ? nextTitleIconOrigin : nextTitleIconOrigin - 5.0
                         transition.updateFrame(node: strongSelf.mutedIconNode, frame: CGRect(origin: CGPoint(x: mutedIconOriginX, y: floorToScreenPixels(titleFrame.maxY - lastLineRect.height * 0.5 - currentMutedIconImage.size.height / 2.0)), size: currentMutedIconImage.size))
                         nextTitleIconOrigin += currentMutedIconImage.size.width + 1.0
                     } else {
@@ -5416,7 +5446,7 @@ public class ChatListItemNode: ItemListRevealOptionsItemNode {
                             strongSelf.mainContentContainerNode.view.addSubview(backgroundView)
                             strongSelf.mainContentContainerNode.addSubnode(titleBadgeNode)
                         }
-                        if currentHiddenIconImage != nil || currentMutedIconImage != nil {
+                        if currentHiddenIconImage != nil || currentShadowBanIconImage != nil || currentMutedIconImage != nil {
                             nextTitleIconOrigin -= 7.0
                         }
                         nextTitleIconOrigin += 7.0

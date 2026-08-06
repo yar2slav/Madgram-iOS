@@ -164,6 +164,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
     
     private let apsNotificationToken: Signal<Data?, NoError>
     private let voipNotificationToken: Signal<Data?, NoError>
+    private let isApsSandbox: Bool
     
     public let firebaseSecretStream: Signal<[String: String], NoError>
     
@@ -299,7 +300,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
     
     private let energyUsageAutomaticDisposable = MetaDisposable()
     
-    init(mainWindow: Window1?, sharedContainerPath: String, basePath: String, encryptionParameters: ValueBoxEncryptionParameters, accountManager: AccountManager<TelegramAccountManagerTypes>, appLockContext: AppLockContext, notificationController: NotificationContainerController?, applicationBindings: TelegramApplicationBindings, initialPresentationDataAndSettings: InitialPresentationDataAndSettings, networkArguments: NetworkInitializationArguments, hasInAppPurchases: Bool, rootPath: String, legacyBasePath: String?, apsNotificationToken: Signal<Data?, NoError>, voipNotificationToken: Signal<Data?, NoError>, firebaseSecretStream: Signal<[String: String], NoError>, setNotificationCall: @escaping (PresentationCall?) -> Void, navigateToChat: @escaping (AccountRecordId, PeerId, MessageId?, Bool) -> Void, displayUpgradeProgress: @escaping (Float?) -> Void = { _ in }, appDelegate: AppDelegate?, testingEnvironment: Bool = false) {
+    init(mainWindow: Window1?, sharedContainerPath: String, basePath: String, encryptionParameters: ValueBoxEncryptionParameters, accountManager: AccountManager<TelegramAccountManagerTypes>, appLockContext: AppLockContext, notificationController: NotificationContainerController?, applicationBindings: TelegramApplicationBindings, initialPresentationDataAndSettings: InitialPresentationDataAndSettings, networkArguments: NetworkInitializationArguments, hasInAppPurchases: Bool, rootPath: String, legacyBasePath: String?, apsNotificationToken: Signal<Data?, NoError>, voipNotificationToken: Signal<Data?, NoError>, apsEnvironment: String = "", firebaseSecretStream: Signal<[String: String], NoError>, setNotificationCall: @escaping (PresentationCall?) -> Void, navigateToChat: @escaping (AccountRecordId, PeerId, MessageId?, Bool) -> Void, displayUpgradeProgress: @escaping (Float?) -> Void = { _ in }, appDelegate: AppDelegate?, testingEnvironment: Bool = false) {
         assert(Queue.mainQueue().isCurrent())
 
         precondition(!testHasInstance)
@@ -325,6 +326,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
         
         self.apsNotificationToken = apsNotificationToken
         self.voipNotificationToken = voipNotificationToken
+        self.isApsSandbox = apsEnvironment == "development"
         
         self.firebaseSecretStream = firebaseSecretStream
         
@@ -332,15 +334,9 @@ public final class SharedAccountContextImpl: SharedAccountContext {
             guard let data else {
                 return nil
             }
-            let sandbox: Bool
-            #if DEBUG
-            sandbox = true
-            #else
-            sandbox = false
-            #endif
             return AuthorizationCodePushNotificationConfiguration(
                 token: hexString(data),
-                isSandbox: sandbox
+                isSandbox: apsEnvironment == "development"
             )
         })
                 
@@ -1623,12 +1619,7 @@ public final class SharedAccountContextImpl: SharedAccountContext {
     }
     
     public func updateNotificationTokensRegistration() {
-        let sandbox: Bool
-        #if DEBUG
-        sandbox = true
-        #else
-        sandbox = false
-        #endif
+        let sandbox = self.isApsSandbox
         
         let settings = self.accountManager.sharedData(keys: [ApplicationSpecificSharedDataKeys.inAppNotificationSettings])
         |> map { sharedData -> (allAccounts: Bool, includeMuted: Bool) in

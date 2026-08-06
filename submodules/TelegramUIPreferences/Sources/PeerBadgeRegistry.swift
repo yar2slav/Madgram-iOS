@@ -36,7 +36,7 @@ public struct PeerBadgeTarget: Codable, Hashable {
 }
 
 public enum PeerBadgeMedia: Equatable {
-    case image(image64: String, image128: String, contentHash: String)
+    case image(image64: String, image128: String, contentHash: String, image64Hash: String, image128Hash: String)
     case customEmoji(documentId: Int64)
 }
 
@@ -46,6 +46,8 @@ extension PeerBadgeMedia: Codable {
         case image64
         case image128
         case contentHash
+        case image64Hash
+        case image128Hash
         case documentId
     }
 
@@ -61,7 +63,9 @@ extension PeerBadgeMedia: Codable {
             self = .image(
                 image64: try container.decode(String.self, forKey: .image64),
                 image128: try container.decode(String.self, forKey: .image128),
-                contentHash: try container.decode(String.self, forKey: .contentHash)
+                contentHash: try container.decode(String.self, forKey: .contentHash),
+                image64Hash: try container.decode(String.self, forKey: .image64Hash),
+                image128Hash: try container.decode(String.self, forKey: .image128Hash)
             )
         case .customEmoji:
             self = .customEmoji(documentId: try container.decode(Int64.self, forKey: .documentId))
@@ -71,11 +75,13 @@ extension PeerBadgeMedia: Codable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
-        case let .image(image64, image128, contentHash):
+        case let .image(image64, image128, contentHash, image64Hash, image128Hash):
             try container.encode(Kind.image, forKey: .kind)
             try container.encode(image64, forKey: .image64)
             try container.encode(image128, forKey: .image128)
             try container.encode(contentHash, forKey: .contentHash)
+            try container.encode(image64Hash, forKey: .image64Hash)
+            try container.encode(image128Hash, forKey: .image128Hash)
         case let .customEmoji(documentId):
             try container.encode(Kind.customEmoji, forKey: .kind)
             try container.encode(documentId, forKey: .documentId)
@@ -150,7 +156,96 @@ public enum PeerBadgeRegistryVerifier {
         else {
             return nil
         }
+        guard registry.badges.allSatisfy({ $0.media.isValid }) else {
+            return nil
+        }
         return registry
+    }
+}
+
+private extension PeerBadgeMedia {
+    var isValid: Bool {
+        switch self {
+        case let .image(image64, image128, contentHash, image64Hash, image128Hash):
+            return PeerBadgeImageValidator.isValidHash(contentHash)
+                && PeerBadgeImageValidator.isValidHash(image64Hash)
+                && PeerBadgeImageValidator.isValidHash(image128Hash)
+                && PeerBadgeImageValidator.isAllowedAssetURL(image64)
+                && PeerBadgeImageValidator.isAllowedAssetURL(image128)
+        case .customEmoji:
+            return true
+        }
+    }
+}
+
+public enum PeerBadgeImageValidator {
+    public static func isValidHash(_ value: String) -> Bool {
+        return value.count == 64 && value.utf8.allSatisfy { byte in
+            (byte >= 48 && byte <= 57) || (byte >= 97 && byte <= 102)
+        }
+    }
+
+    public static func isAllowedAssetURL(_ value: String) -> Bool {
+        guard let url = URL(string: value) else {
+            return false
+        }
+        return url.scheme == "https"
+            && url.host?.lowercased() == "b.mad.tg"
+            && url.user == nil
+            && url.password == nil
+            && (url.port == nil || url.port == 443)
+            && url.path.hasPrefix("/assets/")
+    }
+
+    public static func validate(data: Data, expectedHash: String, expectedSize: Int) -> Bool {
+        guard isValidHash(expectedHash) else {
+            return false
+        }
+        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        guard digest == expectedHash, let dimensions = webPDimensions(data: data) else {
+            return false
+        }
+        return dimensions.width == expectedSize && dimensions.height == expectedSize
+    }
+
+    private static func webPDimensions(data: Data) -> (width: Int, height: Int)? {
+        let bytes = [UInt8](data)
+        guard bytes.count >= 20,
+              String(bytes: bytes[0 ..< 4], encoding: .ascii) == "RIFF",
+              String(bytes: bytes[8 ..< 12], encoding: .ascii) == "WEBP"
+        else {
+            return nil
+        }
+        var offset = 12
+        while offset + 8 <= bytes.count {
+            let kind = String(bytes: bytes[offset ..< offset + 4], encoding: .ascii)
+            let length = Int(bytes[offset + 4])
+                | (Int(bytes[offset + 5]) << 8)
+                | (Int(bytes[offset + 6]) << 16)
+                | (Int(bytes[offset + 7]) << 24)
+            let payload = offset + 8
+            guard length >= 0, payload + length <= bytes.count else {
+                return nil
+            }
+            if kind == "VP8X", length >= 10 {
+                let width = 1 + Int(bytes[payload + 4]) + (Int(bytes[payload + 5]) << 8) + (Int(bytes[payload + 6]) << 16)
+                let height = 1 + Int(bytes[payload + 7]) + (Int(bytes[payload + 8]) << 8) + (Int(bytes[payload + 9]) << 16)
+                return (width, height)
+            } else if kind == "VP8 ", length >= 10,
+                      bytes[payload + 3] == 0x9d, bytes[payload + 4] == 0x01, bytes[payload + 5] == 0x2a {
+                let width = (Int(bytes[payload + 6]) | (Int(bytes[payload + 7]) << 8)) & 0x3fff
+                let height = (Int(bytes[payload + 8]) | (Int(bytes[payload + 9]) << 8)) & 0x3fff
+                return (width, height)
+            } else if kind == "VP8L", length >= 5, bytes[payload] == 0x2f {
+                let bits = UInt32(bytes[payload + 1])
+                    | (UInt32(bytes[payload + 2]) << 8)
+                    | (UInt32(bytes[payload + 3]) << 16)
+                    | (UInt32(bytes[payload + 4]) << 24)
+                return (Int(bits & 0x3fff) + 1, Int((bits >> 14) & 0x3fff) + 1)
+            }
+            offset = payload + length + (length & 1)
+        }
+        return nil
     }
 }
 
@@ -286,12 +381,17 @@ public final class PeerBadgeRegistryStore {
     }
 
     public func cachedImageData(for badge: PeerBadge, preferredSize: Int = 64) -> Data? {
-        guard case let .image(_, _, contentHash) = badge.media else {
+        guard case let .image(_, _, _, image64Hash, image128Hash) = badge.media else {
             return nil
         }
         let size = preferredSize >= 128 ? 128 : 64
-        let url = self.imageCacheDirectory.appendingPathComponent("\(contentHash)-\(size).webp")
+        let expectedHash = size == 128 ? image128Hash : image64Hash
+        let url = self.imageCacheDirectory.appendingPathComponent("\(expectedHash)-\(size).webp")
         guard let data = try? Data(contentsOf: url) else {
+            return nil
+        }
+        guard PeerBadgeImageValidator.validate(data: data, expectedHash: expectedHash, expectedSize: size) else {
+            try? FileManager.default.removeItem(at: url)
             return nil
         }
         try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: url.path)
@@ -303,16 +403,16 @@ public final class PeerBadgeRegistryStore {
             completion(data)
             return
         }
-        guard case let .image(image64, image128, contentHash) = badge.media else {
+        guard case let .image(image64, image128, _, image64Hash, image128Hash) = badge.media else {
             completion(nil)
             return
         }
         let size = preferredSize >= 128 ? 128 : 64
         let urlString = size == 128 ? image128 : image64
+        let expectedHash = size == 128 ? image128Hash : image64Hash
         guard
             let url = URL(string: urlString),
-            url.scheme == "https",
-            url.host == Self.registryUrl.host
+            PeerBadgeImageValidator.isAllowedAssetURL(urlString)
         else {
             completion(nil)
             return
@@ -322,15 +422,20 @@ public final class PeerBadgeRegistryStore {
                 let self,
                 let response = response as? HTTPURLResponse,
                 response.statusCode == 200,
+                let finalUrl = response.url,
+                PeerBadgeImageValidator.isAllowedAssetURL(finalUrl.absoluteString),
+                response.mimeType?.lowercased() == "image/webp",
                 let data,
-                data.count <= 2 * 1024 * 1024
+                !data.isEmpty,
+                data.count <= 2 * 1024 * 1024,
+                PeerBadgeImageValidator.validate(data: data, expectedHash: expectedHash, expectedSize: size)
             else {
                 DispatchQueue.main.async {
                     completion(nil)
                 }
                 return
             }
-            let destination = self.imageCacheDirectory.appendingPathComponent("\(contentHash)-\(size).webp")
+            let destination = self.imageCacheDirectory.appendingPathComponent("\(expectedHash)-\(size).webp")
             try? data.write(to: destination, options: .atomic)
             self.trimImageCache()
             DispatchQueue.main.async {

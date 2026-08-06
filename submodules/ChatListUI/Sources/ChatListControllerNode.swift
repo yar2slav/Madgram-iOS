@@ -1143,6 +1143,8 @@ final class ChatListControllerNode: ASDisplayNode, ASGestureRecognizerDelegate {
     private var tapRecognizer: UITapGestureRecognizer?
     var navigationBar: NavigationBar?
     let navigationBarView = ComponentView<Empty>()
+    private let ghostModeSettingsDisposable = MetaDisposable()
+    private var ghostModeEnabled = false
     weak var controller: ChatListControllerImpl?
     
     private var toolbar: ComponentView<Empty>?
@@ -1216,6 +1218,16 @@ final class ChatListControllerNode: ASDisplayNode, ASGestureRecognizerDelegate {
         })
         
         self.backgroundColor = presentationData.theme.chatList.backgroundColor
+
+        self.ghostModeSettingsDisposable.set((context.engine.messages.ghostModeSettings()
+        |> distinctUntilChanged
+        |> deliverOnMainQueue).start(next: { [weak self] settings in
+            guard let self, self.ghostModeEnabled != settings.isEnabled else {
+                return
+            }
+            self.ghostModeEnabled = settings.isEnabled
+            self.controller?.requestLayout(transition: .animated(duration: 0.2, curve: .easeInOut))
+        }))
         
         self.addSubnode(self.mainContainerNode)
         
@@ -1318,6 +1330,10 @@ final class ChatListControllerNode: ASDisplayNode, ASGestureRecognizerDelegate {
         inlineContentPanRecognizer.cancelsTouchesInView = true
         self.inlineContentPanRecognizer = inlineContentPanRecognizer
         self.view.addGestureRecognizer(inlineContentPanRecognizer)
+    }
+
+    deinit {
+        self.ghostModeSettingsDisposable.dispose()
     }
     
     override func didLoad() {
@@ -1689,6 +1705,7 @@ final class ChatListControllerNode: ASDisplayNode, ASGestureRecognizerDelegate {
                 tabsNodeIsSearch: false,
                 accessoryPanelContainer: self.controller?.accessoryPanelContainer,
                 accessoryPanelContainerHeight: self.controller?.accessoryPanelContainerHeight ?? 0.0,
+                ghostModeEnabled: self.ghostModeEnabled,
                 activateSearch: { [weak self] searchContentNode in
                     guard let self, let controller = self.controller else {
                         return

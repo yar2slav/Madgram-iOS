@@ -987,6 +987,20 @@ func infoItems(
                 interaction.requestLayout(animated)
             }
         ))
+        technicalItemId += 1
+    }
+
+    if let peer = data.peer, case let .user(user) = peer, user.botInfo == nil, peer.id != context.account.peerId, user.flags.contains(.mutualContact) {
+        items[.technical]!.append(PeerInfoScreenLabeledValueItem(
+            id: technicalItemId,
+            label: "",
+            text: interfaceStrings.mutualContact,
+            textColor: .primary,
+            action: nil,
+            requestLayout: { animated in
+                interaction.requestLayout(animated)
+            }
+        ))
     }
     
     var result: [(AnyHashable, [PeerInfoScreenItem])] = []

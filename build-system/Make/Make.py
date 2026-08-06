@@ -519,12 +519,20 @@ def resolve_configuration(base_path, bazel_command_line: BazelCommandLine, argum
         provisioning_profiles_path=provisioning_path,
         additional_codesigning_output_path=additional_codesigning_output_path
     )
-    if codesigning_data.aps_environment is None:
+    aps_environment = codesigning_data.aps_environment
+    requested_aps_environment = getattr(arguments, 'apsEnvironment', None)
+    if requested_aps_environment is not None:
+        if aps_environment not in (None, '', requested_aps_environment):
+            print('The requested APNs environment does not match the provisioning profile')
+            sys.exit(1)
+        aps_environment = requested_aps_environment
+
+    if aps_environment is None:
         print('Could not find a valid aps-environment entitlement in the provided provisioning profiles')
         sys.exit(1)
 
     if bazel_command_line is not None:
-        build_configuration.write_to_variables_file(bazel_path=bazel_command_line.bazel, use_xcode_managed_codesigning=codesigning_data.use_xcode_managed_codesigning, aps_environment=codesigning_data.aps_environment, path=configuration_repository_path + '/variables.bzl')
+        build_configuration.write_to_variables_file(bazel_path=bazel_command_line.bazel, use_xcode_managed_codesigning=codesigning_data.use_xcode_managed_codesigning, aps_environment=aps_environment, path=configuration_repository_path + '/variables.bzl')
 
     provisioning_profile_files = []
     for file_name in os.listdir(provisioning_path):
@@ -884,6 +892,16 @@ def add_codesigning_common_arguments(current_parser: argparse.ArgumentParser):
         help='''
             Always refresh codesigning repository.
             '''
+    )
+
+    current_parser.add_argument(
+        '--apsEnvironment',
+        choices=[
+            'development',
+            'production'
+        ],
+        required=False,
+        help='Override the APNs environment for a build that will be re-signed with a matching provisioning profile.'
     )
 
 

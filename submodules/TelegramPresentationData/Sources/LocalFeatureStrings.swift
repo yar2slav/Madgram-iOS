@@ -22,6 +22,7 @@ public struct GhostModeFeatureStrings {
     public let keepViewOnceMedia: String
     public let keepViewOnceMediaInfo: String
     public let burnViewOnceMedia: String
+    public let activeIndicator: String
 }
 
 public struct LocalMessageArchiveFeatureStrings {
@@ -138,6 +139,7 @@ public struct InterfaceTuningFeatureStrings {
     public let showChatCreationDate: String
     public let showChatCreationDateInfo: String
     public let profileIdentifierLabel: String
+    public let mutualContact: String
     public let dataCenterLabel: String
     public let registrationDateLabel: String
     public let chatCreationDateLabel: String
@@ -211,7 +213,8 @@ public struct LocalFeatureStrings {
                 readReceiptFailed: "Не удалось отправить отметку о прочтении.",
                 keepViewOnceMedia: "Не сжигать одноразовые медиа",
                 keepViewOnceMediaInfo: "Одноразовые фото, видео, голосовые и кружки можно пересматривать сколько угодно раз, включая секретные чаты. Отправитель видит их непросмотренными, пока вы не нажмёте «Сжечь».",
-                burnViewOnceMedia: "Сжечь"
+                burnViewOnceMedia: "Сжечь",
+                activeIndicator: "Режим призрака включён"
             )
             self.localMessageArchive = LocalMessageArchiveFeatureStrings(
                 title: "Удалённые и изменённые",
@@ -286,6 +289,7 @@ public struct LocalFeatureStrings {
                 showChatCreationDate: "Дата создания чата",
                 showChatCreationDateInfo: "Показывает дату первого доступного сообщения или дату создания группы. Для некоторых чатов значение неизвестно.",
                 profileIdentifierLabel: "User ID",
+                mutualContact: "взаимный контакт",
                 dataCenterLabel: "DC",
                 registrationDateLabel: "Дата регистрации",
                 chatCreationDateLabel: "Дата создания чата",
@@ -386,7 +390,8 @@ public struct LocalFeatureStrings {
                 readReceiptFailed: "Не вдалося надіслати позначку про прочитання.",
                 keepViewOnceMedia: "Не спалювати одноразові медіа",
                 keepViewOnceMediaInfo: "Одноразові фото, відео, голосові та кружечки можна переглядати скільки завгодно разів, зокрема в секретних чатах. Відправник бачить їх непереглянутими, доки ви не натиснете «Спалити».",
-                burnViewOnceMedia: "Спалити"
+                burnViewOnceMedia: "Спалити",
+                activeIndicator: "Режим привида увімкнено"
             )
             self.localMessageArchive = LocalMessageArchiveFeatureStrings(
                 title: "Видалені та змінені",
@@ -461,6 +466,7 @@ public struct LocalFeatureStrings {
                 showChatCreationDate: "Дата створення чату",
                 showChatCreationDateInfo: "Показує дату першого доступного повідомлення або створення групи. Для деяких чатів значення невідоме.",
                 profileIdentifierLabel: "User ID",
+                mutualContact: "взаємний контакт",
                 dataCenterLabel: "DC",
                 registrationDateLabel: "Дата реєстрації",
                 chatCreationDateLabel: "Дата створення чату",
@@ -561,7 +567,8 @@ public struct LocalFeatureStrings {
                 readReceiptFailed: "Couldn't send read receipt.",
                 keepViewOnceMedia: "Don't Burn View-Once Media",
                 keepViewOnceMediaInfo: "View-once photos, videos, voice and video messages can be replayed any number of times, including in secret chats. The sender sees them as unopened until you tap Burn.",
-                burnViewOnceMedia: "Burn"
+                burnViewOnceMedia: "Burn",
+                activeIndicator: "Ghost Mode is on"
             )
             self.localMessageArchive = LocalMessageArchiveFeatureStrings(
                 title: "Deleted and Edited",
@@ -626,6 +633,7 @@ public struct LocalFeatureStrings {
                 showChatCreationDate: "Chat Creation Date",
                 showChatCreationDateInfo: "Shows the first available message date or group creation date. It is unavailable for some chats.",
                 profileIdentifierLabel: "User ID",
+                mutualContact: "mutual contact",
                 dataCenterLabel: "DC",
                 registrationDateLabel: "Registration date",
                 chatCreationDateLabel: "Chat created",

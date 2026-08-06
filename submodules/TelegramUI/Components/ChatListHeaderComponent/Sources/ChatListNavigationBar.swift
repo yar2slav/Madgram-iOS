@@ -66,6 +66,7 @@ public final class ChatListNavigationBar: Component {
     public let accessoryPanelContainer: ASDisplayNode?
     public let accessoryPanelContainerHeight: CGFloat
     public let hasEdgeEffect: Bool
+    public let ghostModeEnabled: Bool
     public let activateSearch: (NavigationBarSearchContentNode) -> Void
     public let openStatusSetup: (UIView) -> Void
     public let allowAutomaticOrder: () -> Void
@@ -90,6 +91,7 @@ public final class ChatListNavigationBar: Component {
         accessoryPanelContainer: ASDisplayNode?,
         accessoryPanelContainerHeight: CGFloat,
         hasEdgeEffect: Bool = true,
+        ghostModeEnabled: Bool = false,
         activateSearch: @escaping (NavigationBarSearchContentNode) -> Void,
         openStatusSetup: @escaping (UIView) -> Void,
         allowAutomaticOrder: @escaping () -> Void
@@ -113,6 +115,7 @@ public final class ChatListNavigationBar: Component {
         self.accessoryPanelContainer = accessoryPanelContainer
         self.accessoryPanelContainerHeight = accessoryPanelContainerHeight
         self.hasEdgeEffect = hasEdgeEffect
+        self.ghostModeEnabled = ghostModeEnabled
         self.activateSearch = activateSearch
         self.openStatusSetup = openStatusSetup
         self.allowAutomaticOrder = allowAutomaticOrder
@@ -174,6 +177,9 @@ public final class ChatListNavigationBar: Component {
             return false
         }
         if lhs.hasEdgeEffect != rhs.hasEdgeEffect {
+            return false
+        }
+        if lhs.ghostModeEnabled != rhs.ghostModeEnabled {
             return false
         }
         return true
@@ -458,6 +464,7 @@ public final class ChatListNavigationBar: Component {
                 context: component.context,
                 theme: component.theme,
                 strings: component.strings,
+                ghostModeEnabled: component.ghostModeEnabled,
                 openStatusSetup: { [weak self] sourceView in
                     guard let self, let component = self.component else {
                         return
@@ -651,6 +658,7 @@ public final class ChatListNavigationBar: Component {
                     tabsNodeIsSearch: component.tabsNodeIsSearch,
                     accessoryPanelContainer: component.accessoryPanelContainer,
                     accessoryPanelContainerHeight: component.accessoryPanelContainerHeight,
+                    ghostModeEnabled: component.ghostModeEnabled,
                     activateSearch: component.activateSearch,
                     openStatusSetup: component.openStatusSetup,
                     allowAutomaticOrder: component.allowAutomaticOrder
@@ -670,6 +678,7 @@ public final class ChatListNavigationBar: Component {
                         context: headerComponent.context,
                         theme: headerComponent.theme,
                         strings: headerComponent.strings,
+                        ghostModeEnabled: headerComponent.ghostModeEnabled,
                         openStatusSetup: headerComponent.openStatusSetup,
                         toggleIsLocked: headerComponent.toggleIsLocked
                     )
