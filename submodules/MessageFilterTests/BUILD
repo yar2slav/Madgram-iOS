@@ -7,6 +7,8 @@ swift_library(
     testonly = True,
     srcs = glob(["Tests/**/*.swift"]),
     deps = [
+        "//submodules/Postbox:Postbox",
+        "//submodules/TelegramCore:TelegramCore",
         "//submodules/TelegramUIPreferences:TelegramUIPreferences",
     ],
 )

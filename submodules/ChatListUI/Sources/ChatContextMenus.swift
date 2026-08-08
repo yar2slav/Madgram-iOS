@@ -16,6 +16,65 @@ import TelegramStringFormatting
 import ChatTimerScreen
 import NotificationPeerExceptionController
 
+/// Running "delete all my messages" operations, keyed by "accountPeerId:peerId". Main queue only.
+/// Held globally so deletion survives menu/controller dismissal and repeated launches are blocked.
+private var deleteAllOwnMessagesDisposables: [String: MetaDisposable] = [:]
+
+private func startDeleteAllOwnMessages(context: AccountContext, peerId: EnginePeer.Id, peerTitle: String, chatListController: ChatListControllerImpl?) {
+    let operationKey = "\(context.account.peerId.toInt64()):\(peerId.toInt64())"
+    if deleteAllOwnMessagesDisposables[operationKey] != nil {
+        return
+    }
+
+    let presentationData = context.sharedContext.currentPresentationData.with({ $0 })
+    let localStrings = presentationData.strings.localFeatures.deleteOwnMessages
+
+    let disposable = MetaDisposable()
+    deleteAllOwnMessagesDisposables[operationKey] = disposable
+
+    weak var progressToast: UndoOverlayController?
+    let toast = UndoOverlayController(
+        presentationData: presentationData,
+        content: .progress(progress: 0.0, title: peerTitle, text: localStrings.preparing, undoText: presentationData.strings.Common_Cancel),
+        elevatedLayout: false,
+        action: { action in
+            if case .undo = action {
+                deleteAllOwnMessagesDisposables.removeValue(forKey: operationKey)?.dispose()
+            }
+            return true
+        }
+    )
+    progressToast = toast
+    chatListController?.present(toast, in: .current)
+
+    var lastProgress: DeleteAllOwnMessagesProgress?
+    disposable.set((context.engine.messages.deleteAllOwnMessages(peerId: peerId)
+    |> deliverOnMainQueue).startStrict(next: { progress in
+        lastProgress = progress
+        let fraction: CGFloat = progress.totalCount > 0 ? CGFloat(progress.deletedCount) / CGFloat(progress.totalCount) : 0.0
+        progressToast?.content = .progress(
+            progress: fraction,
+            title: peerTitle,
+            text: localStrings.progress(progress.deletedCount, progress.totalCount),
+            undoText: presentationData.strings.Common_Cancel
+        )
+    }, completed: {
+        deleteAllOwnMessagesDisposables.removeValue(forKey: operationKey)?.dispose()
+        let deletedCount = lastProgress?.deletedCount ?? 0
+        let content: UndoOverlayContent = .actionSucceeded(
+            title: peerTitle,
+            text: deletedCount == 0 ? localStrings.empty : localStrings.completed(deletedCount),
+            cancel: nil,
+            destructive: false
+        )
+        if let progressToast {
+            progressToast.content = content
+        } else if let chatListController {
+            chatListController.present(UndoOverlayController(presentationData: presentationData, content: content, elevatedLayout: false, action: { _ in true }), in: .current)
+        }
+    }))
+}
+
 func archiveContextMenuItems(context: AccountContext, group: EngineChatList.Group, chatListController: ChatListControllerImpl?) -> Signal<[ContextMenuItem], NoError> {
     let presentationData = context.sharedContext.currentPresentationData.with({ $0 })
     let strings = presentationData.strings
@@ -558,7 +617,47 @@ func chatContextMenuItems(context: AccountContext, peerId: EnginePeer.Id, promoI
                             }
                         }
 
+                        // peer.id == peerId excludes secret chats (their list entry resolves to the underlying user).
+                        var canDeleteOwnMessages = false
+                        if peer.id == peerId {
+                            switch peer {
+                            case let .user(user):
+                                if user.id != context.account.peerId && !isServicePeer(user) {
+                                    canDeleteOwnMessages = true
+                                }
+                            case .legacyGroup:
+                                canDeleteOwnMessages = true
+                            case let .channel(channel):
+                                if case .group = channel.info {
+                                    canDeleteOwnMessages = true
+                                }
+                            default:
+                                break
+                            }
+                        }
+
                         if case .chatList = source, peerGroup != nil {
+                            if canDeleteOwnMessages {
+                                let localStrings = presentationData.strings.localFeatures.deleteOwnMessages
+                                let peerTitle = peer.displayTitle(strings: strings, displayOrder: presentationData.nameDisplayOrder)
+                                items.append(.action(ContextMenuActionItem(text: localStrings.menuItem, textColor: .destructive, icon: { theme in generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Clear"), color: theme.contextMenu.destructiveColor) }, action: { _, f in
+                                    f(.default)
+                                    guard let chatListController else {
+                                        return
+                                    }
+                                    chatListController.present(textAlertController(
+                                        context: context,
+                                        title: localStrings.confirmTitle,
+                                        text: localStrings.confirmText,
+                                        actions: [
+                                            TextAlertAction(type: .genericAction, title: strings.Common_Cancel, action: {}),
+                                            TextAlertAction(type: .destructiveAction, title: localStrings.confirmAction, action: {
+                                                startDeleteAllOwnMessages(context: context, peerId: peerId, peerTitle: peerTitle, chatListController: chatListController)
+                                            }),
+                                        ]
+                                    ), in: .window(.root))
+                                })))
+                            }
                             appendDeleteOrUngroupItem()
                         } else if case let .search(search) = source {
                             switch search {

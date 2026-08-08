@@ -255,6 +255,10 @@ public extension TelegramEngine {
             return _internal_deleteMessagesInteractively(account: self.account, messageIds: messageIds, type: type, deleteAllInGroup: deleteAllInGroup)
         }
 
+        public func deleteAllOwnMessages(peerId: EnginePeer.Id) -> Signal<DeleteAllOwnMessagesProgress, NoError> {
+            return _internal_deleteAllOwnMessages(account: self.account, peerId: peerId)
+        }
+
         public func clearHistoryInteractively(peerId: PeerId, threadId: Int64?, type: InteractiveHistoryClearingType) -> Signal<Void, NoError> {
             return _internal_clearHistoryInteractively(postbox: self.account.postbox, peerId: peerId, threadId: threadId, type: type)
         }

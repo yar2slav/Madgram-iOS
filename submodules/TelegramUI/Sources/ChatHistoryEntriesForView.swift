@@ -166,6 +166,16 @@ func chatHistoryEntriesForView(
                messageFilterSettings.hidesMessages(fromAuthorId: repliedAuthor.id.toInt64()) {
                 message = message.withUpdatedAttributes(message.attributes.filter { !($0 is ReplyMessageAttribute) })
             }
+            if let reactionsAttribute = message.attributes.first(where: { $0 is ReactionsMessageAttribute }) as? ReactionsMessageAttribute {
+                let strippedReactions = messageFilterSettings.strippingHiddenReactions(from: reactionsAttribute)
+                if strippedReactions !== reactionsAttribute {
+                    var attributes = message.attributes.filter { !($0 is ReactionsMessageAttribute) }
+                    if let strippedReactions {
+                        attributes.append(strippedReactions)
+                    }
+                    message = message.withUpdatedAttributes(attributes)
+                }
+            }
         }
         
         if case let .replyThread(replyThreadMessage) = location, replyThreadMessage.isForumPost {

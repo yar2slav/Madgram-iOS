@@ -1096,7 +1096,12 @@ public final class Network: NSObject, MTRequestMessageServiceDelegate {
             })
             
             request.dependsOnPasswordEntry = false
-            
+            // Stall detector: with a pending request and 5s of zero transport activity, the
+            // connection is torn down and re-established (see MTRequestMessageService). Without
+            // this, a socket silently killed while the app was suspended (VPN tunnel flap under
+            // DPI blackholing) is never detected and the main connection hangs until app restart.
+            request.needsTimeoutTimer = self.useRequestTimeoutTimers
+
             request.shouldContinueExecutionWithErrorContext = { errorContext in
                 guard let errorContext = errorContext else {
                     return true
@@ -1109,7 +1114,7 @@ public final class Network: NSObject, MTRequestMessageServiceDelegate {
                 }
                 return true
             }
-            
+
             request.acknowledgementReceived = {
                 if info.contains(.acknowledgement) {
                     subscriber.putNext(.acknowledged)
@@ -1168,7 +1173,9 @@ public final class Network: NSObject, MTRequestMessageServiceDelegate {
             })
             
             request.dependsOnPasswordEntry = false
-            
+            // Same stall detector as in requestWithAdditionalInfo above.
+            request.needsTimeoutTimer = self.useRequestTimeoutTimers
+
             request.shouldContinueExecutionWithErrorContext = { errorContext in
                 guard let errorContext = errorContext else {
                     return true
@@ -1181,7 +1188,7 @@ public final class Network: NSObject, MTRequestMessageServiceDelegate {
                 }
                 return true
             }
-            
+
             request.completed = { (boxedResponse, timestamp, error) -> () in
                 if let error = error {
                     subscriber.putError(error)

@@ -108,6 +108,17 @@ public struct MessageShotFeatureStrings {
     public let selectionLimit: (Int) -> String
 }
 
+public struct DeleteOwnMessagesFeatureStrings {
+    public let menuItem: String
+    public let confirmTitle: String
+    public let confirmText: String
+    public let confirmAction: String
+    public let preparing: String
+    public let progress: (Int, Int) -> String
+    public let completed: (Int) -> String
+    public let empty: String
+}
+
 public struct InterfaceTuningFeatureStrings {
     public let title: String
     public let tabsSection: String
@@ -182,6 +193,7 @@ public struct LocalFeatureStrings {
     public let localPremium: LocalPremiumFeatureStrings
     public let messageFilter: MessageFilterFeatureStrings
     public let messageShot: MessageShotFeatureStrings
+    public let deleteOwnMessages: DeleteOwnMessagesFeatureStrings
 
     public init(strings: PresentationStrings) {
         let languageCode = strings.baseLanguageCode
@@ -368,6 +380,20 @@ public struct LocalFeatureStrings {
                     return "На скриншот попадут первые \(count) сообщений."
                 }
             )
+            self.deleteOwnMessages = DeleteOwnMessagesFeatureStrings(
+                menuItem: "Удалить все мои сообщения",
+                confirmTitle: "Удалить все мои сообщения?",
+                confirmText: "Все ваши сообщения в этом чате будут удалены у всех участников. Это действие необратимо.",
+                confirmAction: "Удалить",
+                preparing: "Удаление сообщений…",
+                progress: { deleted, total in
+                    return "Удаление сообщений: \(deleted) из \(total)…"
+                },
+                completed: { count in
+                    return "Удалено сообщений: \(count)."
+                },
+                empty: "В этом чате нет ваших сообщений."
+            )
         case "uk":
             self.ghostMode = GhostModeFeatureStrings(
                 title: "Режим привида",
@@ -545,6 +571,20 @@ public struct LocalFeatureStrings {
                     return "На скриншот потраплять перші \(count) повідомлень."
                 }
             )
+            self.deleteOwnMessages = DeleteOwnMessagesFeatureStrings(
+                menuItem: "Видалити всі мої повідомлення",
+                confirmTitle: "Видалити всі мої повідомлення?",
+                confirmText: "Усі ваші повідомлення в цьому чаті буде видалено в усіх учасників. Цю дію неможливо скасувати.",
+                confirmAction: "Видалити",
+                preparing: "Видалення повідомлень…",
+                progress: { deleted, total in
+                    return "Видалення повідомлень: \(deleted) з \(total)…"
+                },
+                completed: { count in
+                    return "Видалено повідомлень: \(count)."
+                },
+                empty: "У цьому чаті немає ваших повідомлень."
+            )
         default:
             self.ghostMode = GhostModeFeatureStrings(
                 title: "Ghost Mode",
@@ -711,6 +751,20 @@ public struct LocalFeatureStrings {
                 selectionLimit: { count in
                     return "Only the first \(count) messages will be included."
                 }
+            )
+            self.deleteOwnMessages = DeleteOwnMessagesFeatureStrings(
+                menuItem: "Delete All My Messages",
+                confirmTitle: "Delete all my messages?",
+                confirmText: "All of your messages in this chat will be deleted for all participants. This action cannot be undone.",
+                confirmAction: "Delete",
+                preparing: "Deleting messages…",
+                progress: { deleted, total in
+                    return "Deleting messages: \(deleted) of \(total)…"
+                },
+                completed: { count in
+                    return "Deleted \(count) messages."
+                },
+                empty: "You have no messages in this chat."
             )
         }
     }
