@@ -1,4 +1,6 @@
 import Foundation
+import MadProfileLinks
+import MadgramAgentUI
 import UIKit
 import Display
 import SwiftSignalKit
@@ -59,6 +61,7 @@ enum SettingsSearchableItemIcon {
     case myProfile
     case gift
     case powerSaving
+    case madgram
 }
 
 public enum SettingsSearchableItemPresentation {
@@ -4073,6 +4076,19 @@ private func appearanceSearchableItems(context: AccountContext) -> [SettingsSear
             )
         )
     }
+    // Without bubbles Appearance hides Chat Themes and Chat Background, so search leaves out their screens too.
+    if !context.sharedContext.currentPresentationData.with({ $0 }).chatBubbleCorners.bubbleMode {
+        let hiddenIds: Set<AnyHashable> = [
+            "appearance/wallpapers",
+            "appearance/wallpapers/edit",
+            "appearance/wallpapers/set",
+            "appearance/wallpapers/choose-photo",
+            "appearance/themes",
+            "appearance/themes/edit",
+            "appearance/themes/create"
+        ]
+        items = items.filter { !hiddenIds.contains($0.id) }
+    }
     return items
 }
 
@@ -4433,6 +4449,8 @@ func settingsSearchableItems(
         let powerSavingItems = energySavingSearchableItems(context: context)
         allItems.append(contentsOf: powerSavingItems)
         
+        allItems.append(contentsOf: madgramSearchableItems(context: context))
+        
         let languageItems = languageSearchableItems(context: context, localizations: localizations)
         allItems.append(contentsOf: languageItems)
         
@@ -4643,4 +4661,89 @@ private func presentSetupBirthday(context: AccountContext, present: @escaping (S
         }
     )
     present(.push, controller)
+}
+
+func madgramSearchableItems(context: AccountContext) -> [SettingsSearchableItem] {
+    let strings = context.sharedContext.currentPresentationData.with { $0 }.strings
+    let local = strings.localFeatures
+    let more = local.more
+    let extras = local.extras
+    let root = local.madgram.title
+    var items: [SettingsSearchableItem] = []
+    func add(_ id: String, _ title: String, _ category: MadSettingsCategory?, _ alternate: [String] = []) {
+        let breadcrumbs: [String]
+        switch category {
+        case .interface:
+            breadcrumbs = [root, extras.categoryInterface]
+        case .chats:
+            breadcrumbs = [root, extras.categoryChats]
+        case .messages:
+            breadcrumbs = [root, extras.categoryMessages]
+        case .privacy:
+            breadcrumbs = [root, extras.categoryPrivacy]
+        case .other:
+            breadcrumbs = [root, extras.categoryOther]
+        case .hiding:
+            breadcrumbs = [root, more.categoryHiding]
+        case .none:
+            breadcrumbs = []
+        }
+        items.append(SettingsSearchableItem(id: "mad/" + id, title: title, alternate: alternate, icon: .madgram, breadcrumbs: breadcrumbs, present: { context, _, present in
+            present(.push, madgramSettingsController(context: context, category: category))
+        }))
+    }
+    add("root", root, nil, ["mad", "madgram"])
+    add("ghost", local.ghostMode.title, .privacy, ["призрак", "ghost"])
+    add("archive", local.localMessageArchive.title, .messages)
+    add("filters", local.messageFilter.title, .messages)
+    add("voice-button", more.hideVoiceRecordButton, .hiding)
+    add("pinned", more.hidePinnedMessageBar, .hiding)
+    add("gift-button", more.hideGiftInputButton, .hiding)
+    add("online-count", more.showOnlineCountAlways, .interface)
+    add("mutual", more.showMutualContactInHeader, .interface)
+    add("name-header", more.showNameInsteadOfPhone, .interface)
+    add("static-avatars", more.staticAnimatedAvatars, .interface)
+    add("birthdays", more.hideBirthdays, .hiding)
+    add("camera", more.cameraSection, .interface, [more.cameraResolution, more.cameraFrameRate, "4K", "60"])
+    add("round-quality", more.roundVideoQuality, .interface, [more.roundVideoUltraWide])
+    add("similar", more.hideSimilarChannels, .hiding)
+    add("proxy", more.hideProxySponsor, .hiding)
+    add("foreign-agent", more.hideForeignAgentLabels, .hiding, ["иноагент"])
+    add("hidden-rules", more.hiddenRules, .hiding, ["regex", "регулярка"])
+    add("ai", more.disableTelegramAI, .chats)
+    add("ton", more.disableTonWallet, .chats, ["TON", "кошелёк", "wallet"])
+    add("join-dates", more.showJoinDates, .chats)
+    add("media-info", more.showMediaInfoInViewer, .chats, ["DC"])
+    add("links", more.cleanSentLinks, .chats, [more.cleanOpenedLinks, "utm", "fbclid"])
+    add("view-once", more.forceViewOnceVoice, .messages)
+    add("inline-via", more.sendInlineWithoutVia, .messages, ["via"])
+    add("translate", more.freeTranslation, .messages, ["Google", "перевод"])
+    add("transcribe", more.freeTranscription, .messages, ["расшифровка"])
+    add("phone", more.hidePhoneEverywhere, .hiding)
+    items.append(SettingsSearchableItem(id: "mad/accounts", title: more.accounts.title, alternate: more.accounts.searchKeywords, icon: .madgram, breadcrumbs: [root, extras.categoryPrivacy], present: { context, _, present in
+        present(.push, madAccountsController(context: context))
+    }))
+    add("invisible", more.showInvisibleChars, .privacy)
+    add("aliases", more.localNames, .privacy)
+    add("presence", more.presenceWatched, .privacy)
+    add("password", more.localPassword, .privacy, [more.lockedChats, more.spendLock, "Face ID"])
+    add("backup", more.backupSection, .other, [more.exportSettings, more.importSettings])
+    add("spoilers", extras.revealTextSpoilers, .chats, [extras.revealMediaSpoilers, extras.spoilersSaved, "спойлер", "spoiler"])
+    add("ads", extras.hidePromotedPosts, .hiding, [extras.hideSponsoredMessages, "реклама", "ads"])
+    add("seconds", extras.timeSeconds, .interface, ["секунды", "seconds"])
+    add("exact-views", more.exactViewCounts, .chats, ["просмотры", "views", "5,2K"])
+    add("companion", extras.chatCompanion, .interface, ["уточка", "duck", "3D"])
+    add("changelog", more.changelogShow, .other, ["что нового", "what's new", "changelog"])
+    func push(_ id: String, _ title: String, _ breadcrumbs: [String], _ alternate: [String], _ controller: @escaping (AccountContext) -> ViewController) {
+        items.append(SettingsSearchableItem(id: "mad/" + id, title: title, alternate: alternate, icon: .madgram, breadcrumbs: breadcrumbs, present: { context, _, present in
+            present(.push, controller(context))
+        }))
+    }
+    push("agent", extras.aiAgent, [root], ["ии", "ai", "агент", "agent", "автоответчик", "auto-reply", "chatgpt", "claude", "история диалогов"], { agentChatController(context: $0) })
+    push("domain", more.accounts.domainTitle, [root, extras.categoryPrivacy], ["домен", "domain", "DNS"], { madAccountsController(context: $0) })
+    push("locked-chats", more.lockedChats, [root, extras.categoryPrivacy], ["блокировка", "lock", "пин-код", "Face ID"], { madPeerListController(context: $0, kind: .lockedChats) })
+    push("online-groups", extras.showOnlineInGroups, [root, extras.categoryInterface], ["онлайн", "online"], { interfaceTuningSettingsController(context: $0) })
+    push("deleted-opacity", extras.deletedOpacity, [root, local.localMessageArchive.title], ["удалённые", "deleted"], { localMessageArchiveSettingsController(context: $0) })
+    push("reactions-notifications", more.reactionNotificationTitle, [], ["реакции", "reactions", "уведомления"], { reactionNotificationSettingsController(context: $0) })
+    return items
 }

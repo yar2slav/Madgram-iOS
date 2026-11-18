@@ -48,6 +48,7 @@ public func customizeDefaultDarkTintedPresentationTheme(theme: PresentationTheme
         accentColor = defaultDarkTintedAccentColor
     }
     
+    // Madgram classic design: keeps Telegram 12.0's values where the glass redesign retuned them.
     let classic = ClassicDesign.isEnabled
     
     var intro = theme.intro
@@ -514,6 +515,7 @@ public func customizeDefaultDarkTintedPresentationTheme(theme: PresentationTheme
 public func makeDefaultDarkTintedPresentationTheme(extendingThemeReference: PresentationThemeReference? = nil, preview: Bool) -> PresentationTheme {
     let accentColor = defaultDarkTintedAccentColor
     
+    // Madgram classic design: keeps Telegram 12.0's values where the glass redesign retuned them.
     let classic = ClassicDesign.isEnabled
     
     let secondaryBadgeTextColor: UIColor

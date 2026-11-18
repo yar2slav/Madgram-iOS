@@ -1,4 +1,5 @@
 import Foundation
+import TelegramUIPreferences
 import UIKit
 import AsyncDisplayKit
 import ContextUI
@@ -56,6 +57,10 @@ final class PeerInfoAvatarTransformContainerNode: ASDisplayNode {
     var storyData: (totalCount: Int, unseenCount: Int, hasUnseenCloseFriends: Bool, hasLiveItems: Bool)?
     var storyProgress: Float?
     
+    /// VoiceOver: the avatar as one button (the tap opens the photos), over the whole avatar; the image, video, emoji
+    /// markup and story ring under it are not separate elements.
+    private let accessibilityArea = AccessibilityAreaNode()
+    
     init(context: AccountContext) {
         self.context = context
         self.containerNode = ContextControllerSourceNode()
@@ -69,6 +74,17 @@ final class PeerInfoAvatarTransformContainerNode: ASDisplayNode {
         self.containerNode.addSubnode(self.avatarNode)
         self.containerNode.frame = CGRect(origin: CGPoint(x: -50.0, y: -50.0), size: CGSize(width: 100.0, height: 100.0))
         self.avatarNode.frame = self.containerNode.bounds
+        
+        self.accessibilityArea.accessibilityTraits = [.button, .image]
+        self.accessibilityArea.activate = { [weak self] in
+            guard let self, let tapped = self.tapped else {
+                return false
+            }
+            tapped()
+            return true
+        }
+        self.containerNode.addSubnode(self.accessibilityArea)
+        self.accessibilityArea.frame = self.containerNode.bounds
         
         let tapGestureRecognizer = UITapGestureRecognizer(target: self, action: #selector(self.tapGesture(_:)))
         self.avatarNode.view.addGestureRecognizer(tapGestureRecognizer)
@@ -178,6 +194,62 @@ final class PeerInfoAvatarTransformContainerNode: ASDisplayNode {
             inactiveLineWidth: 1.5,
             forceRoundedRect: isForum
         ), transition: ComponentTransition(transition))
+    }
+    
+    override var accessibilityElements: [Any]? {
+        get {
+            if self.containerNode.isHidden || self.containerNode.alpha < 0.01 {
+                return []
+            }
+            // The collapsed header moves the avatar above the screen: it is not read there.
+            let areaView = self.accessibilityArea.view
+            if let window = areaView.window, !window.bounds.intersects(areaView.convert(areaView.bounds, to: window)) {
+                return []
+            }
+            self.updateAccessibilityArea()
+            return [areaView]
+        } set(value) {
+        }
+    }
+    
+    private var accessibilityStrings: (label: String, moreLabel: String)?
+    private var accessibilityMoreAction: UIAccessibilityCustomAction?
+    
+    /// The avatar's VoiceOver label and the name of its long-press menu action. Only stores the words (called on every
+    /// header update); the element is configured when an accessibility client asks (`accessibilityElements`).
+    func updateAccessibility(label: String, moreLabel: String) {
+        if let current = self.accessibilityStrings, current.label == label, current.moreLabel == moreLabel {
+            return
+        }
+        self.accessibilityStrings = (label, moreLabel)
+        self.accessibilityMoreAction = nil
+    }
+    
+    /// Configures the area at query time: the label, and "More" (the long-press menu) only while that gesture is enabled
+    /// (it is off on the Settings avatar and while photos are shown).
+    private func updateAccessibilityArea() {
+        guard let strings = self.accessibilityStrings else {
+            return
+        }
+        self.accessibilityArea.accessibilityLabel = strings.label
+        if self.contextAction != nil && self.containerNode.isGestureEnabled {
+            let action: UIAccessibilityCustomAction
+            if let current = self.accessibilityMoreAction {
+                action = current
+            } else {
+                action = UIAccessibilityCustomAction(name: strings.moreLabel, actionHandler: { [weak self] _ in
+                    guard let self, self.containerNode.isGestureEnabled, let contextAction = self.contextAction else {
+                        return false
+                    }
+                    contextAction(self.containerNode, nil)
+                    return true
+                })
+                self.accessibilityMoreAction = action
+            }
+            self.accessibilityArea.view.accessibilityCustomActions = [action]
+        } else {
+            self.accessibilityArea.view.accessibilityCustomActions = nil
+        }
     }
     
     @objc private func tapGesture(_ recognizer: UITapGestureRecognizer) {
@@ -353,6 +425,7 @@ final class PeerInfoAvatarTransformContainerNode: ASDisplayNode {
             
             self.containerNode.frame = CGRect(origin: CGPoint(x: -avatarSize / 2.0, y: -avatarSize / 2.0), size: CGSize(width: avatarSize, height: avatarSize))
             self.avatarNode.frame = self.containerNode.bounds
+            self.accessibilityArea.frame = self.containerNode.bounds
             self.avatarNode.font = avatarPlaceholderFont(size: floor(avatarSize * 16.0 / 37.0))
 
             if let item = item {
@@ -391,7 +464,8 @@ final class PeerInfoAvatarTransformContainerNode: ASDisplayNode {
                 
                 self.containerNode.isGestureEnabled = !isSettings
                 
-                if let markup {
+                let staticAvatars = InterfaceTuningSettingsStore.shared.cached.on(InterfaceTuningSettingsStore.shared.cached.staticAnimatedAvatars, .staticAvatarsProfile)
+                if let markup, !staticAvatars {
                     if let videoNode = self.videoNode {
                         self.videoContent = nil
                         self.videoStartTimestamp = nil
@@ -410,7 +484,7 @@ final class PeerInfoAvatarTransformContainerNode: ASDisplayNode {
                     }
                     markupNode.update(markup: markup, size: CGSize(width: 320.0, height: 320.0))
                     markupNode.updateVisibility(true)
-                } else if threadInfo == nil, let video = videoRepresentations.last, let peerReference = PeerReference(peer) {
+                } else if threadInfo == nil, !staticAvatars, let video = videoRepresentations.last, let peerReference = PeerReference(peer) {
                     let videoFileReference = FileMediaReference.avatarList(peer: peerReference, media: TelegramMediaFile(fileId: EngineMedia.Id(namespace: Namespaces.Media.LocalFile, id: 0), partialReference: nil, resource: video.representation.resource, previewRepresentations: representations.map { $0.representation }, videoThumbnails: [], immediateThumbnailData: immediateThumbnailData, mimeType: "video/mp4", size: nil, attributes: [.Animated, .Video(duration: 0, size: video.representation.dimensions, flags: [], preloadSize: nil, coverTime: nil, videoCodec: nil)], alternativeRepresentations: []))
                     let videoContent = NativeVideoContent(id: .profileVideo(videoId, nil), userLocation: .other, fileReference: videoFileReference, streamVideo: isMediaStreamable(resource: video.representation.resource) ? .conservative : .none, loopVideo: true, enableSound: false, fetchAutomatically: true, onlyFullSizeThumbnail: false, useLargeThumbnail: true, autoFetchFullSizeThumbnail: true, startTimestamp: video.representation.startTimestamp, continuePlayingWithoutSoundOnLostAudioSession: false, placeholderColor: .clear, captureProtected: peer.isCopyProtectionEnabled, storeAfterDownload: nil)
                     if videoContent.id != self.videoContent?.id {

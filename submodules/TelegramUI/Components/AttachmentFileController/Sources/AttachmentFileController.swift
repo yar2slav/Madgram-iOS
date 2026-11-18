@@ -872,6 +872,7 @@ public func makeAttachmentFileControllerImpl(
 
         var leftNavigationButton =  closeButtonNode.flatMap { ItemListNavigationButton(content: .node($0), style: .regular, enabled: true, action: {}) }
         if ClassicDesign.isEnabled {
+            // Madgram classic design: 12.0's file picker had a plain Cancel text button, not the glass close button.
             leftNavigationButton = ItemListNavigationButton(content: .text(presentationData.strings.Common_Cancel), style: .regular, enabled: true, action: {
                 dismissImpl?()
             })
@@ -885,6 +886,7 @@ public func makeAttachmentFileControllerImpl(
         var rightNavigationButton: ItemListNavigationButton?
         if bannedSendMedia == nil && (recentDocuments == nil || (recentDocuments?.count ?? 0) > 10 || (mode.isAudio && hasAudioSearch)) {
             if ClassicDesign.isEnabled {
+                // Madgram classic design: 12.0's plain search icon instead of the glass search button.
                 if !state.searching && !isSelectionActive {
                     rightNavigationButton = ItemListNavigationButton(content: .icon(.search), style: .regular, enabled: true, action: {
                         updateState { state in
@@ -1071,6 +1073,7 @@ public func makeAttachmentFileControllerImpl(
         controller.hasBottomEdgeEffect = false
     }
     if ClassicDesign.isEnabled {
+        // Madgram classic design: 12.0's legacy attachment sheet drew its own flat panel, with no edge effect above it.
         controller.hasBottomEdgeEffect = false
     }
     

@@ -1,4 +1,5 @@
 import Foundation
+import TelegramUIPreferences
 import UIKit
 import AsyncDisplayKit
 import TelegramCore
@@ -12,6 +13,7 @@ import ChatTextInputPanelNode
 import RichTextEditorMediaView
 import RichTextEditorUIKit
 import InstantPageUI
+import BrowserUI
 
 func chatInputFormulaRenderResult(context: RichTextFormulaRenderContext) -> RichTextFormulaRenderResult? {
     guard let attachment = instantPageMathAttachment(
@@ -35,6 +37,9 @@ func inputPanelForChatPresentationIntefaceState(_ chatPresentationInterfaceState
         return (nil, nil)
     }
     if chatPresentationInterfaceState.isNotAccessible && !canJoinInaccessibleCommunityChat(chatPresentationInterfaceState) {
+        return (nil, nil)
+    }
+    if chatPresentationInterfaceState.chatLocation.peerId?.isMadLocalChat == true {
         return (nil, nil)
     }
 
@@ -504,6 +509,7 @@ func inputPanelForChatPresentationIntefaceState(_ chatPresentationInterfaceState
                 }
                 panel.formulaRenderer = chatInputFormulaRenderResult
                 if let data = context.currentAppConfiguration.with({ $0 }).data, let value = data["ios_disable_ai_chat"] as? Double, value == 1.0 {
+                } else if InterfaceTuningSettingsStore.shared.cached.on(InterfaceTuningSettingsStore.shared.cached.disableTelegramAI, .aiInput) {
                 } else if let peerId = chatPresentationInterfaceState.chatLocation.peerId, peerId.namespace != Namespaces.Peer.SecretChat {
                     panel.isAIEnabled = true
                 }
@@ -513,7 +519,7 @@ func inputPanelForChatPresentationIntefaceState(_ chatPresentationInterfaceState
                 panel.interfaceInteraction = interfaceInteraction
                 panel.context = context
                 panel.pastedMarkdownParser = { context, text in
-                    return chatInputContentFromPastedMarkdown(context: context, plainText: text)
+                    return chatInputContentFromPastedMarkdown(context: context, plainText: text, keepsBlankLines: true)
                 }
                 return (panel, nil)
             }

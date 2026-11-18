@@ -385,7 +385,7 @@ public final class GlobalControlPanelsContext {
                         return lhs < rhs
                     }
                     
-                    if dismissedSuggestions.contains(ServerProvidedSuggestion.todayBirthdays.id) {
+                    if dismissedSuggestions.contains(ServerProvidedSuggestion.todayBirthdays.id) || InterfaceTuningSettingsStore.shared.cached.on(InterfaceTuningSettingsStore.shared.cached.hideBirthdays, .birthdaysChatList) {
                         todayBirthdayPeerIds = []
                     }
                     
@@ -467,7 +467,7 @@ public final class GlobalControlPanelsContext {
                             }
                             return .birthdayPremiumGift(peers: todayBirthdayPeers, birthdays: birthdays)
                         }
-                    } else if suggestions.contains(.setupBirthday) && birthday == nil {
+                    } else if suggestions.contains(.setupBirthday) && birthday == nil && !InterfaceTuningSettingsStore.shared.cached.on(InterfaceTuningSettingsStore.shared.cached.hideBirthdays, .birthdaysChatList) {
                         return .single(.setupBirthday)
                     } else if case let .link(id, url, title, subtitle) = suggestions.first(where: { if case .link = $0 { return true } else { return false} }) {
                         return .single(.link(id: id, url: url, title: title, subtitle: subtitle))

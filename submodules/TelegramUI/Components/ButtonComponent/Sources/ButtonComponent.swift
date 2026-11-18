@@ -2,6 +2,7 @@ import Foundation
 import UIKit
 import Display
 import ComponentFlow
+import MultilineTextComponent
 import AnimatedTextComponent
 import ActivityIndicator
 import BundleIconComponent
@@ -208,11 +209,12 @@ public final class ButtonTextContentComponent: Component {
             
             let contentSize = self.content.update(
                 transition: .immediate,
-                component: AnyComponent(Text(
-                    text: component.text,
-                    font: Font.semibold(component.fontSize),
-                    color: component.textColor
-                )),
+                component: AnyComponent(
+                    MultilineTextComponent(
+                        text: .plain(NSAttributedString(string: component.text, font: Font.semibold(component.fontSize), textColor: component.textColor)),
+                        maximumNumberOfLines: 1
+                    )
+                ),
                 environment: {},
                 containerSize: availableSize
             )
@@ -414,6 +416,7 @@ public final class ButtonComponent: Component {
     public let displaysProgress: Bool
     public let action: () -> Void
     public let longPressAction: (() -> Void)?
+    public let accessibility: ComponentAccessibility?
 
     public init(
         background: Background,
@@ -426,7 +429,8 @@ public final class ButtonComponent: Component {
         allowActionWhenDisabled: Bool = false,
         displaysProgress: Bool = false,
         action: @escaping () -> Void,
-        longPressAction: (() -> Void)? = nil
+        longPressAction: (() -> Void)? = nil,
+        accessibility: ComponentAccessibility? = nil
     ) {
         self.background = background
         self.content = content
@@ -439,6 +443,7 @@ public final class ButtonComponent: Component {
         self.displaysProgress = displaysProgress
         self.action = action
         self.longPressAction = longPressAction
+        self.accessibility = accessibility
     }
 
     public static func ==(lhs: ButtonComponent, rhs: ButtonComponent) -> Bool {
@@ -470,6 +475,9 @@ public final class ButtonComponent: Component {
             return false
         }
         if (lhs.longPressAction == nil) != (rhs.longPressAction == nil) {
+            return false
+        }
+        if lhs.accessibility != rhs.accessibility {
             return false
         }
         return true
@@ -592,6 +600,8 @@ public final class ButtonComponent: Component {
                             self.containerView.layer.animateAlpha(from: 0.7, to: 1.0, duration: 0.2)
                         }
                     case .actualGlass where ClassicDesign.isEnabled:
+                        // Madgram classic design: the classic material has no press effect of its own, so the button
+                        // dims like the flat ones.
                         if let glassContainerView = self.glassContainerView {
                             if highlighted {
                                 glassContainerView.layer.removeAnimation(forKey: "opacity")
@@ -680,6 +690,11 @@ public final class ButtonComponent: Component {
             self.glassHighlightRecognizer.isEnabled = component.isEnabled && !component.displaysProgress
         }
 
+        /// Madgram classic design (`ClassicDesign.isEnabled`): a glass button is drawn as Telegram 12.0 drew its buttons, a
+        /// filled rounded rect whose highlight dims it, with no glass, rim, shadow or press squish. An `.actualGlass` one
+        /// keeps its `GlassBackgroundView`, which draws the classic flat material in classic mode: such buttons are often
+        /// given a clear color (over wallpapers and media, where 12.0 drew a blurred button), and their color changes at
+        /// run time (`StickerPackScreen`), which a switch between the two view trees here would not survive.
         static func effectiveStyle(_ style: Background.Style) -> Background.Style {
             if ClassicDesign.isEnabled, case .glass = style {
                 return .legacy
@@ -743,6 +758,19 @@ public final class ButtonComponent: Component {
             return super.hitTest(point, with: event)
         }
 
+        /// The title content's text when the component gives no label, computed when VoiceOver asks rather than on
+        /// every update.
+        override public var accessibilityLabel: String? {
+            get {
+                if let component = self.component, component.accessibility?.isHidden != true, component.accessibility?.label == nil, let title = ButtonComponent.accessibilityText(of: component.content.component) {
+                    return title
+                }
+                return super.accessibilityLabel
+            } set(value) {
+                super.accessibilityLabel = value
+            }
+        }
+        
         func update(component: ButtonComponent, availableSize: CGSize, state: EmptyComponentState, environment: Environment<Empty>, transition: ComponentTransition) -> CGSize {
             self.component = component
             self.componentState = state
@@ -750,6 +778,10 @@ public final class ButtonComponent: Component {
             self.longPressGesture?.isEnabled = component.longPressAction != nil
             
             self.button.isEnabled = (component.isEnabled || component.allowActionWhenDisabled) && !component.displaysProgress
+            
+            // The view is one element: its title, badge and icons are not separately reachable. The label comes from the
+            // title content unless the call site supplies one (`accessibilityLabel` below, derived only when asked).
+            self.apply(accessibility: component.accessibility, defaultTraits: component.isEnabled ? .button : [.button, .notEnabled])
                         
             var contentAlpha: CGFloat = 1.0
             if component.displaysProgress {
@@ -774,6 +806,8 @@ public final class ButtonComponent: Component {
             
             var cornerRadius: CGFloat = component.background.cornerRadius
             if ClassicDesign.isEnabled {
+                // A big glass button given a capsule's radius is drawn as 12.0's buttons of that size were, a 10pt
+                // rounded rect (its default 10pt already is one here). Small capsules (pills) stay capsules.
                 if [.glass, .actualGlass].contains(component.background.style), availableSize.height >= 40.0, cornerRadius >= availableSize.height * 0.5 - 1.0 {
                     cornerRadius = 10.0
                 }
@@ -819,6 +853,8 @@ public final class ButtonComponent: Component {
                 if component.background.color.alpha < 0.1 {
                     tintColor = .init(kind: .panel)
                 } else if ClassicDesign.isEnabled {
+                    // Madgram classic design: the color is the classic material's own (an opaque one is a flat fill),
+                    // not an inner capsule, which would not follow the button's rounded-rect shape.
                     tintColor = .init(kind: .custom(style: .default, color: component.background.color))
                 } else {
                     tintColor = .init(kind: .panel, innerColor: component.background.color, innerInset: 0.0)
@@ -1012,6 +1048,44 @@ public final class ButtonComponent: Component {
 
     public func update(view: View, availableSize: CGSize, state: EmptyComponentState, environment: Environment<Empty>, transition: ComponentTransition) -> CGSize {
         return view.update(component: self, availableSize: availableSize, state: state, environment: environment, transition: transition)
+    }
+    
+    /// The text of the title components a button is made of; `nil` for content that carries none (icons, custom views).
+    static func accessibilityText(of component: AnyComponent<Empty>) -> String? {
+        let text: String
+        switch component.wrapped {
+        case let content as ButtonTextContentComponent:
+            text = content.badge > 0 ? "\(content.text), \(content.badge)" : content.text
+        case let content as MultilineTextComponent:
+            switch content.text {
+            case let .plain(string):
+                text = string.string
+            case .markdown:
+                // The source has markup the UI does not show; the call site supplies the label.
+                return nil
+            }
+        case let content as Text:
+            text = content.text
+        case let content as HStack<Empty>:
+            // An icon beside a title, a title over a countdown: the texts of its parts.
+            text = content.accessibilityChildren.compactMap { ButtonComponent.accessibilityText(of: $0.component) }.joined(separator: ", ")
+        case let content as VStack<Empty>:
+            text = content.accessibilityChildren.compactMap { ButtonComponent.accessibilityText(of: $0.component) }.joined(separator: ", ")
+        case let content as AnimatedTextComponent:
+            text = content.items.compactMap { item -> String? in
+                switch item.content {
+                case let .text(value):
+                    return value
+                case let .number(value, minDigits):
+                    return animatedTextNumberString(value, minDigits: minDigits)
+                case .icon:
+                    return nil
+                }
+            }.joined()
+        default:
+            return nil
+        }
+        return text.isEmpty ? nil : text
     }
 }
 

@@ -1,5 +1,5 @@
 import Foundation
-import LottieSettings
+import MadLockUI
 import UIKit
 import Display
 import AsyncDisplayKit
@@ -1026,7 +1026,11 @@ private final class GiftViewSheetContent: CombinedComponent {
                         guard let self else {
                             return
                         }
-                        if let profileGiftsContext = controller?.profileGiftsContext {
+                        if let controller, let deleteGift = controller.deleteGift {
+                            controller.actionsAfterDismiss.append({
+                                deleteGift(reference)
+                            })
+                        } else if let profileGiftsContext = controller?.profileGiftsContext {
                             profileGiftsContext.deleteStarGift(reference: reference)
                         } else {
                             let _ = self.context.engine.payments.deleteStarGift(reference: reference).startStandalone()
@@ -1157,6 +1161,9 @@ private final class GiftViewSheetContent: CombinedComponent {
         }
         
         func convertToStars() {
+            if MadLock.gate(.spendTransfer, strings: self.context.sharedContext.currentPresentationData.with { $0 }.strings, retry: { [weak self] in self?.convertToStars() }) {
+                return
+            }
             guard let controller = self.getController() as? GiftViewScreen, let starsContext = context.starsContext, let arguments = self.subject.arguments, let reference = arguments.reference, let fromPeerName = arguments.fromPeerCompactName, let convertStars = arguments.convertStars, let navigationController = controller.navigationController as? NavigationController else {
                 return
             }
@@ -1777,6 +1784,9 @@ private final class GiftViewSheetContent: CombinedComponent {
         }
         
         func transferGift() {
+            if MadLock.gate(.spendTransfer, strings: self.context.sharedContext.currentPresentationData.with { $0 }.strings, retry: { [weak self] in self?.transferGift() }) {
+                return
+            }
             if let arguments = self.subject.arguments, case let .unique(gift) = arguments.gift, self.isMyWalletGift(gift) {
                 self.depositGift(gift)
                 return
@@ -2134,9 +2144,10 @@ private final class GiftViewSheetContent: CombinedComponent {
             guard let controller = self.getController() as? GiftViewScreen else {
                 return
             }
-            guard let controlsView = controller.node.hostView.findTaggedView(tag: self.controlButtonsTag) as? GlassControlPanelComponent.View, let rightItemView = controlsView.rightItemView, let sourceView = rightItemView.itemView(id: AnyHashable("more")) else {
+            guard let controlsView = controller.node.hostView.findTaggedView(tag: self.controlButtonsTag) as? GlassControlPanelComponent.View, let rightItemView = controlsView.rightItemView, rightItemView.itemView(id: AnyHashable("more")) != nil else {
                 return
             }
+            let sourceView = rightItemView.menuSourceView
             
             guard let arguments = self.subject.arguments else {
                 return
@@ -2593,6 +2604,9 @@ private final class GiftViewSheetContent: CombinedComponent {
         }
         
         func commitUpgrade() {
+            if MadLock.gate(.spendGifts, strings: self.context.sharedContext.currentPresentationData.with { $0 }.strings, retry: { [weak self] in self?.commitUpgrade() }) {
+                return
+            }
             let duration = Double.random(in: 0.85 ..< 2.25)
             let firstFraction = Double.random(in: 0.2 ..< 0.4)
             let secondFraction = Double.random(in: 0.2 ..< 0.4)
@@ -2854,6 +2868,9 @@ private final class GiftViewSheetContent: CombinedComponent {
         }
                 
         func commitPrepaidUpgrade() {
+            if MadLock.gate(.spendGifts, strings: self.context.sharedContext.currentPresentationData.with { $0 }.strings, retry: { [weak self] in self?.commitPrepaidUpgrade() }) {
+                return
+            }
             guard let arguments = self.subject.arguments, let controller = self.getController() as? GiftViewScreen, let peerId = arguments.peerId, let prepaidUpgradeHash = arguments.prepaidUpgradeHash, let starsContext = self.context.starsContext, let starsState = starsContext.currentState else {
                 return
             }
@@ -3040,6 +3057,9 @@ private final class GiftViewSheetContent: CombinedComponent {
         }
         
         func commitGiftBuyOffer(peer: EnginePeer, price: CurrencyAmount, duration: Int32, allowPaidStars: Int64?) {
+            if MadLock.gate(.spendGifts, strings: self.context.sharedContext.currentPresentationData.with { $0 }.strings, retry: { [weak self] in self?.commitGiftBuyOffer(peer: peer, price: price, duration: duration, allowPaidStars: allowPaidStars) }) {
+                return
+            }
             guard let gift = self.subject.arguments?.gift, case let .unique(uniqueGift) = gift, let starsContext = self.context.starsContext, let starsState = starsContext.currentState else {
                 return
             }
@@ -6001,8 +6021,7 @@ private final class GiftViewSheetContent: CombinedComponent {
                                             name: "GiftUpgrade"
                                         ),
                                         size: CGSize(width: 30.0, height: 30.0),
-                                        loop: true,
-                                        lottieSettings: component.context.lottieRenderingSettings
+                                        loop: true
                                     )
                                 ))
                             ], spacing: 5.0))
@@ -6989,6 +7008,8 @@ public class GiftViewScreen: ViewControllerComponentContainer {
     fileprivate let profileGiftsContext: ProfileGiftsContext?
     fileprivate let updateSavedToProfile: ((StarGiftReference, Bool) -> Void)?
     fileprivate let convertToStars: ((StarGiftReference) -> Void)?
+    fileprivate let deleteGift: ((StarGiftReference) -> Void)?
+    fileprivate var actionsAfterDismiss: [() -> Void] = []
     fileprivate let dropOriginalDetails: ((StarGiftReference) -> Signal<Never, DropStarGiftOriginalDetailsError>)?
     fileprivate let transferGift: ((Bool, StarGiftReference, EnginePeer.Id) -> Signal<Never, TransferStarGiftError>)?
     fileprivate let upgradeGift: ((Int64?, StarGiftReference, Bool) -> Signal<ProfileGiftsContext.State.StarGift, UpgradeStarGiftError>)?
@@ -7010,6 +7031,7 @@ public class GiftViewScreen: ViewControllerComponentContainer {
         profileGiftsContext: ProfileGiftsContext? = nil,
         updateSavedToProfile: ((StarGiftReference, Bool) -> Void)? = nil,
         convertToStars: ((StarGiftReference) -> Void)? = nil,
+        deleteGift: ((StarGiftReference) -> Void)? = nil,
         dropOriginalDetails: ((StarGiftReference) -> Signal<Never, DropStarGiftOriginalDetailsError>)? = nil,
         transferGift: ((Bool, StarGiftReference, EnginePeer.Id) -> Signal<Never, TransferStarGiftError>)? = nil,
         upgradeGift: ((Int64?, StarGiftReference, Bool) -> Signal<ProfileGiftsContext.State.StarGift, UpgradeStarGiftError>)? = nil,
@@ -7026,6 +7048,7 @@ public class GiftViewScreen: ViewControllerComponentContainer {
         self.profileGiftsContext = profileGiftsContext
         self.updateSavedToProfile = updateSavedToProfile
         self.convertToStars = convertToStars
+        self.deleteGift = deleteGift
         self.dropOriginalDetails = dropOriginalDetails
         self.transferGift = transferGift
         self.upgradeGift = upgradeGift
@@ -7098,6 +7121,20 @@ public class GiftViewScreen: ViewControllerComponentContainer {
     deinit {
         self.disposed()
         self.upgradableDisposable?.dispose()
+        self.performActionsAfterDismiss()
+    }
+    
+    private func performActionsAfterDismiss() {
+        let actions = self.actionsAfterDismiss
+        self.actionsAfterDismiss.removeAll()
+        for action in actions {
+            action()
+        }
+    }
+    
+    override public func dismiss(completion: (() -> Void)? = nil) {
+        super.dismiss(completion: completion)
+        self.performActionsAfterDismiss()
     }
     
     fileprivate func switchToNextUpgradable() {

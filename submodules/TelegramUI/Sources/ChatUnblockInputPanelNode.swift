@@ -105,6 +105,7 @@ final class ChatUnblockInputPanelNode: ChatInputPanelNode {
         let titleSize = self.title.update(
             transition: .immediate,
             component: AnyComponent(MultilineTextComponent(
+                // Madgram classic design: 12.0's Unblock was a plain accent button in the bar.
                 text: .plain(NSAttributedString(string: string, font: Font.regular(17.0), textColor: ClassicDesign.isEnabled ? theme.chat.inputPanel.panelControlAccentColor : theme.chat.inputPanel.panelControlColor))
             )),
             environment: {},

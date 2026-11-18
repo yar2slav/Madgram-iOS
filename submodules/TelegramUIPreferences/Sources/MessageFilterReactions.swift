@@ -2,10 +2,18 @@ import Foundation
 import TelegramCore
 
 public extension MessageFilterSettings {
+    /// Removes hidden peers' contributions from a message's reactions attribute.
+    ///
+    /// Returns the original instance when nothing needs to change, a rewritten
+    /// attribute when some contributions were removed, or nil when nothing is
+    /// left to display. Attribution is best-effort: in large chats the server
+    /// only sends a few recent reactors, so a hidden peer outside that list
+    /// cannot be subtracted from the counts.
     func strippingHiddenReactions(from attribute: ReactionsMessageAttribute) -> ReactionsMessageAttribute? {
         if !self.isActive {
             return attribute
         }
+        // Tag reactions are the account's own saved-message tags.
         if attribute.isTags {
             return attribute
         }
@@ -42,6 +50,7 @@ public extension MessageFilterSettings {
             let removed = removedCounts[reaction.value] ?? 0
             var count = reaction.count - removed
             if reaction.isSelected {
+                // The account's own reaction always stays visible.
                 count = max(count, 1)
             }
             if count > 0 {

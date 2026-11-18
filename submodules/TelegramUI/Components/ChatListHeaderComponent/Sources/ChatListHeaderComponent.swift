@@ -198,11 +198,26 @@ public final class ChatListHeaderComponent: Component {
         private var storyPeerList: ComponentView<Empty>?
         private let ghostModeIconView: UIImageView
         public var storyPeerAction: ((EnginePeer?) -> Void)?
-        public var storyContextPeerAction: ((ContextExtractedContentContainingNode, ContextGesture, EnginePeer) -> Void)?
+        public var storyContextPeerAction: ((ContextExtractedContentContainingNode, ContextGesture?, EnginePeer) -> Void)?
         public var storyComposeAction: ((CGFloat) -> Void)?
 
         private var navigationBarView: NavigationBarComponent.View? {
             return self.navigationBar.view as? NavigationBarComponent.View
+        }
+        
+        /// Faded out and scrolled away while the list searches (`ChatListNavigationBar` sets
+        /// `accessibilityElementsHidden`): UIKit's own walk of these plain views does not skip such a subtree, so it
+        /// answers with no elements itself.
+        override public var accessibilityElements: [Any]? {
+            get {
+                if self.accessibilityElementsHidden || self.alpha < 0.01 {
+                    return []
+                }
+                return super.accessibilityElements
+            }
+            set {
+                super.accessibilityElements = newValue
+            }
         }
 
         /// The row the chat list's header is built on (the regular bar's component).
@@ -504,6 +519,8 @@ public final class ChatListHeaderComponent: Component {
             self.ghostModeIconView.accessibilityLabel = component.strings.localFeatures.ghostMode.activeIndicator
             self.ghostModeIconView.isHidden = !component.ghostModeEnabled || component.storySubscriptions != nil
             if component.ghostModeEnabled && component.storySubscriptions == nil {
+                // The title's content band, mirrored around the title's center (as the pre-NavigationBarComponent
+                // header measured it): from the leftmost of the title text / lock to the symmetric right edge.
                 var titleContentFrame: CGRect?
                 if let titleView = self.findTitleView(), titleView.bounds.width > 0.0 {
                     var contentMinX = titleView.titleNode.frame.minX
@@ -534,6 +551,9 @@ public final class ChatListHeaderComponent: Component {
         }
     }
 
+    /// Madgram classic design (`ClassicDesign.isEnabled`): the colors 12.0's chat list header drew its row in
+    /// (`ChatListHeaderComponent` at release-12.0): every button, the compose icon included, in the bar's accent text
+    /// color, on no capsule.
     public static func classicNavigationBarTheme(_ theme: PresentationTheme) -> NavigationBarTheme {
         let navigationBar = theme.rootController.navigationBar
         return NavigationBarTheme(

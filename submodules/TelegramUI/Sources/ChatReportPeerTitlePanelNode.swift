@@ -409,6 +409,7 @@ final class ChatReportPeerTitlePanelNode: ChatTitleAccessoryPanelNode {
                     }
                 }
                 view.setTitle(button.title(strings: interfaceState.strings), for: [])
+                // Classic (12.0): 16pt actions in the bar's accent colour.
                 view.titleLabel?.font = Font.regular(ClassicDesign.isEnabled ? 16.0 : 17.0)
                 switch button {
                 case .block, .reportSpam, .reportUserSpam:

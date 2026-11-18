@@ -3,6 +3,12 @@ import UIKit
 import Display
 import ComponentFlow
 
+/// Madgram: the material a glass surface is drawn with under `ClassicDesign.isEnabled`, the way Telegram 12.0
+/// drew its bars and panels (`BlurredBackgroundView`): a gaussian blur of the backdrop under a flat fill, with no rim,
+/// shadow, highlight, refraction or press effect. Its owner clips it to the glass's shape.
+///
+/// It lays its two layers out by its own bounds, and lists them in `shapeFollowingViews` so that a keyframed
+/// resize (`GlassBackgroundView.animateShape`) can move them along with it.
 final class ClassicGlassMaterialView: UIView {
     private static let isReduceTransparencyEnabled = UIAccessibility.isReduceTransparencyEnabled
 
@@ -28,6 +34,7 @@ final class ClassicGlassMaterialView: UIView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    /// The views laid out to fill this view.
     var shapeFollowingViews: [UIView] {
         var result: [UIView] = []
         if let effectView = self.effectView {
@@ -74,6 +81,8 @@ final class ClassicGlassMaterialView: UIView {
         }
     }
 
+    /// The blur 12.0's `BlurredBackgroundView` used: the system light blur with only its saturation and gaussian blur
+    /// filters kept, so the fill above it decides the color.
     private static func makeBlurView() -> UIVisualEffectView {
         let effectView = UIVisualEffectView(effect: UIBlurEffect(style: .light))
         effectView.isUserInteractionEnabled = false
@@ -108,6 +117,9 @@ final class ClassicGlassMaterialView: UIView {
 }
 
 extension GlassBackgroundView {
+    /// Madgram classic design: the fill of a `.panel` glass, by whether it is dark. The defaults are Telegram 12.0's
+    /// day and night `rootController.navigationBar.blurredBackgroundColor`; the app may point this at the current
+    /// theme's. Read on every update of a classic glass, so a new value reaches each surface on its next update.
     public static var classicPanelColor: (_ isDark: Bool) -> UIColor = { isDark in
         if isDark {
             return UIColor(rgb: 0x1d1d1d, alpha: 0.9)
@@ -116,14 +128,19 @@ extension GlassBackgroundView {
         }
     }
 
+    /// The flat fill a classic glass is drawn with (`ClassicGlassMaterialView` blurs below it when it is translucent).
     static func classicMaterialColor(tintColor: TintColor, isDark: Bool) -> UIColor {
+        // Clear glass sits over media and wallpapers: 12.0 drew such controls as a dark translucent blur in the dark,
+        // and as a bar in the light.
         let clearColor: UIColor = isDark ? UIColor(white: 0.0, alpha: 0.35) : GlassBackgroundView.classicPanelColor(false)
         switch tintColor.kind {
-        case .panel:
+        case .panel, .untinted:
             return GlassBackgroundView.classicPanelColor(isDark)
         case .clear:
             return clearColor
         case let .custom(style, color):
+            // A strong color is the surface itself (an accent button); a faint one only tints the glass, so it tints
+            // the material that glass stands for.
             if color.alpha >= 0.5 {
                 return color
             }
@@ -139,6 +156,7 @@ extension GlassBackgroundView {
     }
 }
 
+/// `top` composited over `bottom` (source-over).
 private func classicColor(_ top: UIColor, over bottom: UIColor) -> UIColor {
     var tr: CGFloat = 0.0, tg: CGFloat = 0.0, tb: CGFloat = 0.0, ta: CGFloat = 0.0
     var br: CGFloat = 0.0, bg: CGFloat = 0.0, bb: CGFloat = 0.0, ba: CGFloat = 0.0

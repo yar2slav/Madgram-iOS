@@ -1,4 +1,5 @@
 import Foundation
+import MadLockUI
 import UIKit
 import Display
 import AsyncDisplayKit
@@ -490,6 +491,9 @@ private final class GiftSetupScreenComponent: Component {
         }
         
         private func proceedWithStarGift() {
+            if let context = self.component?.context, MadLock.gate(.spendGifts, strings: context.sharedContext.currentPresentationData.with { $0 }.strings, retry: { [weak self] in self?.proceedWithStarGift() }) {
+                return
+            }
             guard !self.inProgress, let component = self.component, let environment = self.environment, let starsContext = component.context.starsContext, let starsState = starsContext.currentState else {
                 return
             }

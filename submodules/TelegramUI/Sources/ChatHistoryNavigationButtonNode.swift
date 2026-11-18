@@ -12,6 +12,8 @@ import AppBundle
 
 private let badgeFont = Font.with(size: 13.0, traits: [.monospacedNumbers])
 
+/// Madgram classic design: Telegram 12.0's reactions button glyph (`Chat/Context Menu/Reactions`), as a template
+/// image of the button's 38pt size so the image view tints it like today's resources.
 private let classicReactionsButtonImage: UIImage? = {
     return generateImage(CGSize(width: 38.0, height: 38.0), contextGenerator: { size, context in
         context.clear(CGRect(origin: CGPoint(), size: size))
@@ -21,6 +23,8 @@ private let classicReactionsButtonImage: UIImage? = {
     })?.withRenderingMode(.alwaysTemplate)
 }()
 
+/// Madgram classic design: Telegram 12.0's mentions button glyph (`Chat/NavigateToMentionsClassic`, the 12.0
+/// `Chat/NavigateToMentions` asset), drawn like `classicReactionsButtonImage`.
 private let classicMentionsButtonImage: UIImage? = {
     return generateImage(CGSize(width: 38.0, height: 38.0), contextGenerator: { size, context in
         context.clear(CGRect(origin: CGPoint(), size: size))
@@ -46,6 +50,9 @@ class ChatHistoryNavigationButtonNode: ContextControllerSourceNode {
     private let badgeTextNode: ImmediateAnimatedCountLabelNode
     private var tapRecognizer: UITapGestureRecognizer?
     
+    /// Madgram classic design (`ClassicDesign.isEnabled`, captured at creation): Telegram 12.0's button, a 38pt
+    /// circle of the input panel's blurred color under a hairline ring, an accent icon, and the theme's 18pt badge.
+    /// The glass views above are then created but never put on screen.
     private let isClassic: Bool
     private var classicButtonView: UIView?
     private var classicBackgroundNode: NavigationBackgroundNode?
@@ -53,6 +60,7 @@ class ChatHistoryNavigationButtonNode: ContextControllerSourceNode {
     private var classicStrokeView: UIImageView?
     private var classicBadgeBackgroundNode: ASImageNode?
     
+    /// The view that shows the badge: the classic badge image, or the glass badge.
     private var badgeContainerView: UIView {
         if let classicBadgeBackgroundNode = self.classicBadgeBackgroundNode {
             return classicBadgeBackgroundNode.view
@@ -155,6 +163,7 @@ class ChatHistoryNavigationButtonNode: ContextControllerSourceNode {
         self.frame = CGRect(origin: CGPoint(), size: size)
     }
     
+    /// Telegram 12.0's layout of this button (`ChatHistoryNavigationButtonNode` at release-12.0).
     private func setupClassic(theme: PresentationTheme, backgroundNode: WallpaperBackgroundNode) {
         let size = CGSize(width: 38.0, height: 38.0)
         
@@ -196,6 +205,7 @@ class ChatHistoryNavigationButtonNode: ContextControllerSourceNode {
         buttonView.addSubview(classicBackgroundNode.view)
         buttonView.addSubview(classicStrokeView)
         
+        // 12.0 drew these icons in the navigation bar's accent; today's resources are templates.
         self.imageView.tintColor = theme.rootController.navigationBar.accentTextColor
         self.imageView.frame = CGRect(origin: CGPoint(), size: size)
         buttonView.addSubview(self.imageView)
@@ -209,6 +219,7 @@ class ChatHistoryNavigationButtonNode: ContextControllerSourceNode {
         self.updateClassicBackgroundContent(backgroundNode: backgroundNode)
     }
     
+    /// 12.0 tinted the button with the wallpaper's bubble background when the wallpaper has one.
     private func updateClassicBackgroundContent(backgroundNode: WallpaperBackgroundNode) {
         guard let buttonView = self.classicButtonView, let classicBackgroundNode = self.classicBackgroundNode else {
             return
@@ -289,8 +300,10 @@ class ChatHistoryNavigationButtonNode: ContextControllerSourceNode {
         case .up:
             self.imageView.image = PresentationResourcesChat.chatHistoryNavigationUpButtonImage(self.theme)
         case .mentions:
+            // 12.0's "@" glyph; today's asset is a different drawing.
             self.imageView.image = classicMentionsButtonImage ?? PresentationResourcesChat.chatHistoryMentionsButtonImage(self.theme)
         case .reactions:
+            // 12.0 drew the context-menu reactions glyph here; the asset is unchanged since then.
             self.imageView.image = classicReactionsButtonImage ?? PresentationResourcesChat.chatHistoryReactionsButtonImage(self.theme)
         case .pollVotes:
             self.imageView.image = PresentationResourcesChat.chatHistoryPollVotesButtonImage(self.theme)
@@ -337,6 +350,7 @@ class ChatHistoryNavigationButtonNode: ContextControllerSourceNode {
             self.badgeTextNode.segments = segments
             
             let badgeSize = self.badgeTextNode.updateLayout(size: CGSize(width: 200.0, height: 100.0), animated: true)
+            // Classic: 12.0's 18pt badge, overlapping the button's top by half its height.
             let badgeHeight: CGFloat = self.isClassic ? 18.0 : 20.0
             let backgroundSize = CGSize(width: self.badge.count == 1 ? badgeHeight : max(badgeHeight, badgeSize.width + 10.0 + 1.0), height: badgeHeight)
             let backgroundFrame = CGRect(origin: CGPoint(x: floor((self.buttonDiameter - backgroundSize.width) / 2.0), y: self.isClassic ? -9.0 : -7.0), size: backgroundSize)

@@ -68,9 +68,20 @@ public final class ChatMessageItemAssociatedData: Equatable {
     public let isSuspiciousPeer: Bool
     public let showTextAsPlaceholder: Bool
     public let accountCountry: String?
+    /// A feed row draws the bubble's content without its background (the News tab's expanded post).
+    public let hidesBubbleBackground: Bool
+    /// The host draws the author line itself (the News tab's expanded post): the bubble shows none.
+    public let hidesAuthorHeader: Bool
+    /// A feed row: no share arrow beside the bubble.
+    public let hidesShareButton: Bool
+    /// The host takes the gestures the bubble does not act on (the News tab's post row): its context gesture is off,
+    /// the host showing its own menu on a long press, and its tap recogniser fails on plain text instead of
+    /// waiting for a double tap, so the host's tap fires.
+    public let hostHandlesGestures: Bool
     public let isParticipant: Bool
     public let invitedOn: Int32?
     public let deletedMessageMarker: String
+    public let deletedMessageOpacity: Double
     
     public init(
         automaticDownloadPeerType: MediaAutoDownloadPeerType,
@@ -113,7 +124,12 @@ public final class ChatMessageItemAssociatedData: Equatable {
         accountCountry: String? = nil,
         isParticipant: Bool = false,
         invitedOn: Int32? = nil,
-        deletedMessageMarker: String = DeletedMessageArchiveSettings.defaultDeletedMessageMarker
+        hidesBubbleBackground: Bool = false,
+        hidesAuthorHeader: Bool = false,
+        hidesShareButton: Bool = false,
+        hostHandlesGestures: Bool = false,
+        deletedMessageMarker: String = DeletedMessageArchiveSettings.defaultDeletedMessageMarker,
+        deletedMessageOpacity: Double = 1.0
     ) {
         self.automaticDownloadPeerType = automaticDownloadPeerType
         self.automaticDownloadPeerId = automaticDownloadPeerId
@@ -153,9 +169,14 @@ public final class ChatMessageItemAssociatedData: Equatable {
         self.isSuspiciousPeer = isSuspiciousPeer
         self.showTextAsPlaceholder = showTextAsPlaceholder
         self.accountCountry = accountCountry
+        self.hidesBubbleBackground = hidesBubbleBackground
+        self.hidesAuthorHeader = hidesAuthorHeader
+        self.hidesShareButton = hidesShareButton
+        self.hostHandlesGestures = hostHandlesGestures
         self.isParticipant = isParticipant
         self.invitedOn = invitedOn
         self.deletedMessageMarker = deletedMessageMarker
+        self.deletedMessageOpacity = deletedMessageOpacity
     }
     
     public static func == (lhs: ChatMessageItemAssociatedData, rhs: ChatMessageItemAssociatedData) -> Bool {
@@ -261,6 +282,18 @@ public final class ChatMessageItemAssociatedData: Equatable {
         if lhs.accountCountry != rhs.accountCountry {
             return false
         }
+        if lhs.hidesBubbleBackground != rhs.hidesBubbleBackground {
+            return false
+        }
+        if lhs.hidesAuthorHeader != rhs.hidesAuthorHeader {
+            return false
+        }
+        if lhs.hidesShareButton != rhs.hidesShareButton {
+            return false
+        }
+        if lhs.hostHandlesGestures != rhs.hostHandlesGestures {
+            return false
+        }
         if lhs.isParticipant != rhs.isParticipant {
             return false
         }
@@ -268,6 +301,9 @@ public final class ChatMessageItemAssociatedData: Equatable {
             return false
         }
         if lhs.deletedMessageMarker != rhs.deletedMessageMarker {
+            return false
+        }
+        if lhs.deletedMessageOpacity != rhs.deletedMessageOpacity {
             return false
         }
         return true
@@ -1348,6 +1384,7 @@ public enum ChatCustomContentsKind: Equatable {
     case businessLinkSetup(link: TelegramBusinessChatLinks.Link)
     case hashTagSearch(publicPosts: Bool)
     case welcomeMessages
+    /// Read-only list of the archived versions of a single edited/deleted message.
     case messageVersionHistory(originalMessageId: EngineMessage.Id, versionCount: Int)
 }
 

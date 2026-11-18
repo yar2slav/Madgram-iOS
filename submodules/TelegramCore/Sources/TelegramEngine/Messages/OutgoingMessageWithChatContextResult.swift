@@ -11,6 +11,25 @@ func _internal_enqueueOutgoingMessageWithChatContextResult(account: Account, to 
 }
 
 func _internal_outgoingMessageWithChatContextResult(to peerId: PeerId, threadId: Int64?, botId: PeerId, result: ChatContextResult, replyToMessageId: EngineMessageReplySubject?, replyToStoryId: StoryId?, hideVia: Bool, silentPosting: Bool, scheduleTime: Int32?, sendPaidMessageStars: StarsAmount?, postpone: Bool, correlationId: Int64?) -> EnqueueMessage? {
+    var sendPlain = false
+    if MadCoreFlags.sendInlineWithoutVia && peerId.namespace != Namespaces.Peer.SecretChat {
+        if case let .internalReference(internalReference) = result, internalReference.type != "game" {
+            sendPlain = true
+        }
+        if case .text = result.message {
+            sendPlain = true
+        }
+    }
+    let message = _internal_outgoingMessageWithChatContextResultImpl(to: peerId, threadId: threadId, botId: botId, result: result, replyToMessageId: replyToMessageId, replyToStoryId: replyToStoryId, hideVia: hideVia, sendPlain: sendPlain, silentPosting: silentPosting, scheduleTime: scheduleTime, sendPaidMessageStars: sendPaidMessageStars, postpone: postpone, correlationId: correlationId)
+    if sendPlain {
+        return message?.withUpdatedAttributes { attributes in
+            return attributes.filter { !($0 is ReplyMarkupMessageAttribute) }
+        }
+    }
+    return message
+}
+
+private func _internal_outgoingMessageWithChatContextResultImpl(to peerId: PeerId, threadId: Int64?, botId: PeerId, result: ChatContextResult, replyToMessageId: EngineMessageReplySubject?, replyToStoryId: StoryId?, hideVia: Bool, sendPlain: Bool, silentPosting: Bool, scheduleTime: Int32?, sendPaidMessageStars: StarsAmount?, postpone: Bool, correlationId: Int64?) -> EnqueueMessage? {
     var replyToMessageId = replyToMessageId
     if replyToMessageId == nil, let threadId = threadId {
         replyToMessageId = EngineMessageReplySubject(messageId: MessageId(peerId: peerId, namespace: Namespaces.Message.Cloud, id: MessageId.Id(clamping: threadId)), quote: nil, innerSubject: nil)
@@ -22,8 +41,10 @@ func _internal_outgoingMessageWithChatContextResult(to peerId: PeerId, threadId:
     }
     
     var attributes: [MessageAttribute] = []
-    attributes.append(OutgoingChatContextResultMessageAttribute(queryId: result.queryId, id: result.id, hideVia: hideVia, webpageUrl: webpageUrl))
-    if !hideVia {
+    if !sendPlain {
+        attributes.append(OutgoingChatContextResultMessageAttribute(queryId: result.queryId, id: result.id, hideVia: hideVia, webpageUrl: webpageUrl))
+    }
+    if !hideVia && !sendPlain {
         attributes.append(InlineBotMessageAttribute(peerId: botId, title: nil))
     }
     if let scheduleTime = scheduleTime {
@@ -189,5 +210,22 @@ func _internal_outgoingMessageWithChatContextResult(to peerId: PeerId, threadId:
             attributes.append(previewParameters)
         }
         return .message(text: text, attributes: attributes, inlineStickers: [:], mediaReference: nil, threadId: threadId, replyToMessageId: replyToMessageId, replyToStoryId: replyToStoryId, localGroupingKey: nil, correlationId: correlationId, bubbleUpEmojiOrStickersets: [])
+    case let .widget(media, caption, entities, replyMarkup):
+        if let entities = entities {
+            attributes.append(entities)
+        }
+        if peerId.namespace == Namespaces.Peer.SecretChat {
+            // A secret chat cannot carry a widget: the result's text alone, without its buttons (as a game's), or nothing.
+            if caption.isEmpty {
+                return nil
+            }
+            return .message(text: caption, attributes: attributes, inlineStickers: [:], mediaReference: nil, threadId: threadId, replyToMessageId: replyToMessageId, replyToStoryId: replyToStoryId, localGroupingKey: nil, correlationId: correlationId, bubbleUpEmojiOrStickersets: [])
+        }
+        if let replyMarkup = replyMarkup {
+            attributes.append(replyMarkup)
+        }
+        // widget-sandbox v0.2 (design §4 call 10): the echo is the result's widget, its state and no queries; the
+        // server's message replaces it with its own flags.
+        return .message(text: caption, attributes: attributes, inlineStickers: [:], mediaReference: .standalone(media: media), threadId: threadId, replyToMessageId: replyToMessageId, replyToStoryId: replyToStoryId, localGroupingKey: nil, correlationId: correlationId, bubbleUpEmojiOrStickersets: [])
     }
 }

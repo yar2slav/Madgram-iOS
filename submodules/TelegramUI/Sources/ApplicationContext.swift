@@ -1,4 +1,5 @@
 import Foundation
+import MadgramText
 import UIKit
 import Intents
 import TelegramPresentationData
@@ -33,6 +34,7 @@ import AttachmentUI
 import MinimizedContainer
 import BrowserUI
 import NewsFeedSupport
+import MadgramAgentUI
 
 final class UnauthorizedApplicationContext {
     let sharedContext: SharedAccountContextImpl
@@ -116,6 +118,7 @@ final class AuthorizedApplicationContext {
     private let loggedOutDisposable = MetaDisposable()
     private let inAppNotificationSettingsDisposable = MetaDisposable()
     private let notificationMessagesDisposable = MetaDisposable()
+    private var localMessageNotificationManager: LocalMessageNotificationManager?
     private let termsOfServiceUpdatesDisposable = MetaDisposable()
     private let termsOfServiceProceedToBotDisposable = MetaDisposable()
     private let watchNavigateToMessageDisposable = MetaDisposable()
@@ -167,7 +170,7 @@ final class AuthorizedApplicationContext {
         self.lockedCoveringView = LockedWindowCoveringView(theme: presentationData.theme)
         
         self.context = context
-        
+
         self.showCallsTab = showCallsTab
         self.showNewsTab = isNewsFeedEnabled(appConfiguration: context.currentAppConfiguration.with { $0 })
         
@@ -294,11 +297,33 @@ final class AuthorizedApplicationContext {
         }))
 
         let engine = context.engine
+        self.localMessageNotificationManager = LocalMessageNotificationManager(context: context)
+        Task { @MainActor in
+            AgentAutoResponder.attach(context: context)
+        }
+        MadPresenceWatcher.attach(context: context)
+        MadReactionNotifier.attach(context: context)
+        MadWhatsNew.markSeen()
+        MadChangelogChat.attach(context: context)
         self.notificationMessagesDisposable.set((context.account.stateManager.notificationMessages
         |> map { messageList in
+            // Messages from hidden authors are not shown in the chat, so they must not drop a
+            // banner or play a sound either. Read the store per batch so a change applies at once.
+            // In Replies the banner names the forwarded author, so that author counts as well.
             let messageFilterSettings = MessageFilterSettingsStore.shared.current
+            let madRulesSource = ChatContentFilterSettingsStore.shared.current.hiddenRulesSource
+            let madFilterRules = !madRulesSource.isEmpty && InterfaceTuningSettingsStore.shared.cached.sub(.hiddenRulesNotifications)
             return messageList.map { item in
-                return (messageFilterSettings.visibleNotificationMessages(item.0, authorIds: { message in
+                let madVisible = item.0.filter { message in
+                    if MadChatLockSession.shared.isLockedChat(peerId: message.id.peerId.toInt64()) {
+                        return false
+                    }
+                    if madFilterRules && MadHideRuleSet.cached(madRulesSource).matches(message.text) {
+                        return false
+                    }
+                    return true
+                }
+                return (messageFilterSettings.visibleNotificationMessages(madVisible, authorIds: { message in
                     var authorIds: [Int64] = []
                     if let author = message.author {
                         authorIds.append(author.id.toInt64())
@@ -340,8 +365,17 @@ final class AuthorizedApplicationContext {
                 return
             }
 
+            if let strongSelf = self, UIApplication.shared.applicationState == .background {
+                for (messages, _, notify, _) in messageList {
+                    strongSelf.localMessageNotificationManager?.enqueue(messages: messages, notify: notify)
+                }
+            }
+
             if let strongSelf = self, let (messages, _, notify, threadData) = messageList.last, let firstMessage = messages.first {
                 if UIApplication.shared.applicationState == .active {
+                    if let localMessageNotificationManager = strongSelf.localMessageNotificationManager, localMessageNotificationManager.suppressesInAppNotification(for: messages) {
+                        return
+                    }
                     let chatLocation: NavigateToChatControllerParams.Location
                     if let _ = threadData, let threadId = firstMessage.threadId {
                         chatLocation = .replyThread(ChatReplyThreadMessage(
@@ -979,8 +1013,21 @@ final class AuthorizedApplicationContext {
     }
     
     func openUrl(_ url: URL, external: Bool = false) {
+        if url.scheme?.lowercased() == "mad", url.host?.lowercased() == "share" {
+            MadShareHandoff.present(context: self.context, parent: self.rootController.viewControllers.last as? ViewController)
+            return
+        }
+        if url.scheme?.lowercased() == "mad", url.host?.lowercased() == "open" {
+            if let value = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "url" })?.value, let innerUrl = URL(string: value), ["tg", "http", "https"].contains(innerUrl.scheme?.lowercased() ?? "") {
+                self.openUrl(innerUrl, external: false)
+            }
+            return
+        }
         if let controller = madgramControllerForDeepLink(context: self.context, url: url) {
             self.rootController.pushViewController(controller)
+            return
+        }
+        if url.scheme?.lowercased() == "mad" {
             return
         }
         if self.rootController.rootTabController != nil {

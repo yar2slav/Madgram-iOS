@@ -76,7 +76,7 @@ public struct ICloudFileDescription {
     public let audioMetadata: AudioMetadata?
 }
 
-private let audioFileExtensions: Set<String> = ["mp3", "m4a", "aac", "flac"]
+private let audioFileExtensions: Set<String> = ["mp3", "m4a", "aac", "flac", "wav"]
 
 private func validatedAudioArtworkData(_ data: Data?) -> Data? {
     guard let data, UIImage(data: data) != nil else {
@@ -150,7 +150,7 @@ private func descriptionWithUrl(_ url: URL) -> ICloudFileDescription? {
         } else {
             audioAsset = nil
         }
-        if ["mp3", "m4a"].contains(fileExtension), let asset = audioAsset {
+        if ["mp3", "m4a", "wav"].contains(fileExtension), let asset = audioAsset {
             let title = AVMetadataItem.metadataItems(from: asset.commonMetadata, withKey: AVMetadataKey.commonKeyTitle, keySpace: AVMetadataKeySpace.common).first?.stringValue
             let performer = AVMetadataItem.metadataItems(from: asset.commonMetadata, withKey: AVMetadataKey.commonKeyArtist, keySpace: AVMetadataKeySpace.common).first?.stringValue
             let duration = CMTimeGetSeconds(asset.duration)

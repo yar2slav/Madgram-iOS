@@ -130,6 +130,7 @@ public func itemListNeighborsGroupedInsets(_ neighbors: ItemListNeighbors, _ par
 }
 
 public func itemListHasRoundedBlockLayout(_ params: ListViewItemLayoutParams) -> Bool {
+    // Madgram: the classic design keeps Telegram 12.0's threshold (edge-to-edge rows below 375pt).
     return params.width >= (ClassicDesign.isEnabled ? 375.0 : 320.0)
 }
 

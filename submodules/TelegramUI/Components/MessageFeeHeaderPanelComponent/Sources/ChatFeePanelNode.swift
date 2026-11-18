@@ -89,6 +89,7 @@ final class ChatFeePanelNode: ASDisplayNode {
         
         if self.theme !== theme {
             self.theme = theme
+            // Classic (12.0): the action in the panel's accent.
             self.removeTextNode.attributedText = NSAttributedString(string: strings.Chat_PaidMessageFee_RemoveFee, font: Font.regular(17.0), textColor: ClassicDesign.isEnabled ? theme.chat.inputPanel.panelControlAccentColor : theme.chat.inputPanel.panelControlColor)
         }
         

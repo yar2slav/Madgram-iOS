@@ -1,6 +1,19 @@
 import Foundation
 import PresentationStrings
 import TelegramCore
+import TelegramUIPreferences
+
+public func madViewCountString(_ count: Int, decimalSeparator: String = ".") -> String {
+    guard InterfaceTuningSettingsStore.shared.cached.showExactViewCounts else {
+        return compactNumericCountString(count, decimalSeparator: decimalSeparator)
+    }
+    let formatter = NumberFormatter()
+    formatter.numberStyle = .decimal
+    formatter.groupingSeparator = "\u{202F}"
+    formatter.groupingSize = 3
+    formatter.usesGroupingSeparator = true
+    return formatter.string(from: NSNumber(value: count)) ?? "\(count)"
+}
 
 public func compactNumericCountString(_ count: Int, decimalSeparator: String = ".", showDecimalPart: Bool = true) -> String {
     if count >= 1000 * 1000 {

@@ -6,7 +6,6 @@ import ComponentFlow
 import AccountContext
 import TelegramPresentationData
 import GlassBackgroundComponent
-import LottieSettings
 import HorizontalTabsComponent
 import NewsFeedSupport
 
@@ -86,6 +85,7 @@ final class NewsSegmentNode: ASDisplayNode {
         transition.setFrame(view: self.backgroundContainer, frame: containerFrame)
         self.backgroundContainer.update(size: containerFrame.size, isDark: theme.overallDarkAppearance, transition: transition)
         transition.setFrame(view: self.backgroundView, frame: CGRect(origin: CGPoint(), size: frame.size))
+        // Madgram classic design: the tabs draw 12.0's flat strip with its underline, with no capsule behind it.
         self.backgroundView.update(size: frame.size, cornerRadius: frame.height * 0.5, isDark: theme.overallDarkAppearance, tintColor: .init(kind: .panel), isVisible: !ClassicDesign.isEnabled, transition: transition)
 
         if let tabsView = self.tabs.view as? HorizontalTabsComponent.View {
@@ -138,8 +138,8 @@ final class NewsSegmentNode: ASDisplayNode {
     }
 
     /// The refresh drop for `pose`, below the island (spec §2).
-    func updateRefreshDrop(pose: NewsRefreshDropPose, theme: PresentationTheme, lottieSettings: LottieRenderingSettings) {
-        self.refreshDrop.update(pose: pose, islandSize: self.bounds.size, theme: theme, lottieSettings: lottieSettings)
+    func updateRefreshDrop(pose: NewsRefreshDropPose, theme: PresentationTheme) {
+        self.refreshDrop.update(pose: pose, islandSize: self.bounds.size, theme: theme)
     }
 
     /// Mid-swipe, without laying the tabs out again.

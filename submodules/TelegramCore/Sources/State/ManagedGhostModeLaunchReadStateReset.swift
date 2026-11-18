@@ -5,6 +5,16 @@ internal import TelegramApi
 
 private let ghostModeServerReadStateBatchSize = 100
 
+/// Forgets every read that Ghost Mode kept to itself, so a cold start comes back to what the server
+/// still considers unread.
+///
+/// Two steps. The snapshot rollback lands first: it needs no network and restores the unread chats
+/// immediately. The server pass then corrects the unread counters, which the snapshots alone cannot
+/// get right — a marker only remembers the state from before the *first* suppressed read, so a chat
+/// read several times in one session would come back with a stale count.
+///
+/// Only peer-level cloud read states are verified against the server. Forum threads and stories fall
+/// back to their snapshots; their server state is reconciled by the regular topic and story syncs.
 func managedGhostModeLaunchReadStateReset(postbox: Postbox, network: Network) -> Signal<Never, NoError> {
     return postbox.transaction { transaction -> (peerIds: [PeerId], withoutSnapshot: Set<PeerId>) in
         let plan = ghostModeResetPlan(
@@ -14,6 +24,8 @@ func managedGhostModeLaunchReadStateReset(postbox: Postbox, network: Network) ->
         )
         let rolledBackPeerIds = ghostModeApplyResetPlan(transaction: transaction, plan: plan)
 
+        // Chats the user has since answered are left read; asking the server about them would only
+        // put the unread badge back.
         let withoutSnapshot = Set(plan.peersNeedingServerState.filter { peerId in
             return !ghostModeUserWroteLast(transaction: transaction, peerId: peerId, namespace: Namespaces.Message.Cloud)
         })
@@ -62,6 +74,7 @@ private func applyServerReadStates(
         return network.request(Api.functions.messages.getPeerDialogs(peers: inputPeers))
         |> map(Optional.init)
         |> `catch` { _ -> Signal<Api.messages.PeerDialogs?, NoError> in
+            // Best effort: without the server's answer the snapshot rollback already stands.
             return .single(nil)
         }
         |> mapToSignal { result -> Signal<Never, NoError> in
@@ -98,6 +111,15 @@ private func applyServerReadStates(
     }
 }
 
+/// Decides whether the dialog the server just described may overwrite what is stored locally.
+///
+/// A fresh Ghost Mode marker means the user re-read the chat while the request was in flight; that
+/// read wins, or the chat would jump back to unread under their finger.
+///
+/// A local read id ahead of the server's normally means the read arrived from another device after
+/// the rollback, and must not be undone. `overwriteReadsAhead` inverts that for peers whose marker
+/// carried no rollback snapshot: there the local state is ahead precisely because Ghost Mode left it
+/// there, and the server's answer is the only way to recover the unread state.
 private func serverReadStateToApply(
     transaction: Transaction,
     peerId: PeerId,

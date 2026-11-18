@@ -164,6 +164,10 @@ func _internal_managedRecentlyUsedInlineBots(postbox: Postbox, network: Network,
             let (categories, users) = (topPeersData.categories, topPeersData.users)
             let parsedPeers = AccumulatedPeers(users: users)
             
+            // Multiple requested top-peer categories can contain the same bot.
+            // OrderedItemList requires unique ids, so merge those entries before
+            // replacing the local list. Keep the strongest rating to preserve the
+            // bot's highest position across the returned categories.
             var ratingsByPeerId: [PeerId: Double] = [:]
             for category in categories {
                 switch category {

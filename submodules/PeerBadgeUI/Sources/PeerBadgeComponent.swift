@@ -236,8 +236,6 @@ public final class PeerBadgeComponent: Component {
 private struct PeerBadgeStrings {
     let close: String
     let openLink: String
-    let confirmTitle: String
-    let confirmText: String
     let detailsHint: String
 }
 
@@ -246,24 +244,18 @@ private func localizedPeerBadgeStrings(languageCode: String) -> PeerBadgeStrings
         return PeerBadgeStrings(
             close: "Закрыть",
             openLink: "Открыть ссылку",
-            confirmTitle: "Открыть внешнюю ссылку?",
-            confirmText: "Telegram передаст управление браузеру.",
             detailsHint: "Показать описание бейджа"
         )
     } else if languageCode.hasPrefix("uk") {
         return PeerBadgeStrings(
             close: "Закрити",
             openLink: "Відкрити посилання",
-            confirmTitle: "Відкрити зовнішнє посилання?",
-            confirmText: "Telegram передасть керування браузеру.",
             detailsHint: "Показати опис бейджа"
         )
     } else {
         return PeerBadgeStrings(
             close: "Close",
             openLink: "Open Link",
-            confirmTitle: "Open external link?",
-            confirmText: "Telegram will hand over to your browser.",
             detailsHint: "Show badge details"
         )
     }
@@ -272,31 +264,6 @@ private func localizedPeerBadgeStrings(languageCode: String) -> PeerBadgeStrings
 public func presentPeerBadgeInfo(context: AccountContext, badge: PeerBadge) {
     let presentationData = context.sharedContext.currentPresentationData.with { $0 }
     let strings = localizedPeerBadgeStrings(languageCode: presentationData.strings.baseLanguageCode)
-    var actions: [TextAlertAction] = [
-        TextAlertAction(type: .defaultAction, title: strings.close, action: {})
-    ]
-    if let linkUrl = badge.linkUrl, let url = URL(string: linkUrl), url.scheme == "https" {
-        actions.append(TextAlertAction(type: .genericAction, title: strings.openLink, action: {
-            let confirmation = textAlertController(
-                context: context,
-                title: strings.confirmTitle,
-                text: strings.confirmText,
-                actions: [
-                    TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_Cancel, action: {}),
-                    TextAlertAction(type: .genericAction, title: strings.openLink, action: {
-                        UIApplication.shared.open(url, options: [:], completionHandler: nil)
-                    })
-                ]
-            )
-            context.sharedContext.mainWindow?.present(confirmation, on: .root)
-        }))
-    }
-    let controller = textAlertController(
-        context: context,
-        title: badge.title,
-        text: badge.description,
-        actions: actions,
-        actionLayout: .vertical
-    )
+    let controller = PeerBadgeCardController(context: context, badge: badge, strings: PeerBadgeCardStrings(close: strings.close, openLink: strings.openLink))
     context.sharedContext.mainWindow?.present(controller, on: .root)
 }

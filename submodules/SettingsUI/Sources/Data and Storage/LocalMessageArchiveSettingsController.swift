@@ -17,6 +17,8 @@ private final class LocalMessageArchiveControllerArguments {
     let toggleKeepAcrossLaunches: (Bool) -> Void
     let selectMediaLimit: () -> Void
     let selectDisappearingMediaLimit: () -> Void
+    let selectDeletedOpacity: () -> Void
+    let toggleExclusion: (Int32, Bool) -> Void
     let clearMedia: () -> Void
     let clearArchive: () -> Void
     let showInfo: (String, UIView) -> Void
@@ -29,6 +31,8 @@ private final class LocalMessageArchiveControllerArguments {
         toggleKeepAcrossLaunches: @escaping (Bool) -> Void,
         selectMediaLimit: @escaping () -> Void,
         selectDisappearingMediaLimit: @escaping () -> Void,
+        selectDeletedOpacity: @escaping () -> Void,
+        toggleExclusion: @escaping (Int32, Bool) -> Void,
         clearMedia: @escaping () -> Void,
         clearArchive: @escaping () -> Void,
         showInfo: @escaping (String, UIView) -> Void
@@ -40,6 +44,8 @@ private final class LocalMessageArchiveControllerArguments {
         self.toggleKeepAcrossLaunches = toggleKeepAcrossLaunches
         self.selectMediaLimit = selectMediaLimit
         self.selectDisappearingMediaLimit = selectDisappearingMediaLimit
+        self.selectDeletedOpacity = selectDeletedOpacity
+        self.toggleExclusion = toggleExclusion
         self.clearMedia = clearMedia
         self.clearArchive = clearArchive
         self.showInfo = showInfo
@@ -48,6 +54,7 @@ private final class LocalMessageArchiveControllerArguments {
 
 private enum LocalMessageArchiveSection: Int32 {
     case settings
+    case exclusions
     case marker
     case storage
 }
@@ -58,8 +65,12 @@ private enum LocalMessageArchiveEntry: ItemListNodeEntry {
     case saveEditedVersions(Bool)
     case saveMessagesFromArchivedChats(Bool)
     case keepAcrossLaunches(Bool, Bool)
+    case exclusionsHeader(String)
+    case exclusion(Int32, String, Bool, Bool)
+    case exclusionsInfo(String)
     case markerHeader(String)
     case marker(String)
+    case deletedOpacity(String, String, String)
     case markerInfo(String)
     case storageHeader(String)
     case mediaLimit(String, Bool)
@@ -73,7 +84,9 @@ private enum LocalMessageArchiveEntry: ItemListNodeEntry {
         switch self {
         case .saveHeader, .saveDeletedMessages, .saveEditedVersions, .saveMessagesFromArchivedChats, .keepAcrossLaunches:
             return LocalMessageArchiveSection.settings.rawValue
-        case .markerHeader, .marker, .markerInfo:
+        case .exclusionsHeader, .exclusion, .exclusionsInfo:
+            return LocalMessageArchiveSection.exclusions.rawValue
+        case .markerHeader, .marker, .deletedOpacity, .markerInfo:
             return LocalMessageArchiveSection.marker.rawValue
         case .storageHeader, .mediaLimit, .disappearingMediaLimit, .usage, .clearMedia, .clearArchive, .storageInfo:
             return LocalMessageArchiveSection.storage.rawValue
@@ -92,26 +105,35 @@ private enum LocalMessageArchiveEntry: ItemListNodeEntry {
             return 3
         case .keepAcrossLaunches:
             return 4
+        case .exclusionsHeader:
+            return 20
+        case let .exclusion(rawValue, _, _, _):
+            let order: [Int32] = [DeletedMessageArchiveExclusions.privateChats.rawValue, DeletedMessageArchiveExclusions.groups.rawValue, DeletedMessageArchiveExclusions.channels.rawValue, DeletedMessageArchiveExclusions.bots.rawValue, DeletedMessageArchiveExclusions.savedMessages.rawValue]
+            return 21 + Int32(order.firstIndex(of: rawValue) ?? order.count)
+        case .exclusionsInfo:
+            return 40
         case .markerHeader:
-            return 5
+            return 105
         case .marker:
-            return 6
+            return 106
+        case .deletedOpacity:
+            return 107
         case .markerInfo:
-            return 7
+            return 108
         case .storageHeader:
-            return 8
+            return 109
         case .mediaLimit:
-            return 9
+            return 110
         case .disappearingMediaLimit:
-            return 10
+            return 111
         case .usage:
-            return 11
+            return 112
         case .clearMedia:
-            return 12
+            return 113
         case .clearArchive:
-            return 13
+            return 114
         case .storageInfo:
-            return 14
+            return 115
         }
     }
 
@@ -131,6 +153,12 @@ private enum LocalMessageArchiveEntry: ItemListNodeEntry {
             return lhsText == rhsText && lhsEnabled == rhsEnabled
         case let (.disappearingMediaLimit(lhsText, lhsEnabled), .disappearingMediaLimit(rhsText, rhsEnabled)):
             return lhsText == rhsText && lhsEnabled == rhsEnabled
+        case let (.deletedOpacity(lhsTitle, lhsInfo, lhsValue), .deletedOpacity(rhsTitle, rhsInfo, rhsValue)):
+            return lhsTitle == rhsTitle && lhsInfo == rhsInfo && lhsValue == rhsValue
+        case let (.exclusionsHeader(lhsText), .exclusionsHeader(rhsText)), let (.exclusionsInfo(lhsText), .exclusionsInfo(rhsText)):
+            return lhsText == rhsText
+        case let (.exclusion(lhsRaw, lhsTitle, lhsValue, lhsEnabled), .exclusion(rhsRaw, rhsTitle, rhsValue, rhsEnabled)):
+            return lhsRaw == rhsRaw && lhsTitle == rhsTitle && lhsValue == rhsValue && lhsEnabled == rhsEnabled
         case let (.usage(lhsText), .usage(rhsText)):
             return lhsText == rhsText
         case (.clearMedia, .clearMedia), (.clearArchive, .clearArchive):
@@ -191,6 +219,14 @@ private enum LocalMessageArchiveEntry: ItemListNodeEntry {
                 style: .blocks,
                 updated: arguments.toggleSaveMessagesFromArchivedChats
             )
+        case let .exclusionsHeader(text):
+            return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
+        case let .exclusion(rawValue, title, value, enabled):
+            return ItemListSwitchItem(presentationData: presentationData, title: title, value: value, enabled: enabled, sectionId: self.section, style: .blocks, updated: { value in
+                arguments.toggleExclusion(rawValue, value)
+            })
+        case let .exclusionsInfo(text):
+            return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .markerHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .marker(value):
@@ -206,6 +242,19 @@ private enum LocalMessageArchiveEntry: ItemListNodeEntry {
                 sectionId: self.section,
                 textUpdated: arguments.updateDeletedMessageMarker,
                 action: {}
+            )
+        case let .deletedOpacity(title, info, value):
+            return ItemListDisclosureItem(
+                presentationData: presentationData,
+                title: title,
+                titleIcon: featureInfoIcon(color: presentationData.theme.list.itemAccentColor),
+                titleIconAction: { sourceView in
+                    arguments.showInfo(info, sourceView)
+                },
+                label: value,
+                sectionId: self.section,
+                style: .blocks,
+                action: arguments.selectDeletedOpacity
             )
         case let .markerInfo(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
@@ -355,6 +404,35 @@ public func localMessageArchiveSettingsController(context: AccountContext) -> Vi
             sheet.setItemGroups([ActionSheetItemGroup(items: items)])
             presentController?(sheet)
         },
+        selectDeletedOpacity: {
+            let sheet = ActionSheetController(presentationData: presentationData)
+            var items: [ActionSheetItem] = DeletedMessageArchiveSettings.allowedDeletedMessageOpacities.map { value in
+                return ActionSheetButtonItem(title: "\(Int((value * 100.0).rounded()))%", action: { [weak sheet] in
+                    sheet?.dismissAnimated()
+                    let _ = context.engine.messages.updateDeletedMessageArchiveSettingsInteractively({ current in
+                        var current = current
+                        current.deletedMessageOpacity = value
+                        return current
+                    }).start()
+                })
+            }
+            items.append(ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
+                sheet?.dismissAnimated()
+            }))
+            sheet.setItemGroups([ActionSheetItemGroup(items: items)])
+            presentController?(sheet)
+        },
+        toggleExclusion: { rawValue, value in
+            let _ = context.engine.messages.updateDeletedMessageArchiveSettingsInteractively({ current in
+                var current = current
+                if value {
+                    current.exclusions.insert(DeletedMessageArchiveExclusions(rawValue: rawValue))
+                } else {
+                    current.exclusions.remove(DeletedMessageArchiveExclusions(rawValue: rawValue))
+                }
+                return current
+            }).start()
+        },
         clearMedia: {
             let _ = context.engine.messages.clearDeletedMessageArchiveMedia().start(completed: {
                 refreshStats()
@@ -379,14 +457,23 @@ public func localMessageArchiveSettingsController(context: AccountContext) -> Vi
             dataSizeString(stats.mediaSize, formatting: DataSizeStringFormatting(presentationData: presentationData))
         )
         let archiveEnabled = settings.isEnabled
+        let extras = presentationData.strings.localFeatures.extras
         let entries: [LocalMessageArchiveEntry] = [
             .saveHeader(strings.saveSection),
             .saveDeletedMessages(settings.saveDeletedMessages),
             .saveEditedVersions(settings.saveEditedVersions),
             .saveMessagesFromArchivedChats(settings.saveMessagesFromArchivedChats),
             .keepAcrossLaunches(settings.keepAcrossLaunches, archiveEnabled),
+            .exclusionsHeader(extras.archiveExcludeHeader.uppercased()),
+            .exclusion(DeletedMessageArchiveExclusions.privateChats.rawValue, extras.archiveExcludePrivateChats, settings.exclusions.contains(.privateChats), archiveEnabled),
+            .exclusion(DeletedMessageArchiveExclusions.groups.rawValue, extras.archiveExcludeGroups, settings.exclusions.contains(.groups), archiveEnabled),
+            .exclusion(DeletedMessageArchiveExclusions.channels.rawValue, extras.archiveExcludeChannels, settings.exclusions.contains(.channels), archiveEnabled),
+            .exclusion(DeletedMessageArchiveExclusions.bots.rawValue, extras.archiveExcludeBots, settings.exclusions.contains(.bots), archiveEnabled),
+            .exclusion(DeletedMessageArchiveExclusions.savedMessages.rawValue, extras.archiveExcludeSavedMessages, settings.exclusions.contains(.savedMessages), archiveEnabled),
+            .exclusionsInfo(extras.archiveExcludeInfo),
             .markerHeader(strings.deletedMessageMarker.uppercased()),
             .marker(settings.deletedMessageMarker),
+            .deletedOpacity(presentationData.strings.localFeatures.extras.deletedOpacity, presentationData.strings.localFeatures.extras.deletedOpacityInfo, "\(Int((settings.deletedMessageOpacity * 100.0).rounded()))%"),
             .markerInfo(strings.deletedMessageMarkerInfo),
             .storageHeader(strings.storageSection),
             .mediaLimit("\(settings.mediaLimitGigabytes) \(strings.gigabytesSuffix)", archiveEnabled),

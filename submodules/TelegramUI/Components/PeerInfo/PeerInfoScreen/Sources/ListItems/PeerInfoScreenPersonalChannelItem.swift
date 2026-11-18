@@ -657,6 +657,7 @@ private final class PeerInfoScreenPersonalChannelItemNode: PeerInfoScreenItemNod
             interaction: chatListNodeInteraction
         )
         var itemNode: ListViewItemNode?
+        // Madgram: the classic design (12.0) shows the chat row edge to edge, without the glass row's 4 pt inset.
         let classicRowInset: CGFloat = PeerInfoClassicMetrics.isEnabled ? 0.0 : 4.0
         let params = ListViewItemLayoutParams(width: width - safeInsets.left - safeInsets.right - classicRowInset, leftInset: 0.0, rightInset: 0.0, availableHeight: 1000.0)
         if let current = self.itemNode {

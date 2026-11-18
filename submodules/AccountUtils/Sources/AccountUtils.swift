@@ -4,6 +4,8 @@ import TelegramCore
 import TelegramUIPreferences
 import AccountContext
 
+/// A practical local ceiling that removes the client-side Premium account slot restriction.
+/// The value remains finite to protect UI and resource-allocation code from unbounded input.
 public let maximumNumberOfAccounts = 500
 public let maximumPremiumNumberOfAccounts = maximumNumberOfAccounts
 

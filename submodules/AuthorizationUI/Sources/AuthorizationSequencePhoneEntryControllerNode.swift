@@ -1,5 +1,4 @@
 import Foundation
-import LottieSettings
 import UIKit
 import AsyncDisplayKit
 import Display
@@ -116,8 +115,9 @@ private final class PhoneAndCountryNode: ASDisplayNode {
         self.phoneInputNode.numberField.textField.textColor = theme.list.itemPrimaryTextColor
         self.phoneInputNode.countryCodeField.textField.tintColor = theme.list.itemAccentColor
         self.phoneInputNode.numberField.textField.tintColor = theme.list.itemAccentColor
-        self.phoneInputNode.countryCodeField.accessibilityHint = strings.Login_VoiceOver_PhoneCountryCode
-        self.phoneInputNode.numberField.accessibilityHint = strings.Login_VoiceOver_PhoneNumber
+        // The fields show only digits (or a placeholder): VoiceOver names them.
+        self.phoneInputNode.countryCodeField.textField.accessibilityLabel = strings.Login_VoiceOver_PhoneCountryCode
+        self.phoneInputNode.numberField.textField.accessibilityLabel = strings.Login_VoiceOver_PhoneNumber
         self.phoneInputNode.countryCodeField.textField.accessibilityIdentifier = "Auth.PhoneEntry.CountryCodeField"
         self.phoneInputNode.numberField.textField.accessibilityIdentifier = "Auth.PhoneEntry.PhoneNumberField"
 
@@ -181,7 +181,11 @@ private final class PhoneAndCountryNode: ASDisplayNode {
                     strongSelf.phoneInputNode.numberField.textField.attributedPlaceholder = NSAttributedString(string: strings.Login_PhonePlaceholder, font: Font.regular(20.0), textColor: theme.list.itemPlaceholderTextColor)
                 }
                 
-                strongSelf.countryButton.accessibilityLabel = strongSelf.countryButton.attributedTitle(for: .normal)?.string ?? ""
+                if !strongSelf.hasCountry {
+                    // setCountryTitle labels the button with the country's name (its title starts with the flag's
+                    // placeholder); the plain "Select Country" title is read as shown.
+                    strongSelf.countryButton.accessibilityLabel = strings.Login_SelectCountry
+                }
                 strongSelf.countryButton.accessibilityTraits = [.button]
                 
                 if strongSelf.hasCountry {
@@ -324,6 +328,7 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
     var accountUpdated: ((UnauthorizedAccount) -> Void)?
     
     var retryPasskey: (() -> Void)?
+    var loginAsBot: (() -> Void)?
     
     private let debugAction: () -> Void
     
@@ -393,10 +398,10 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
         self.debugAction = debugAction
         self.hasOtherAccounts = hasOtherAccounts
         
-        self.animationNode = DefaultAnimatedStickerNodeImpl(lottieSettings: .noAccountFallback)
+        self.animationNode = DefaultAnimatedStickerNodeImpl()
         self.animationNode.setup(source: AnimatedStickerNodeLocalFileSource(name: "IntroPhone"), width: 256, height: 256, playbackMode: .once, mode: .direct(cachePathPrefix: nil))
         
-        self.managedAnimationNode = ManagedPhoneAnimationNode(lottieSettings: .noAccountFallback)
+        self.managedAnimationNode = ManagedPhoneAnimationNode()
         self.managedAnimationNode.isHidden = true
         
         self.titleNode = ASTextNode()
@@ -405,7 +410,7 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
         self.titleNode.attributedText = NSAttributedString(string: account == nil ? strings.Login_NewNumber : strings.Login_PhoneTitle, font: Font.light(30.0), textColor: theme.list.itemPrimaryTextColor)
         
         self.titleActivateAreaNode = AccessibilityAreaNode()
-        self.titleActivateAreaNode.accessibilityTraits = .staticText
+        self.titleActivateAreaNode.accessibilityTraits = [.staticText, .header]
         
         self.noticeNode = ImmediateTextNode()
         self.noticeNode.maximumNumberOfLines = 0
@@ -416,7 +421,7 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
         self.noticeActivateAreaNode = AccessibilityAreaNode()
         self.noticeActivateAreaNode.accessibilityTraits = .staticText
         
-        self.noticeNode.attributedText = NSAttributedString(string: account == nil ? strings.ChangePhoneNumberNumber_Help : strings.Login_PhoneAndCountryHelp, font: Font.regular(17.0), textColor: theme.list.itemPrimaryTextColor, paragraphAlignment: .center)
+        self.noticeNode.attributedText = madAppendBotLoginLink(NSAttributedString(string: account == nil ? strings.ChangePhoneNumberNumber_Help : strings.Login_PhoneAndCountryHelp, font: Font.regular(17.0), textColor: theme.list.itemPrimaryTextColor, paragraphAlignment: .center), account: account, strings: strings, theme: theme)
         
         self.contactSyncNode = ContactSyncNode(theme: theme, strings: strings)
         
@@ -457,8 +462,12 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
             guard let self else {
                 return
             }
-            if let _ = attributes[NSAttributedString.Key(rawValue: "URL")] as? String {
-                self.retryPasskey?()
+            if let url = attributes[NSAttributedString.Key(rawValue: "URL")] as? String {
+                if url == madBotLoginUrl {
+                    self.loginAsBot?()
+                } else {
+                    self.retryPasskey?()
+                }
             }
         }
         self.noticeNode.linkHighlightColor = theme.list.itemAccentColor.withAlphaComponent(0.2)
@@ -593,7 +602,7 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
             attributedText.addAttribute(.attachment, value: chevronImage, range: NSRange(range, in: attributedText.string))
         }
         
-        self.noticeNode.attributedText = attributedText
+        self.noticeNode.attributedText = madAppendBotLoginLink(attributedText, account: self.account, strings: self.strings, theme: self.theme)
     }
     
     func containerLayoutUpdated(_ layout: ContainerViewLayout, navigationBarHeight: CGFloat, transition: ContainedViewLayoutTransition) {
@@ -609,19 +618,17 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
         self.titleNode.attributedText = NSAttributedString(string: self.account == nil ? self.strings.Login_NewNumber : self.strings.Login_PhoneTitle, font: Font.bold(28.0), textColor: self.theme.list.itemPrimaryTextColor)
         self.titleActivateAreaNode.accessibilityLabel = self.titleNode.attributedText?.string ?? ""
         
-        // iPhone Duo: beside a side strip the content keeps to the band between the side insets. With equal
-        // insets (every other phone) it keeps the full width.
-        let insetsDiffer = layout.safeInsets.left != layout.safeInsets.right
-        let bandMinX: CGFloat = insetsDiffer ? layout.safeInsets.left : 0.0
-        let bandWidth: CGFloat = insetsDiffer ? layout.size.width - layout.safeInsets.left - layout.safeInsets.right : layout.size.width
+        // iPhone Duo: beside a side strip the content keeps to the band between the side insets; on the unfolded screen it
+        // is centered on the full width, clear of the strip on both sides (authorizationContentBand). With equal insets
+        // (every other phone) it keeps the full width.
+        let (bandMinX, bandWidth) = authorizationContentBand(layout: layout)
         
         let inset: CGFloat = 24.0
         let maximumWidth: CGFloat = min(430.0, bandWidth)
         
-        // The bottom button spans iPhone Duo's side strip; it keeps clear only of a corner block at the bottom.
-        let bottomSideInsets = layout.bottomEdgeSideInsets()
-        let bottomBandMinX: CGFloat = insetsDiffer ? bottomSideInsets.left : 0.0
-        let bottomBandWidth: CGFloat = insetsDiffer ? layout.size.width - bottomSideInsets.left - bottomSideInsets.right : layout.size.width
+        // iPhone Duo: the bottom button keeps to the content's axis (authorizationBottomBand): unfolded it spans the
+        // side strip, clear only of a corner block at the bottom; folded it keeps to the content band.
+        let (bottomBandMinX, bottomBandWidth) = authorizationBottomBand(layout: layout)
         let bottomMaximumWidth: CGFloat = min(430.0, bottomBandWidth)
         
         let animationSize = CGSize(width: 100.0, height: 100.0)
@@ -642,21 +649,31 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
         if layout.size.width > 320.0 {
             items.insert(AuthorizationLayoutItem(node: self.animationNode, size: animationSize, spacingBefore: AuthorizationLayoutItemSpacing(weight: 10.0, maxValue: 10.0), spacingAfter: AuthorizationLayoutItemSpacing(weight: 0.0, maxValue: 0.0)), at: 0)
             self.proceedNode.isHidden = false
-            self.animationNode.isHidden = false
-            self.animationNode.visibility = true
         } else {
             insets.top = navigationBarHeight
             self.proceedNode.isHidden = true
-            self.animationNode.isHidden = true
-            self.managedAnimationNode.isHidden = true
         }
-        
+
         let contactSyncSize = self.contactSyncNode.updateLayout(width: maximumWidth)
         if self.hasOtherAccounts {
             self.contactSyncNode.isHidden = false
             items.append(AuthorizationLayoutItem(node: self.contactSyncNode, size: contactSyncSize, spacingBefore: AuthorizationLayoutItemSpacing(weight: 14.0, maxValue: 14.0), spacingAfter: AuthorizationLayoutItemSpacing(weight: 0.0, maxValue: 0.0)))
         } else {
             self.contactSyncNode.isHidden = true
+        }
+
+        if layout.size.width > 320.0, !authorizationLayoutItemsFit(height: layout.size.height - insets.top - insets.bottom - additionalBottomInset, items: items) {
+            items.removeFirst()
+            insets.top = navigationBarHeight
+        }
+        if items.first?.node === self.animationNode {
+            self.animationNode.isHidden = false
+            self.animationNode.visibility = true
+            // The intro animation hands over to the managed one once it completes (and leaves its supernode).
+            self.managedAnimationNode.isHidden = self.animationNode.supernode != nil
+        } else {
+            self.animationNode.isHidden = true
+            self.managedAnimationNode.isHidden = true
         }
         
         let buttonFrame: CGRect
@@ -675,7 +692,10 @@ final class AuthorizationSequencePhoneEntryControllerNode: ASDisplayNode {
         transition.updateFrame(node: self.managedAnimationNode, frame: self.animationNode.frame)
         
         self.titleActivateAreaNode.frame = self.titleNode.frame
-        self.noticeActivateAreaNode.accessibilityLabel = self.noticeNode.attributedText?.string ?? ""
+        // The notice may carry the "log in using Passkey" link: a link element whose activation is the link's tap.
+        self.noticeActivateAreaNode.applyAccessibilityText(self.noticeNode.attributedText ?? NSAttributedString(), linkAttribute: NSAttributedString.Key(rawValue: "URL"), open: { [weak self] _ in
+            self?.retryPasskey?()
+        })
         self.noticeActivateAreaNode.frame = self.noticeNode.frame
     }
     
@@ -943,7 +963,16 @@ final class PhoneConfirmationController: ViewController {
             self.dimNode.isUserInteractionEnabled = false
             self.cancel()
         }
-        
+
+        // VoiceOver escape: the same as a tap on the dimmed background (Edit). While the sheet is already closing the
+        // escape is still consumed, so it does not reach the navigation controller and pop the phone screen.
+        override func accessibilityPerformEscape() -> Bool {
+            if self.dimNode.isUserInteractionEnabled {
+                self.cancelPressed()
+            }
+            return true
+        }
+
         func animateIn(codeNode: ASDisplayNode, numberNode: ASDisplayNode, buttonNode: ASDisplayNode) {
             guard let layout = self.validLayout else {
                 return
@@ -1063,11 +1092,10 @@ final class PhoneConfirmationController: ViewController {
             let sideInset: CGFloat = 8.0
             let innerInset: CGFloat = 18.0
             
-            // iPhone Duo: beside a side strip the card keeps to the band between the side insets. With equal
-            // insets (every other phone) it is centered on the full width.
-            let insetsDiffer = layout.safeInsets.left != layout.safeInsets.right
-            let bandMinX: CGFloat = insetsDiffer ? layout.safeInsets.left : 0.0
-            let bandWidth: CGFloat = insetsDiffer ? layout.size.width - layout.safeInsets.left - layout.safeInsets.right : layout.size.width
+            // iPhone Duo: beside a side strip the card keeps to the band between the side insets, centered on the full width
+            // on the unfolded screen (authorizationContentBand). With equal insets (every other phone) it is centered on the
+            // full width.
+            let (bandMinX, bandWidth) = authorizationContentBand(layout: layout)
             
             let maximumWidth: CGFloat = min(430.0, bandWidth)
             
@@ -1255,7 +1283,7 @@ private final class ManagedPhoneAnimationNode: ManagedAnimationNode {
     private let plateNode: ASDisplayNode
     private var nodes: [PhoneKeyNode]
     
-    init(lottieSettings: LottieRenderingSettings) {
+    init() {
         self.plateNode = ASDisplayNode()
         self.plateNode.backgroundColor = UIColor(rgb: 0xc30023)
         self.plateNode.frame = CGRect(x: 27.0, y: 38.0, width: 46.0, height: 32.0)
@@ -1292,7 +1320,7 @@ private final class ManagedPhoneAnimationNode: ManagedAnimationNode {
         }
         self.nodes = nodes
         
-        super.init(size: CGSize(width: 100.0, height: 100.0), lottieSettings: lottieSettings)
+        super.init(size: CGSize(width: 100.0, height: 100.0))
         
         self.trackTo(item: ManagedAnimationItem(source: .local("IntroPhone"), frames: .range(startFrame: 0, endFrame: 0), duration: 0.001))
         
@@ -1310,4 +1338,23 @@ private final class ManagedPhoneAnimationNode: ManagedAnimationNode {
         let index = max(0, min(self.nodes.count - 1, num - 1))
         self.nodes[index].animatePress()
     }
+}
+
+private let madBotLoginUrl = "mad-bot-login"
+
+private func madAppendBotLoginLink(_ text: NSAttributedString, account: UnauthorizedAccount?, strings: PresentationStrings, theme: PresentationTheme) -> NSAttributedString {
+    guard account != nil else {
+        return text
+    }
+    let result = NSMutableAttributedString(attributedString: text)
+    let paragraph = NSMutableParagraphStyle()
+    paragraph.alignment = .center
+    result.append(NSAttributedString(string: "\n\n", font: Font.regular(17.0), textColor: theme.list.itemPrimaryTextColor, paragraphAlignment: .center))
+    result.append(NSAttributedString(string: strings.localFeatures.more.loginAsBot, attributes: [
+        .font: Font.regular(17.0),
+        .foregroundColor: theme.list.itemAccentColor,
+        .paragraphStyle: paragraph,
+        NSAttributedString.Key(rawValue: "URL"): madBotLoginUrl
+    ]))
+    return result
 }

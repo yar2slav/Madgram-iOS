@@ -3,6 +3,8 @@ import UIKit
 import Display
 import AppBundle
 
+/// Madgram classic design: navigation bar glyphs are tinted with the bar's accent, as in Telegram 12.0; the glass
+/// design tints them with the glass icon colour.
 private func classicNavigationIconColor(_ theme: PresentationTheme) -> UIColor {
     if ClassicDesign.isEnabled {
         return theme.rootController.navigationBar.accentTextColor
@@ -72,7 +74,14 @@ public struct PresentationResourcesRootController {
     
     public static func navigationSearchIcon(_ theme: PresentationTheme) -> UIImage? {
         return theme.image(PresentationResourceKey.navigationSearchIcon.rawValue, { theme in
+            // Madgram classic design: Telegram 12.0's search glyph.
             return generateTintedImage(image: UIImage(bundleImageName: ClassicDesign.isEnabled ? "Chat List/SearchIcon" : "Navigation/Search"), color: classicNavigationIconColor(theme))
+        })
+    }
+    
+    public static func navigationSearchTagIcon(_ theme: PresentationTheme) -> UIImage? {
+        return theme.image(PresentationResourceKey.navigationSearchTagIcon.rawValue, { theme in
+            return generateTintedImage(image: UIImage(bundleImageName: "Navigation/SearchTag"), color: theme.chat.inputPanel.panelControlColor)
         })
     }
     
@@ -187,6 +196,7 @@ public struct PresentationResourcesRootController {
     public static func inAppNotificationBackground(_ theme: PresentationTheme) -> UIImage? {
         return theme.image(PresentationResourceKey.inAppNotificationBackground.rawValue, { theme in
             let inset: CGFloat = 16.0
+            // Madgram classic design: Telegram 12.0's in-app notification had 15pt corners.
             let cornerRadius: CGFloat = ClassicDesign.isEnabled ? 15.0 : 26.0
             let diameter = cornerRadius * 2.0
             return generateImage(CGSize(width: diameter + inset * 2.0, height: diameter + 8.0 * 2.0 + 20.0), rotatedContext: { size, context in

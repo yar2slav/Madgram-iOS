@@ -38,12 +38,14 @@ final class LocationBroadcastNavigationAccessoryPanel: ASDisplayNode {
     private var validLayout: (CGSize, CGFloat, CGFloat)?
     private var peersAndMode: ([EnginePeer], LocationBroadcastNavigationAccessoryPanelMode, Bool)?
     
+    /// The icon, its waves and the "You" subtitle. Classic (12.0) drew them in the navigation bar's accent.
     private static func accentColor(_ theme: PresentationTheme) -> UIColor {
         return ClassicDesign.isEnabled ? theme.rootController.navigationBar.accentTextColor : theme.chat.inputPanel.panelControlColor
     }
     
     private static func closeImage(_ theme: PresentationTheme) -> UIImage? {
         if ClassicDesign.isEnabled {
+            // Classic (12.0): the bar's own close glyph, in the navigation bar's control colour.
             return PresentationResourcesRootController.navigationPlayerCloseButton(theme)
         }
         return generateImage(CGSize(width: 12.0, height: 12.0), contextGenerator: { size, context in

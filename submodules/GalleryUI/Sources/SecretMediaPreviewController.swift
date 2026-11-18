@@ -207,6 +207,7 @@ public final class SecretMediaPreviewController: ViewController {
             strongSelf.messageView = view
             strongSelf.ghostModeSettings = settings
             if settingsChanged {
+                // Capture protection is baked into the gallery item and must be rebuilt.
                 strongSelf.currentNodeMessageId = nil
             }
             if strongSelf.isViewLoaded {
@@ -254,6 +255,8 @@ public final class SecretMediaPreviewController: ViewController {
         self.dismiss(forceAway: false)
     }
 
+    /// The burn button only exists while consumption is being deferred: it is the user's way of
+    /// releasing the media, which is otherwise never consumed by merely opening it.
     private func updateBurnButton() {
         var shouldDisplay = false
         if self.ghostModeSettings.keepsViewOnceMedia, self.currentNodeMessageIsViewOnce, let message = self.messageView?.message, message.flags.contains(.Incoming) {

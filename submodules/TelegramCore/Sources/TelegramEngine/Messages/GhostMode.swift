@@ -198,7 +198,7 @@ func _internal_discardGhostModeReadStates(postbox: Postbox) -> Signal<Never, NoE
 func _internal_prepareGhostModeInteraction(account: Account, peerId: PeerId, threadId: Int64?) {
     let _ = (account.postbox.transaction { transaction -> Bool in
         let settings = ghostModeSettings(transaction: transaction)
-        return settings.isEnabled && settings.revealOnInteractions
+        return settings.isEnabled(peerId: peerId) && settings.revealOnInteractions
     }
     |> deliverOnMainQueue).startStandalone(next: { shouldReveal in
         guard shouldReveal else {

@@ -1,4 +1,5 @@
 import Foundation
+import MadLockUI
 import UIKit
 import SwiftSignalKit
 import TelegramCore
@@ -494,7 +495,7 @@ extension ChatControllerImpl {
                                 return
                             }
                             
-                            let _ = (strongSelf.context.engine.messages.sendStarsReaction(id: message.id, count: 1, privacy: nil)
+                            let _ = (madSpendGate(.spendReactions, strings: strongSelf.presentationData.strings) |> mapToSignal { [weak strongSelf] _ -> Signal<TelegramPaidReactionPrivacy, NoError> in strongSelf?.context.engine.messages.sendStarsReaction(id: message.id, count: 1, privacy: nil) ?? .complete() }
                             |> deliverOnMainQueue).startStandalone(next: { privacy in
                                 guard let strongSelf = self else {
                                     return

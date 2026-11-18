@@ -1,6 +1,9 @@
 import Foundation
 import SwiftSignalKit
 
+/// Client-side unlock of the Telegram Premium interface. Only checks performed by this app are
+/// affected: anything the server validates (large uploads, premium reactions, voice transcription)
+/// keeps failing, and the account's real premium status is left untouched.
 public struct LocalPremiumSettings: Codable, Equatable {
     public var isEnabled: Bool
 

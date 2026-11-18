@@ -235,7 +235,7 @@ final class ChatTagSearchInputPanelNode: ChatInputPanelNode {
             )]
         } else if let results = params.interfaceState.search?.resultsState {
             let displayTotalCount = results.completed ? results.messageIndices.count : Int(results.totalCount)
-            if let currentId = results.currentId, let index = results.messageIndices.firstIndex(where: { $0.id == currentId }) {
+            if let position = chatSearchResultsPosition(messageIndices: results.messageIndices, currentId: results.currentId) {
                 canChangeListMode = true
                 
                 if self.alwaysShowTotalMessagesCount {
@@ -255,13 +255,11 @@ final class ChatTagSearchInputPanelNode: ChatInputPanelNode {
                         1: .text(params.interfaceState.strings.Chat_BottomSearchPanel_MessageCount(Int32(displayTotalCount)))
                     ])
                 } else {
-                    let adjustedIndex = results.messageIndices.count - 1 - index
-                    
                     resultsTextString = AnimatedTextComponent.extractAnimatedTextString(string: params.interfaceState.strings.Items_NOfM(
                         ".",
                         "."
                     ), id: "position", mapping: [
-                        0: .number(adjustedIndex + 1, minDigits: 1),
+                        0: .number(position, minDigits: 1),
                         1: .number(displayTotalCount, minDigits: 1)
                     ])
                 }
@@ -561,6 +559,7 @@ final class ChatTagSearchInputPanelNode: ChatInputPanelNode {
         var leftControlsBackgroundFrame = CGRect(origin: CGPoint(x: params.leftInset, y: floor((height - 40.0) * 0.5)), size: CGSize(width: 0.0, height: 40.0))
         leftControlsBackgroundFrame.size.width = max(40.0, leftControlsRect.maxX - leftControlsBackgroundFrame.minX)
         transition.setFrame(view: self.leftControlsBackgroundView, frame: leftControlsBackgroundFrame)
+        // Madgram classic design: 12.0's search bar had bare accent controls in the bar, with no capsules.
         self.leftControlsBackgroundView.update(size: leftControlsBackgroundFrame.size, cornerRadius: leftControlsBackgroundFrame.height * 0.5, isDark: params.interfaceState.theme.overallDarkAppearance, tintColor: .init(kind: params.interfaceState.preferredGlassType == .clear ? .clear : .panel), isVisible: !ClassicDesign.isEnabled, transition: transition)
         transition.setAlpha(view: self.leftControlsBackgroundView, alpha: leftControlsRect.isEmpty ? 0.0 : 1.0)
         
@@ -597,6 +596,7 @@ final class ChatTagSearchInputPanelNode: ChatInputPanelNode {
     }
 }
 
+/// Madgram classic design: 12.0 drew the search bar's controls in the accent color.
 private func classicTagSearchControlColor(theme: PresentationTheme) -> UIColor {
     return ClassicDesign.isEnabled ? theme.rootController.navigationBar.accentTextColor : theme.chat.inputPanel.panelControlColor
 }

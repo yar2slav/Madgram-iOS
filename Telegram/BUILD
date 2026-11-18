@@ -78,6 +78,12 @@ bool_flag(
 )
 
 bool_flag(
+    name = "shareExtensionOnly",
+    build_setting_default = False,
+    visibility = ["//visibility:public"],
+)
+
+bool_flag(
     name = "disableProvisioningProfiles",
     build_setting_default = False,
     visibility = ["//visibility:public"],
@@ -99,6 +105,13 @@ config_setting(
     name = "disableExtensionsSetting",
     flag_values = {
         ":disableExtensions": "True",
+    },
+)
+
+config_setting(
+    name = "shareExtensionOnlySetting",
+    flag_values = {
+        ":shareExtensionOnly": "True",
     },
 )
 
@@ -674,7 +687,7 @@ plist_fragment(
     template =
     """
     <key>CFBundleDisplayName</key>
-    <string>MadGram</string>
+    <string>mad</string>
     """
 )
 
@@ -1073,7 +1086,7 @@ plist_fragment(
     <key>CFBundleIdentifier</key>
     <string>{telegram_bundle_id}.Share</string>
     <key>CFBundleName</key>
-    <string>MadGram</string>
+    <string>mad</string>
     <key>CFBundlePackageType</key>
     <string>XPC!</string>
     <key>NSExtension</key>
@@ -1160,12 +1173,24 @@ ios_extension(
     minimum_os_version = minimum_os_version,
     provisioning_profile = select({
         ":disableProvisioningProfilesSetting": None,
-        "//conditions:default": "@build_configuration//provisioning:Share.mobileprovision",
+        "//conditions:default": ":Share_xcode_profile" if telegram_use_xcode_managed_codesigning else "@build_configuration//provisioning:Share.mobileprovision",
     }),
     deps = [":ShareExtensionLib"],
     frameworks = [
         ":TelegramUIFramework"
     ],
+)
+
+local_provisioning_profile(
+    name = "Share_local_profile",
+    profile_name = "iOS Team Provisioning Profile: {}.Share".format(telegram_bundle_id),
+    team_id = telegram_team_id,
+)
+
+xcode_provisioning_profile(
+   name = "Share_xcode_profile",
+   managed_by_xcode = True,
+   provisioning_profile = ":Share_local_profile",
 )
 
 plist_fragment(
@@ -1729,11 +1754,11 @@ plist_fragment(
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleDisplayName</key>
-    <string>MadGram</string>
+    <string>mad</string>
     <key>CFBundleIdentifier</key>
     <string>{telegram_bundle_id}</string>
     <key>CFBundleName</key>
-    <string>MadGram</string>
+    <string>mad</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleSignature</key>
@@ -1975,6 +2000,7 @@ ios_application(
     ],
     extensions = select({
         ":disableExtensionsSetting": [],
+        ":shareExtensionOnlySetting": [":ShareExtension"],
         "//conditions:default": [
             ":ShareExtension",
             ":NotificationContentExtension",

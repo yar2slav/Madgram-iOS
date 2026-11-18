@@ -464,6 +464,7 @@ final class ContextControllerNode: ViewControllerTracingNode, ASScrollViewDelega
                         self.contentContainerNode.contentNode = .controller(contentParentNode)
                         self.scrollNode.addSubnode(self.contentContainerNode)
                         self.contentContainerNode.clipsToBounds = true
+                        // Madgram classic design: Telegram 12.0's 14pt preview corners.
                         self.contentContainerNode.cornerRadius = ClassicDesign.isEnabled ? 14.0 : 30.0
                         self.contentContainerNode.addSubnode(contentParentNode)
                         

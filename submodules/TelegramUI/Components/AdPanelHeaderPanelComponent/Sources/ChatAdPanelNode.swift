@@ -208,6 +208,7 @@ final class ChatAdPanelNode: ASDisplayNode {
         self.message = info.message
                 
         if self.theme !== theme, ClassicDesign.isEnabled {
+            // Classic (12.0): the panel's accent for "what is this?" and the close cross.
             self.theme = theme
             self.removeBackgroundNode.image = generateStretchableFilledCircleImage(diameter: 15.0, color: theme.chat.inputPanel.panelControlAccentColor.withMultipliedAlpha(0.1))
             self.removeTextNode.attributedText = NSAttributedString(string: strings.Chat_BotAd_WhatIsThis, font: Font.regular(11.0), textColor: theme.chat.inputPanel.panelControlAccentColor)

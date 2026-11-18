@@ -148,7 +148,21 @@ func _internal_getServerProvidedSuggestions(account: Account) -> Signal<[ServerP
             }
         }
         
-        return items.filter({ !dismissedSuggestions.contains($0.id) })
+        let hidesPremiumSuggestions = LocalPremiumOverride.isEnabled
+        return items.filter({ item in
+            if dismissedSuggestions.contains(item.id) {
+                return false
+            }
+            if hidesPremiumSuggestions {
+                switch item {
+                case .upgradePremium, .annualPremium, .restorePremium, .xmasPremiumGift, .gracePremium:
+                    return false
+                default:
+                    break
+                }
+            }
+            return true
+        })
     }
     |> distinctUntilChanged
 }

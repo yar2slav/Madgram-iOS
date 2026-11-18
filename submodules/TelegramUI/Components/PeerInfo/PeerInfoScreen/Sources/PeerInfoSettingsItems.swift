@@ -1,4 +1,6 @@
 import Foundation
+import MadProfileLinks
+import TelegramUIPreferences
 import UIKit
 import Display
 import AccountContext
@@ -21,6 +23,7 @@ enum SettingsSection: Int, CaseIterable {
     case myProfile
     case wallet
     case proxy
+    // Above the wallet mini-app, which lives in the apps section.
     case madgram
     case apps
     case shortcuts
@@ -229,6 +232,11 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
     items[.shortcuts]!.append(PeerInfoScreenDisclosureItem(id: 2, text: presentationData.strings.CallSettings_RecentCalls, icon: PresentationResourcesSettings.recentCalls, action: {
         interaction.openSettings(.recentCalls)
     }))
+    // Contacts live here rather than in the tab bar, which News took; so does its tab's "!" for contacts access.
+    let contactsWarning = data.globalSettings?.contactsWarning ?? false
+    items[.shortcuts]!.append(PeerInfoScreenDisclosureItem(id: 21, label: contactsWarning ? .badge("!", presentationData.theme.list.itemDestructiveColor) : .none, text: presentationData.strings.Contacts_Title, icon: PresentationResourcesSettings.contacts, action: {
+        interaction.openSettings(.contacts)
+    }))
     
     let devicesLabel: String
     if let settings = data.globalSettings, let otherSessionsCount = settings.otherSessionsCount {
@@ -254,7 +262,7 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
     } else {
         notificationsWarning = false
     }
-    items[.advanced]!.append(PeerInfoScreenDisclosureItem(id: 0, label: notificationsWarning ? .badge("!", presentationData.theme.list.itemDestructiveColor) : .none, text: presentationData.strings.Settings_NotificationsAndSounds, icon: PresentationResourcesSettings.notifications, action: {
+    items[.advanced]!.append(PeerInfoScreenDisclosureItem(id: 0, label: notificationsWarning ? .badge("!", presentationData.theme.list.itemDestructiveColor) : .none, text: presentationData.strings.Settings_NotificationsAndSounds, icon: PresentationResourcesSettings.notifications, labelAccessibilityText: notificationsWarning ? presentationData.strings.VoiceOver_TabBar_AttentionRequired : nil, action: {
         interaction.openSettings(.notificationsAndSounds)
     }))
     items[.advanced]!.append(PeerInfoScreenDisclosureItem(id: 1, text: presentationData.strings.Settings_PrivacySettings, icon: PresentationResourcesSettings.security, action: {
@@ -277,6 +285,7 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
         interaction.openSettings(.language)
     }))
     
+    // Everything this fork adds lives behind a single entry, in its own section.
     items[.madgram]!.append(PeerInfoScreenDisclosureItem(id: 7, text: presentationData.strings.localFeatures.madgram.title, icon: PresentationResourcesSettings.madgram, action: {
         interaction.openSettings(.madgram)
     }))
@@ -305,7 +314,7 @@ func settingsItems(data: PeerInfoScreenData?, context: AccountContext, presentat
             }))
         }
     }
-    if let tonState = data.tonState {
+    if let tonState = data.tonState, !InterfaceTuningSettingsStore.shared.cached.disableTonWallet {
         if abs(tonState.balance.value) > 0 {
             let balanceText: NSAttributedString
             if abs(tonState.balance.value) > 0 {
@@ -476,7 +485,7 @@ func settingsEditingItems(data: PeerInfoScreenData?, state: PeerInfoState, conte
     }
     
     if case let .user(user) = data.peer {
-        items[.info]!.append(PeerInfoScreenDisclosureItem(id: ItemPhoneNumber, label: .text(user.phone.flatMap({ formatPhoneNumber(context: context, number: $0) }) ?? ""), text: presentationData.strings.Settings_PhoneNumber, icon: PresentationResourcesSettings.recentCalls, action: {
+        items[.info]!.append(PeerInfoScreenDisclosureItem(id: ItemPhoneNumber, label: .text(InterfaceTuningSettingsStore.shared.cached.on(InterfaceTuningSettingsStore.shared.cached.hidePhoneEverywhere, .phoneMine) ? "" : (user.phone.flatMap({ formatPhoneNumber(context: context, number: $0) }) ?? "")), text: presentationData.strings.Settings_PhoneNumber, icon: PresentationResourcesSettings.recentCalls, action: {
             interaction.openSettings(.phoneNumber)
         }))
     }
@@ -487,6 +496,12 @@ func settingsEditingItems(data: PeerInfoScreenData?, state: PeerInfoState, conte
     items[.info]!.append(PeerInfoScreenDisclosureItem(id: ItemUsername, label: .text(username), text: presentationData.strings.Settings_Username, icon: PresentationResourcesSettings.email, action: {
           interaction.openSettings(.username)
     }))
+    if case .user = data.peer {
+        let accountsCount = MadLinksCache.shared.profile(accountPeerId: context.account.peerId, peerId: context.account.peerId)?.accounts.count ?? 0
+        items[.info]!.append(PeerInfoScreenDisclosureItem(id: 900, label: .text(accountsCount > 0 ? "\(accountsCount)" : ""), text: presentationData.strings.localFeatures.more.accounts.title, icon: PresentationResourcesSettings.madgram, action: {
+            interaction.getController()?.push(madAccountsController(context: context))
+        }))
+    }
     
     if case let .user(peer) = data.peer {
         var colors: [PeerNameColors.Colors] = []

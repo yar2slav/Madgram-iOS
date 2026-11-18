@@ -88,6 +88,8 @@ public final class ChatPanelInterfaceInteraction {
     public let presentLinkOptions: (UIView) -> Void
     public let presentSuggestPostOptions: () -> Void
     public let shareSelectedMessages: () -> Void
+    /// Assigned after construction: the initializer literal in ChatControllerLoadDisplayNode is
+    /// already at the limit of what the Swift type checker will accept in one expression.
     public var screenshotSelectedMessages: (() -> Void)?
     public let updateTextInputStateAndMode: (@escaping (ChatTextInputState, ChatInputMode) -> (ChatTextInputState, ChatInputMode)) -> Void
     public let updateInputModeAndDismissedButtonKeyboardMessageId: ((ChatPresentationInterfaceState) -> (ChatInputMode, EngineMessage.Id?)) -> Void

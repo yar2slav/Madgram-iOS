@@ -5,8 +5,8 @@
       "layers" : [
         {
           "glass" : false,
-          "image-name" : "MadGram.png",
-          "name" : "MadGram"
+          "image-name" : "mad.png",
+          "name" : "mad"
         }
       ],
       "shadow" : {

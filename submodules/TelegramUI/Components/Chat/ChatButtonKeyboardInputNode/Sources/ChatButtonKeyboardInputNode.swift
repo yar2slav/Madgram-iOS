@@ -29,6 +29,7 @@ private final class ChatButtonKeyboardInputButtonNode: HighlightTrackingButtonNo
     
     private var theme: PresentationTheme?
     
+    /// Madgram classic design: the plain key's 12.0 image, drawn in its theme's colors.
     private var classicImage: UIImage?
     private weak var classicImageTheme: PresentationTheme?
     
@@ -78,6 +79,7 @@ private final class ChatButtonKeyboardInputButtonNode: HighlightTrackingButtonNo
         }
         
         if self.backgroundView.image == nil {
+            // Madgram classic design: 12.0's keys were 5pt rounded rects.
             self.backgroundView.image = generateStretchableFilledCircleImage(diameter: ClassicDesign.isEnabled ? 10.0 : 20.0, color: .white)?.withRenderingMode(.alwaysTemplate)
             self.tintMaskView.image = self.backgroundView.image
         }
@@ -86,6 +88,7 @@ private final class ChatButtonKeyboardInputButtonNode: HighlightTrackingButtonNo
         var titleColor = theme.chat.inputButtonPanel.buttonTextColor
         
         if ClassicDesign.isEnabled, button.style?.color == nil {
+            // 12.0's plain key: the key fill over a 1pt shadow of the key stroke color along its bottom.
             if self.classicImageTheme !== theme {
                 self.classicImageTheme = theme
                 let fillColor = theme.chat.inputButtonPanel.buttonFillColor
@@ -238,6 +241,7 @@ public final class ChatButtonKeyboardInputNode: ChatInputNode, UIScrollViewDeleg
     private let backgroundTintView: UIImageView
     private let backgroundTintMaskView: UIView
     private let backgroundChromeView: UIImageView
+    /// Madgram classic design: 12.0's hairline on top of the flat keyboard.
     private var classicSeparatorView: UIView?
     
     private let scrollNode: ASScrollNode
@@ -266,6 +270,8 @@ public final class ChatButtonKeyboardInputNode: ChatInputNode, UIScrollViewDeleg
         self.view.addSubview(self.backgroundView)
         
         self.view.addSubview(self.backgroundTintView)
+        // Madgram classic design: 12.0's keyboard is a flat, opaque panel; its keys draw their own fill, so the panel's
+        // color is not cut away under them.
         if !ClassicDesign.isEnabled, let filter = CALayer.luminanceToAlpha() {
             self.backgroundTintMaskView.layer.filters = [filter]
             self.backgroundTintView.mask = self.backgroundTintMaskView
@@ -332,6 +338,7 @@ public final class ChatButtonKeyboardInputNode: ChatInputNode, UIScrollViewDeleg
         self.message = interfaceState.keyboardButtonsMessage.flatMap(EngineMessage.init)
         
         if let markup = validatedMarkup, let message = self.message {
+            // Madgram classic design: 12.0's insets.
             let verticalInset: CGFloat = ClassicDesign.isEnabled ? 10.0 : 18.0
             let sideInset: CGFloat = (ClassicDesign.isEnabled ? 6.0 : 18.0) + leftInset
             var buttonHeight: CGFloat = 43.0
@@ -395,6 +402,7 @@ public final class ChatButtonKeyboardInputNode: ChatInputNode, UIScrollViewDeleg
             backgroundFrame.size.height += 32.0
             
             if ClassicDesign.isEnabled {
+                // 12.0: the keyboard's own flat color, edge to edge, under a hairline.
                 self.backgroundTintView.image = nil
                 self.backgroundTintView.backgroundColor = interfaceState.theme.chat.inputButtonPanel.panelBackgroundColor
                 transition.updateFrame(view: self.backgroundTintView, frame: backgroundFrame)

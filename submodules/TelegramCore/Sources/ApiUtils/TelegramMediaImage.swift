@@ -38,6 +38,7 @@ func telegramMediaImageFromApiPhoto(_ photo: Api.Photo, video: Api.Document? = n
     switch photo {
         case let .photo(photoData):
             let (flags, id, accessHash, fileReference, sizes, videoSizes, dcId) = (photoData.flags, photoData.id, photoData.accessHash, photoData.fileReference, photoData.sizes, photoData.videoSizes, photoData.dcId)
+            MadMediaUploadDates.shared.set(MediaId(namespace: Namespaces.Media.CloudImage, id: id), date: photoData.date)
             let (immediateThumbnailData, representations) = telegramMediaImageRepresentationsFromApiSizes(datacenterId: dcId, photoId: id, accessHash: accessHash, fileReference: fileReference.makeData(), sizes: sizes)
             var imageFlags: TelegramMediaImageFlags = []
             let hasStickers = (flags & (1 << 0)) != 0

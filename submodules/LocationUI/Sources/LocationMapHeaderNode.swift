@@ -1,5 +1,4 @@
 import Foundation
-import LottieSettings
 import UIKit
 import AsyncDisplayKit
 import Display
@@ -189,6 +188,7 @@ public final class LocationMapHeaderNode: ASDisplayNode {
                     self.placesBackgroundNode.view.addSubview(placesBackgroundView)
                 }
             } else if ClassicDesign.isEnabled && self.optionsBackgroundView == nil {
+                // Madgram classic: 12.0's rounded-rect button panel, the buttons living on its image node.
                 self.addSubnode(self.optionsBackgroundNode)
                 self.optionsBackgroundNode.addSubnode(self.optionsSeparatorNode)
                 self.optionsBackgroundNode.addSubnode(self.optionsSecondSeparatorNode)
@@ -356,6 +356,7 @@ public final class LocationMapHeaderNode: ASDisplayNode {
         let placesButtonSize = CGSize(width: 180.0 + panelInset * 2.0, height: 45.0 + panelInset * 2.0)
         var placesButtonFrame = CGRect(origin: CGPoint(x: floorToScreenPixels((size.width - placesButtonSize.width) / 2.0), y: navigationBarHeight + topPadding - 6.0), size: placesButtonSize).insetBy(dx: 5.0, dy: 6.0)
         if ClassicDesign.isEnabled && !self.glass {
+            // 12.0: the shadowed rounded-rect image is drawn across the whole frame, under the bar.
             placesButtonFrame = CGRect(origin: CGPoint(x: floorToScreenPixels((size.width - placesButtonSize.width) / 2.0), y: navigationBarHeight + topPadding + inset), size: placesButtonSize)
         }
         transition.updateFrame(node: self.placesBackgroundNode, frame: placesButtonFrame)
@@ -451,8 +452,7 @@ public final class LocationMapHeaderNode: ASDisplayNode {
                             content: LottieComponent.ResourceContent(context: weatherContext, file: weatherEmojiFile, attemptSynchronously: false, providesPlaceholder: true),
                             placeholderColor: self.presentationData.theme.rootController.navigationBar.primaryTextColor.withAlphaComponent(0.1),
                             renderingScale: 2.0,
-                            loop: true,
-                            lottieSettings: weatherContext.lottieRenderingSettings
+                            loop: true
                         )
                     ),
                     environment: {},
@@ -559,6 +559,7 @@ public final class LocationMapHeaderNode: ASDisplayNode {
             
             var backgroundFrame = CGRect(x: size.width - inset - buttonSize.width - panelInset * 2.0 - layout.safeInsets.right - 6.0, y: size.height - panelHeight - inset - 14.0 - controlsBottomPadding, width: buttonSize.width + panelInset * 2.0, height: panelHeight + panelInset * 2.0)
             if ClassicDesign.isEnabled && !self.glass {
+                // 12.0: the button panel hangs from the top right corner, under the bar (and the map-mode strip).
                 backgroundFrame = CGRect(x: size.width - inset - buttonSize.width - panelInset * 2.0 - layout.safeInsets.right, y: navigationBarHeight + controlsTopPadding + inset, width: buttonSize.width + panelInset * 2.0, height: panelHeight + panelInset * 2.0)
             }
             transition.updateFrame(node: self.optionsBackgroundNode, frame: backgroundFrame)

@@ -254,6 +254,7 @@ public final class AlertInputFieldComponent: Component {
             self.textField.tintColor = environment.theme.actionSheet.controlAccentColor
             self.textField.sideInset = 16.0
             
+            // Madgram classic design: 12.0's alert text field, a 6pt rounded rect with a 1pt border, 36pt tall.
             let isClassic = ClassicDesign.isEnabled
             let fieldHeight: CGFloat = isClassic ? 36.0 : 50.0
             let backgroundPadding: CGFloat = isClassic ? 8.0 : 14.0

@@ -200,6 +200,22 @@ public final class AuthorizationSequenceController: NavigationController, ASAuth
                 strongSelf.account = updatedAccount
                 strongSelf.inAppPurchaseManager = InAppPurchaseManager(engine: .unauthorized(strongSelf.engine))
             }
+            controller.loginWithBotToken = { [weak self, weak controller] token in
+                guard let self else {
+                    return
+                }
+                controller?.inProgress = true
+                let _ = (madAuthorizeWithBotToken(accountManager: self.sharedContext.accountManager, account: self.account, apiId: self.apiId, apiHash: self.apiHash, token: token)
+                |> deliverOnMainQueue).startStandalone(error: { [weak self, weak controller] _ in
+                    controller?.inProgress = false
+                    guard let self, let controller else {
+                        return
+                    }
+                    controller.present(textAlertController(sharedContext: self.sharedContext, title: nil, text: self.presentationData.strings.localFeatures.more.botTokenInvalid, actions: [TextAlertAction(type: .defaultAction, title: self.presentationData.strings.Common_OK, action: {})]), in: .window(.root))
+                }, completed: { [weak controller] in
+                    controller?.inProgress = false
+                })
+            }
             controller.loginWithNumber = { [weak self, weak controller] number, syncContacts in
                 guard let self else {
                     return

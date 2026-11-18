@@ -1,5 +1,4 @@
 import Foundation
-import LottieSettings
 import UIKit
 import Display
 import AsyncDisplayKit
@@ -54,6 +53,7 @@ public final class MoreHeaderButton: HighlightableButtonNode {
         }
 
         if ClassicDesign.isEnabled {
+            // Classic (12.0): a plain 30pt-wide dots button in the flat bar, no glass circle.
             self.containerNode.frame = CGRect(origin: CGPoint(), size: CGSize(width: 30.0, height: 44.0))
         } else {
             self.containerNode.frame = CGRect(origin: CGPoint(), size: CGSize(width: 44.0, height: 44.0))
@@ -93,8 +93,7 @@ public final class MoreHeaderButton: HighlightableButtonNode {
                     content: LottieComponent.AppBundleContent(
                         name: ClassicDesign.isEnabled ? "anim_moredots" : "anim_morewide"
                     ),
-                    color: self.color,
-                    lottieSettings: .noAccountFallback
+                    color: self.color
                 )),
                 environment: {},
                 containerSize: animationSize
@@ -182,6 +181,8 @@ public final class MoreHeaderButton: HighlightableButtonNode {
     override public func layout() {
         super.layout()
         
+        // Classic (12.0): the 30pt dots container starts at the button's leading edge, as in 12.0's 22pt bar slot. A
+        // caller that gives the button a wider frame (the 44pt `NavigationButtonComponent` slot) gets it centred.
         if ClassicDesign.isEnabled {
             let containerX: CGFloat = self.bounds.width > 30.0 ? floor((self.bounds.width - 30.0) / 2.0) : 0.0
             if self.containerNode.frame.minX != containerX {

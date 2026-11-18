@@ -11,8 +11,13 @@ public struct Namespaces {
         public static let QuickReplyCloud: Int32 = 5
         public static let QuickReplyLocal: Int32 = 6
         public static let EphemeralLocal: Int32 = 7
+        /// Local-only copies of cloud messages that were deleted after this client received them.
         public static let Archived: Int32 = 8
+        /// Local-only snapshots used by ArchivedMessageAttribute. Hidden from regular chat history.
         public static let ArchivedVersion: Int32 = 9
+        // Madgram: upstream assigns EphemeralAnchored = 8 and WelcomeMessageCloud = 9, which the
+        // deleted-message archive above already occupies in existing databases. They are moved to
+        // free values; namespaces are local-only, so nothing outside this client depends on them.
         public static let EphemeralAnchored: Int32 = 11
         public static let WelcomeMessageCloud: Int32 = 12
         public static let WelcomeMessageLocal: Int32 = 10
@@ -175,6 +180,7 @@ public struct Namespaces {
         public static let feed: Int8 = 60
         public static let shareThemeBackdrops: Int8 = 61
         public static let cachedUniqueStarGifts: Int8 = 62
+        public static let cachedAgent: Int8 = 63
     }
     
     public struct UnorderedItemList {
@@ -361,7 +367,9 @@ private enum PreferencesKeyValues: Int32 {
     case ghostModeSettings = 53
     case ghostModeReadStateVersion = 54
     case ghostModeReadStateRepairVersion = 55
+    // Madgram: upstream uses 51, which the fork's keys above already occupy in existing databases.
     case unreadCounterTagsState = 56
+    case stateSyncDebugSettings = 57
 }
 
 public func applicationSpecificPreferencesKey(_ value: Int32) -> ValueBoxKey {
@@ -678,6 +686,13 @@ public struct PreferencesKeys {
         key.setInt32(0, value: PreferencesKeyValues.emojiGameInfo.rawValue)
         return key
     }
+    
+    /// `StateSyncDebugSettings`: Debug Settings for state sync, honoured only in DEBUG builds.
+    public static let stateSyncDebugSettings: ValueBoxKey = {
+        let key = ValueBoxKey(length: 4)
+        key.setInt32(0, value: PreferencesKeyValues.stateSyncDebugSettings.rawValue)
+        return key
+    }()
 }
 
 private enum SharedDataKeyValues: Int32 {

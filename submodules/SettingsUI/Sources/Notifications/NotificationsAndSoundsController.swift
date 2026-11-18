@@ -15,6 +15,7 @@ import TelegramNotices
 import NotificationSoundSelectionUI
 import TelegramStringFormatting
 import NotificationPeerExceptionController
+import AlertComponent
 
 private struct CounterTagSettings: OptionSet {
     var rawValue: Int32
@@ -79,8 +80,9 @@ private final class NotificationsAndSoundsArguments {
     let openAppSettings: () -> Void
     
     let updateNotificationsFromAllAccounts: (Bool) -> Void
+    let updateLocalNotifications: (Bool) -> Void
     
-    init(context: AccountContext, presentController: @escaping (ViewController, ViewControllerPresentationArguments?) -> Void, pushController: @escaping(ViewController)->Void, soundSelectionDisposable: MetaDisposable, authorizeNotifications: @escaping () -> Void, suppressWarning: @escaping () -> Void, openPeerCategory: @escaping (NotificationsPeerCategory) -> Void, openReactions: @escaping () -> Void, updateInAppSounds: @escaping (Bool) -> Void, updateInAppVibration: @escaping (Bool) -> Void, updateInAppPreviews: @escaping (Bool) -> Void, updateDisplayNameOnLockscreen: @escaping (Bool) -> Void, updateIncludeTag: @escaping (CounterTagSettings, Bool) -> Void, updateTotalUnreadCountCategory: @escaping (Bool) -> Void, resetNotifications: @escaping () -> Void, openAppSettings: @escaping () -> Void, updateJoinedNotifications: @escaping (Bool) -> Void, updateNotificationsFromAllAccounts: @escaping (Bool) -> Void) {
+    init(context: AccountContext, presentController: @escaping (ViewController, ViewControllerPresentationArguments?) -> Void, pushController: @escaping(ViewController)->Void, soundSelectionDisposable: MetaDisposable, authorizeNotifications: @escaping () -> Void, suppressWarning: @escaping () -> Void, openPeerCategory: @escaping (NotificationsPeerCategory) -> Void, openReactions: @escaping () -> Void, updateInAppSounds: @escaping (Bool) -> Void, updateInAppVibration: @escaping (Bool) -> Void, updateInAppPreviews: @escaping (Bool) -> Void, updateDisplayNameOnLockscreen: @escaping (Bool) -> Void, updateIncludeTag: @escaping (CounterTagSettings, Bool) -> Void, updateTotalUnreadCountCategory: @escaping (Bool) -> Void, resetNotifications: @escaping () -> Void, openAppSettings: @escaping () -> Void, updateJoinedNotifications: @escaping (Bool) -> Void, updateNotificationsFromAllAccounts: @escaping (Bool) -> Void, updateLocalNotifications: @escaping (Bool) -> Void) {
         self.context = context
         self.presentController = presentController
         self.pushController = pushController
@@ -99,6 +101,7 @@ private final class NotificationsAndSoundsArguments {
         self.openAppSettings = openAppSettings
         self.updateJoinedNotifications = updateJoinedNotifications
         self.updateNotificationsFromAllAccounts = updateNotificationsFromAllAccounts
+        self.updateLocalNotifications = updateLocalNotifications
     }
 }
 
@@ -106,6 +109,7 @@ private enum NotificationsAndSoundsSection: Int32 {
     case accounts
     case permission
     case categories
+    case localNotifications
     case inApp
     case displayNamesOnLockscreen
     case badge
@@ -149,6 +153,9 @@ private enum NotificationsAndSoundsEntry: ItemListNodeEntry {
     case reactions(PresentationTheme, String, String, String)
     
     case inAppHeader(PresentationTheme, String)
+    case localNotificationsHeader(PresentationTheme, String)
+    case localNotifications(PresentationTheme, String, Bool)
+    case localNotificationsInfo(PresentationTheme, String)
     case inAppSounds(PresentationTheme, String, Bool)
     case inAppVibrate(PresentationTheme, String, Bool)
     case inAppPreviews(PresentationTheme, String, Bool)
@@ -175,6 +182,8 @@ private enum NotificationsAndSoundsEntry: ItemListNodeEntry {
                 return NotificationsAndSoundsSection.permission.rawValue
             case .categoriesHeader, .privateChats, .groupChats, .channels, .stories, .reactions:
                 return NotificationsAndSoundsSection.categories.rawValue
+            case .localNotificationsHeader, .localNotifications, .localNotificationsInfo:
+                return NotificationsAndSoundsSection.localNotifications.rawValue
             case .inAppHeader, .inAppSounds, .inAppVibrate, .inAppPreviews:
                 return NotificationsAndSoundsSection.inApp.rawValue
             case .displayNamesOnLockscreen, .displayNamesOnLockscreenInfo:
@@ -212,6 +221,12 @@ private enum NotificationsAndSoundsEntry: ItemListNodeEntry {
                 return 9
             case .reactions:
                 return 10
+            case .localNotificationsHeader:
+                return 11
+            case .localNotifications:
+                return 12
+            case .localNotificationsInfo:
+                return 13
             case .inAppHeader:
                 return 14
             case .inAppSounds:
@@ -270,6 +285,21 @@ private enum NotificationsAndSoundsEntry: ItemListNodeEntry {
     
     static func ==(lhs: NotificationsAndSoundsEntry, rhs: NotificationsAndSoundsEntry) -> Bool {
         switch lhs {
+            case let .localNotificationsHeader(lhsTheme, lhsText):
+                if case let .localNotificationsHeader(rhsTheme, rhsText) = rhs {
+                    return lhsTheme === rhsTheme && lhsText == rhsText
+                }
+                return false
+            case let .localNotifications(lhsTheme, lhsText, lhsValue):
+                if case let .localNotifications(rhsTheme, rhsText, rhsValue) = rhs {
+                    return lhsTheme === rhsTheme && lhsText == rhsText && lhsValue == rhsValue
+                }
+                return false
+            case let .localNotificationsInfo(lhsTheme, lhsText):
+                if case let .localNotificationsInfo(rhsTheme, rhsText) = rhs {
+                    return lhsTheme === rhsTheme && lhsText == rhsText
+                }
+                return false
             case let .accountsHeader(lhsTheme, lhsText):
                 if case let .accountsHeader(rhsTheme, rhsText) = rhs, lhsTheme === rhsTheme, lhsText == rhsText {
                     return true
@@ -430,6 +460,17 @@ private enum NotificationsAndSoundsEntry: ItemListNodeEntry {
     func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
         let arguments = arguments as! NotificationsAndSoundsArguments
         switch self {
+            case let .localNotificationsHeader(_, text):
+                return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
+            case let .localNotifications(_, text, value):
+                return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: text, value: value, sectionId: self.section, style: .blocks, updated: { value in
+                    arguments.updateLocalNotifications(value)
+                    if value {
+                        arguments.authorizeNotifications()
+                    }
+                })
+            case let .localNotificationsInfo(_, text):
+                return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
             case let .accountsHeader(_, text):
                 return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
             case let .allAccounts(_, text, value):
@@ -600,6 +641,11 @@ private func notificationsAndSoundsEntries(authorizationStatus: AccessType, warn
     }
     entries.append(.reactions(presentationData.theme, presentationData.strings.Notifications_Reactions, reactionsValue, hasReactionNotifications ? presentationData.strings.Notifications_On : presentationData.strings.Notifications_Off))
     
+    let localNotifications = presentationData.strings.localFeatures.localNotifications
+    entries.append(.localNotificationsHeader(presentationData.theme, localNotifications.title.uppercased()))
+    entries.append(.localNotifications(presentationData.theme, localNotifications.title, inAppSettings.useLocalNotifications))
+    entries.append(.localNotificationsInfo(presentationData.theme, localNotifications.info))
+
     entries.append(.inAppHeader(presentationData.theme, presentationData.strings.Notifications_InAppNotifications.uppercased()))
     entries.append(.inAppSounds(presentationData.theme, presentationData.strings.Notifications_InAppNotificationsSounds, inAppSettings.playSounds))
     entries.append(.inAppVibrate(presentationData.theme, presentationData.strings.Notifications_InAppNotificationsVibrate, inAppSettings.vibrate))
@@ -739,26 +785,24 @@ public func notificationsAndSoundsController(context: AccountContext, exceptions
         }).start()
     }, resetNotifications: {
         let presentationData = context.sharedContext.currentPresentationData.with { $0 }
-        let actionSheet = ActionSheetController(presentationData: presentationData)
-        actionSheet.setItemGroups([ActionSheetItemGroup(items: [
-            ActionSheetTextItem(title: presentationData.strings.Notifications_ResetAllNotificationsText),
-            ActionSheetButtonItem(title: presentationData.strings.Notifications_Reset, color: .destructive, action: { [weak actionSheet] in
-                actionSheet?.dismissAnimated()
-                
-                let modifyPeers = context.engine.peers.resetAllPeerNotificationSettings()
-                let updateGlobal = updateGlobalNotificationSettingsInteractively(postbox: context.account.postbox, { _ in
-                    return GlobalNotificationSettingsSet.defaultSettings
-                })
-                let reset = resetPeerNotificationSettings(network: context.account.network)
-                let signal = combineLatest(modifyPeers, updateGlobal, reset)
-                let _ = signal.start()
-            })
-        ]), ActionSheetItemGroup(items: [
-            ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak actionSheet] in
-                actionSheet?.dismissAnimated()
-            })
-        ])])
-        presentControllerImpl?(actionSheet, nil)
+        let controller = AlertScreen(
+            context: context,
+            configuration: AlertScreen.Configuration(actionAlignment: .vertical),
+            text: presentationData.strings.Notifications_ResetAllNotificationsText,
+            actions: [
+                .init(title: presentationData.strings.Notifications_Reset, type: .defaultDestructive, action: {
+                    let modifyPeers = context.engine.peers.resetAllPeerNotificationSettings()
+                    let updateGlobal = updateGlobalNotificationSettingsInteractively(postbox: context.account.postbox, { _ in
+                        return GlobalNotificationSettingsSet.defaultSettings
+                    })
+                    let reset = resetPeerNotificationSettings(network: context.account.network)
+                    let signal = combineLatest(modifyPeers, updateGlobal, reset)
+                    let _ = signal.start()
+                }),
+                .init(title: presentationData.strings.Common_Cancel)
+            ]
+        )
+        presentControllerImpl?(controller, nil)
     }, openAppSettings: {
         context.sharedContext.applicationBindings.openSettings()
     }, updateJoinedNotifications: { value in
@@ -771,6 +815,12 @@ public func notificationsAndSoundsController(context: AccountContext, exceptions
         let _ = updateInAppNotificationSettingsInteractively(accountManager: context.sharedContext.accountManager, { settings in
             var settings = settings
             settings.displayNotificationsFromAllAccounts = value
+            return settings
+        }).start()
+    }, updateLocalNotifications: { value in
+        let _ = updateInAppNotificationSettingsInteractively(accountManager: context.sharedContext.accountManager, { settings in
+            var settings = settings
+            settings.useLocalNotifications = value
             return settings
         }).start()
     })

@@ -162,6 +162,9 @@ func deleteMessagesInteractively(transaction: Transaction, stateManager: Account
             }
         }
     }
+    // Deletions the user performs on this device are deliberate: keeping a local "deleted" copy of a
+    // message you just removed yourself is not what the archive is for. Only deletions that arrive
+    // from the server (someone else removed the message) are archived.
     _internal_deleteMessages(
         transaction: transaction,
         mediaBox: postbox.mediaBox,

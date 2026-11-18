@@ -451,6 +451,7 @@ public final class WalletContext {
                                     subscriber.putError(error)
                                 }
                             } catch {
+                                logger.error("wallet_operation_delivery_rejected", error, context: "operation=\(name)")
                                 discard(result)
                                 subscriber.putError(walletError(error))
                             }
@@ -597,7 +598,7 @@ public struct WalletConfiguration: Equatable, Sendable {
     }
 
     public static func with(appConfiguration: AppConfiguration) -> WalletConfiguration {
-        let isAvailable = appConfiguration.data?["wallet_available"] as? Bool ?? self.defaultValue.isAvailable
+        let isAvailable = !InterfaceTuningSettingsStore.shared.cached.disableTonWallet && (appConfiguration.data?["wallet_available"] as? Bool ?? self.defaultValue.isAvailable)
         var explorerUrl = self.defaultValue.explorerUrl
         if let value = appConfiguration.data?["ton_blockchain_explorer_url"] as? String {
             explorerUrl = value

@@ -46,6 +46,8 @@ private func removeDeletedMessageArchiveMetadata(transaction: Transaction, ids: 
 
 private func prepareDeletedMessageArchive(transaction: Transaction, mediaBox: MediaBox? = nil) -> DeletedMessageArchiveSettings? {
     guard deletedMessageArchiveSessionInitialized.with({ $0 }) else {
+        // Account extensions must not create a new archive session or clear the
+        // main app's temporary archive.
         return nil
     }
     var settings = deletedMessageArchiveSettings(transaction: transaction)
@@ -118,6 +120,13 @@ private func messageIsDisappearing(_ message: Message) -> Bool {
     return false
 }
 
+/// Chooses which archived resources stay pinned in the media box.
+///
+/// `items` are ordered oldest first. Disappearing media is trimmed to its own budget before the
+/// whole archive is trimmed to the overall one, so a few large one-off videos cannot crowd out the
+/// ordinary archive. Within each pass the largest files go first: that retains far more messages per
+/// byte than dropping strictly oldest-first, at the cost of evicting a big recent file before small
+/// old ones.
 public func deletedMessageArchiveRetentionPlan<ID: Hashable>(
     items: [(id: ID, size: Int64, isDisappearing: Bool)],
     limitBytes: Int64,
@@ -165,6 +174,8 @@ private func updateDeletedMessageArchiveMediaRetention(transaction: Transaction,
     let settings = deletedMessageArchiveSettings(transaction: transaction)
     let index = transaction.getPreferencesEntry(key: PreferencesKeys.deletedMessageArchiveIndex)?.get(DeletedMessageArchiveIndex.self) ?? .empty
 
+    // Keep the newest reference to a resource. This makes quota eviction stable
+    // when multiple revisions or an album reuse the same cached file.
     var orderedResourceIds: [MediaResourceId] = []
     var disappearingResourceIds = Set<MediaResourceId>()
     var seenResourceIds = Set<MediaResourceId>()
@@ -276,6 +287,8 @@ private func mediaArraysAreEqual(_ lhs: [Media], _ rhs: [Media]) -> Bool {
     return true
 }
 
+/// Returns whether two message snapshots have identical user-visible content.
+/// Volatile delivery, reaction, view-count and edit-date attributes are ignored.
 public func deletedMessageArchiveContentsAreEqual(
     lhsText: String,
     lhsAttributes: [MessageAttribute],
@@ -304,6 +317,9 @@ private func archivedContentIsEqual(_ previous: Message, _ updated: StoreMessage
     )
 }
 
+/// Disappearing cloud messages — including view-once media — are archived like any other message.
+/// Secret chats stay excluded because their deletion is part of the encrypted protocol, and messages
+/// whose media already expired carry nothing worth retaining.
 private func isArchiveIneligible(_ message: Message) -> Bool {
     if message.id.peerId.namespace == Namespaces.Peer.SecretChat {
         return true
@@ -314,6 +330,12 @@ private func isArchiveIneligible(_ message: Message) -> Bool {
     return message.media.contains(where: { $0 is TelegramMediaExpiredContent })
 }
 
+/// An archived copy must not inherit the expiry machinery of the message it snapshots.
+///
+/// Postbox registers a message for autoremove when it is stored, based on its timeout attributes.
+/// A snapshot taken *while* the original is expiring still carries a started countdown, so the
+/// autoremove manager would immediately strip the copy's media too — leaving the archive empty
+/// exactly in the case it exists for.
 private func attributesWithoutExpiry(_ attributes: [MessageAttribute]) -> [MessageAttribute] {
     return attributes.filter { attribute in
         if attribute is AutoremoveTimeoutMessageAttribute
@@ -384,13 +406,44 @@ private func addStoredCopy(
     return transaction.addMessages([copy], location: .Random)[globallyUniqueId]
 }
 
+func deletedMessageArchiveExclusion(peer: Peer?, peerId: PeerId, accountPeerId: PeerId?) -> DeletedMessageArchiveExclusions {
+    if peerId == accountPeerId {
+        return .savedMessages
+    }
+    if let user = peer as? TelegramUser {
+        return user.botInfo != nil ? .bots : .privateChats
+    }
+    if peer is TelegramSecretChat {
+        return .privateChats
+    }
+    if peer is TelegramGroup {
+        return .groups
+    }
+    if let channel = peer as? TelegramChannel {
+        if case .broadcast = channel.info {
+            return .channels
+        }
+        return .groups
+    }
+    return []
+}
+
 private func canArchiveMessageFromChat(transaction: Transaction, peerId: PeerId, settings: DeletedMessageArchiveSettings) -> Bool {
+    if !settings.exclusions.isEmpty {
+        let accountPeerId = (transaction.getState() as? AuthorizedAccountState)?.peerId
+        let kind = deletedMessageArchiveExclusion(peer: transaction.getPeer(peerId), peerId: peerId, accountPeerId: accountPeerId)
+        if !kind.isEmpty && settings.exclusions.contains(kind) {
+            return false
+        }
+    }
     if settings.saveMessagesFromArchivedChats {
         return true
     }
     return transaction.getPeerChatListInclusion(peerId).groupId != Namespaces.PeerGroup.archive
 }
 
+/// Captures the currently stored value before a content edit and attaches the
+/// resulting immutable version id to the incoming StoreMessage.
 func archivePreviousMessageVersionIfNeeded(
     transaction: Transaction,
     id: MessageId,
@@ -461,6 +514,8 @@ func archivePreviousMessageVersionIfNeeded(
     return updatedMessage.withUpdatedAttributes(attributes)
 }
 
+/// Saves locally received, non-ephemeral cloud messages immediately before a
+/// server-side deletion removes them from Postbox.
 @discardableResult
 func archiveMessagesBeforeCloudDeletion(
     transaction: Transaction,
@@ -621,6 +676,7 @@ func _internal_clearDeletedMessageArchiveMedia(transaction: Transaction, mediaBo
     }
 }
 
+/// Current locally retained archive counts and completed-media disk usage.
 public struct DeletedMessageArchiveStats: Equatable {
     public let messageCount: Int
     public let versionCount: Int

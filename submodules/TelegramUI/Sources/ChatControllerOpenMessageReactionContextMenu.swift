@@ -1,4 +1,5 @@
 import Foundation
+import MadLockUI
 import TelegramPresentationData
 import AccountContext
 import TelegramCore
@@ -507,8 +508,12 @@ extension ChatControllerImpl {
                     }
                 }
                 
-                let _ = self.context.engine.messages.sendStarsReaction(id: message.id, count: Int(amount), privacy: privacy).startStandalone()
-                self.displayOrUpdateSendStarsUndo(messageId: message.id, count: Int(amount), privacy: privacy)
+                let madContext = self.context
+                let _ = (madSpendGate(.spendReactions, strings: self.presentationData.strings)
+                |> deliverOnMainQueue).startStandalone(next: { [weak self] _ in
+                    let _ = madContext.engine.messages.sendStarsReaction(id: message.id, count: Int(amount), privacy: privacy).startStandalone()
+                    self?.displayOrUpdateSendStarsUndo(messageId: message.id, count: Int(amount), privacy: privacy)
+                })
             })
             |> deliverOnMainQueue).start(next: { [weak self] initialData in
                 guard let self, let initialData else {

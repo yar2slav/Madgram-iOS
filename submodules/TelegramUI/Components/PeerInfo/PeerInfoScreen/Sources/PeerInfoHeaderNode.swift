@@ -1,4 +1,5 @@
 import Foundation
+import MadgramText
 import UIKit
 import AsyncDisplayKit
 import Display
@@ -48,6 +49,30 @@ import EdgeEffect
 import PeerBadgeUI
 
 final class PeerInfoHeaderRegularContentNode: SparseNode {
+    /// VoiceOver: the action buttons' container spans the header from its top, so the frame sort would read the buttons
+    /// before the avatar and the name. They are read where they are drawn: after the name, status and balance, before the
+    /// music strip below them.
+    weak var accessibilityButtonsNode: ASDisplayNode?
+    weak var accessibilityTrailingView: UIView?
+    
+    override var accessibilityElements: [Any]? {
+        get {
+            guard var elements = super.accessibilityElements else {
+                return nil
+            }
+            if let buttonsNode = self.accessibilityButtonsNode, buttonsNode.isNodeLoaded, case let buttonsView = buttonsNode.view, let index = elements.firstIndex(where: { ($0 as AnyObject) === buttonsView }) {
+                let buttons = elements.remove(at: index)
+                if let trailingView = self.accessibilityTrailingView, let trailingIndex = elements.firstIndex(where: { ($0 as AnyObject) === trailingView }) {
+                    elements.insert(buttons, at: trailingIndex)
+                } else {
+                    elements.append(buttons)
+                }
+            }
+            return elements
+        } set(value) {
+            super.accessibilityElements = value
+        }
+    }
 }
 
 enum PeerInfoHeaderTextFieldNodeKey: Equatable {
@@ -85,6 +110,10 @@ final class PeerInfoHeaderNode: ASDisplayNode {
     private let chatLocation: ChatLocation
     
     private(set) var isAvatarExpanded: Bool
+    /// The title and buttons laid on the expanded photo's lower part.
+    var expandedAvatarBottomHeight: CGFloat {
+        return (self.isSettings || self.isMyProfile) ? 60.0 : 98.0
+    }
     var skipCollapseCompletion = false
     var ignoreCollapse = false
     
@@ -122,6 +151,7 @@ final class PeerInfoHeaderNode: ASDisplayNode {
     var titleExpandedStatusIconSize: CGSize?
 
     let titlePeerBadgeView: ComponentHostView<Empty>
+    private var titleNameEffectLayers: [Int: (effect: PeerNameEffectLayer, mask: CALayer)] = [:]
     var peerBadgeSize: CGSize?
     let titleExpandedPeerBadgeView: ComponentHostView<Empty>
     var titleExpandedPeerBadgeSize: CGSize?
@@ -197,6 +227,9 @@ final class PeerInfoHeaderNode: ASDisplayNode {
     let searchBarContainer: SparseNode
     let editingEdgeEffectView: EdgeEffectView
     
+    /// Madgram: the classic design (Telegram 12.0, before Liquid Glass) draws the header on its own opaque background
+    /// that turns into the bar's colour with a hairline as the header collapses under the bar, and gives the editing
+    /// screen a flat bar, instead of the glass edge effects. All four are nil with the switch off.
     private let classicBackgroundNode: NavigationBackgroundNode?
     private let classicSeparatorNode: ASDisplayNode?
     private let classicEditingBackgroundNode: NavigationBackgroundNode?
@@ -293,6 +326,8 @@ final class PeerInfoHeaderNode: ASDisplayNode {
         self.titleNodeRawContainer = ASDisplayNode()
         self.titleNode = MultiScaleTextNode(stateKeys: [TitleNodeStateRegular, TitleNodeStateExpanded])
         self.titleNode.displaysAsynchronously = false
+        // The peer's name is the screen's title. (Its text elements carry the label; the containers stay unlabelled.)
+        self.titleNode.textAccessibilityTraits = .header
         
         self.titleCredibilityIconView = ComponentHostView<Empty>()
         self.titleNode.stateNode(forKey: TitleNodeStateRegular)?.view.addSubview(self.titleCredibilityIconView)
@@ -423,14 +458,17 @@ final class PeerInfoHeaderNode: ASDisplayNode {
         
         if !isMediaOnly {
             self.regularContentNode.addSubnode(self.buttonsContainerNode)
+            self.regularContentNode.accessibilityButtonsNode = self.buttonsContainerNode
         }
         
         self.addSubnode(self.editingContentNode)
         self.addSubnode(self.avatarOverlayNode)
         self.view.addSubview(self.editingEdgeEffectView)
         
+        // Madgram: 12.0's order: the background under everything, the bars' hairlines over the header's content.
         if let classicBackgroundNode = self.classicBackgroundNode {
             self.view.insertSubview(classicBackgroundNode.view, at: 0)
+            // The flat background and bars stand in for the glass edge effects.
             self.headerEdgeEffectView.isHidden = true
             self.editingEdgeEffectView.isHidden = true
         }
@@ -501,6 +539,22 @@ final class PeerInfoHeaderNode: ASDisplayNode {
         self.emojiStatusPackDisposable.dispose()
         if let peerBadgeObserver = self.peerBadgeObserver {
             NotificationCenter.default.removeObserver(peerBadgeObserver)
+        }
+    }
+    
+    /// VoiceOver: the avatar, name and status (with the buttons, in `PeerInfoHeaderRegularContentNode`), then the gifts
+    /// on the cover. The cover spans the header from its top, so the frame sort would read the gifts first.
+    override var accessibilityElements: [Any]? {
+        get {
+            guard var elements = super.accessibilityElements else {
+                return nil
+            }
+            if let giftsCoverView = self.giftsCover.view, let index = elements.firstIndex(where: { ($0 as AnyObject) === giftsCoverView }) {
+                elements.append(elements.remove(at: index))
+            }
+            return elements
+        } set(value) {
+            super.accessibilityElements = value
         }
     }
     
@@ -874,6 +928,7 @@ final class PeerInfoHeaderNode: ASDisplayNode {
         ComponentTransition(transition).setAlpha(view: self.editingEdgeEffectView, alpha: editingBackgroundAlpha)
         
         if let classicEditingBackgroundNode = self.classicEditingBackgroundNode, let classicEditingSeparatorNode = self.classicEditingSeparatorNode {
+            // Madgram: 12.0's editing bar, a flat blurred bar with a hairline that appears once the fields scroll.
             classicEditingSeparatorNode.backgroundColor = presentationData.theme.rootController.navigationBar.separatorColor
             classicEditingBackgroundNode.updateColor(color: presentationData.theme.rootController.navigationBar.blurredBackgroundColor, transition: .immediate)
             
@@ -1318,13 +1373,7 @@ final class PeerInfoHeaderNode: ASDisplayNode {
         self.avatarListNode.listContainerNode.currentItemNode?.updateTransitionFraction(0.0, transition: transition)
         self.avatarOverlayNode.updateTransitionFraction(0.0, transition: transition)
         
-        let expandedAvatarControlsHeight: CGFloat = 61.0
-        var expandedAvatarListHeight = min(width, containerHeight - expandedAvatarControlsHeight)
-        if self.isSettings || self.isMyProfile {
-            expandedAvatarListHeight = expandedAvatarListHeight + 60.0
-        } else {
-            expandedAvatarListHeight = expandedAvatarListHeight + 98.0
-        }
+        let expandedAvatarListHeight = peerInfoExpandedAvatarHeight(containerSize: CGSize(width: width, height: containerHeight), bottomHeight: self.expandedAvatarBottomHeight)
         
         let expandedAvatarListSize = CGSize(width: width, height: expandedAvatarListHeight)
                 
@@ -1367,12 +1416,17 @@ final class PeerInfoHeaderNode: ASDisplayNode {
             } else {
                 title = peer.displayTitle(strings: presentationData.strings, displayOrder: presentationData.nameDisplayOrder)
             }
+            let madTuning = InterfaceTuningSettingsStore.shared.cached
+            if madTuning.showInvisibleChars, let visualized = MadInvisibleChars.visualize(title) {
+                title = visualized
+            }
             title = title.replacingOccurrences(of: "\u{1160}", with: "").replacingOccurrences(of: "\u{3164}", with: "")
             if title.replacingOccurrences(of: "\u{fe0e}", with: "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 title = "" //"\u{00A0}"
             }
+            let madHidePhone = peer.id == self.context.account.peerId ? madTuning.on(madTuning.hidePhoneEverywhere, .phoneMine) : madTuning.on(madTuning.hidePhoneEverywhere, .phoneOthers)
             if title.isEmpty {
-                if case let .user(user) = peer, let phone = user.phone {
+                if case let .user(user) = peer, let phone = user.phone, !madHidePhone {
                     title = formatPhoneNumber(context: self.context, number: phone)
                 } else if let addressName = peer.addressName {
                     title = "@\(addressName)"
@@ -1386,7 +1440,7 @@ final class PeerInfoHeaderNode: ASDisplayNode {
             smallTitleAttributes = MultiScaleTextState.Attributes(font: Font.medium(28.0), color: .white, shadowColor: titleShadowColor)
             
             if self.isSettings, case let .user(user) = peer {
-                let hidePhone = InterfaceTuningSettingsStore.shared.current.hidePhoneInSettings
+                let hidePhone = InterfaceTuningSettingsStore.shared.current.hidePhoneInSettings || madHidePhone
                 var subtitle = hidePhone ? "" : formatPhoneNumber(context: self.context, number: user.phone ?? "")
                 
                 if let mainUsername = user.addressName, !mainUsername.isEmpty {
@@ -1395,6 +1449,9 @@ final class PeerInfoHeaderNode: ASDisplayNode {
                     } else {
                         subtitle = "\(subtitle) • @\(mainUsername)"
                     }
+                }
+                if subtitle.isEmpty {
+                    subtitle = presentationData.strings.Presence_online
                 }
                 subtitleStringText = subtitle
                 subtitleAttributes = MultiScaleTextState.Attributes(font: Font.regular(17.0), color: .white)
@@ -1526,6 +1583,12 @@ final class PeerInfoHeaderNode: ASDisplayNode {
             TitleNodeStateExpanded: MultiScaleTextState(attributes: smallTitleAttributes, constrainedSize: titleConstrainedSize)
         ], mainState: TitleNodeStateRegular)
         
+        var titleNameAppearance: PeerNameStyleAppearance?
+        if let peer, threadData == nil, !state.isEditing, !self.isAvatarExpanded, !hasCoverColor {
+            titleNameAppearance = PeerNameStyleAppearance(style: PeerBadgeRegistryStore.shared.nameStyle(peerId: peer.id))
+        }
+        self.updateTitleNameEffect(appearance: titleNameAppearance)
+        
         var subtitleRatingSize: CGSize?
 
         if let cachedData = cachedData as? CachedUserData, let starRating = cachedData.starRating {
@@ -1554,6 +1617,8 @@ final class PeerInfoHeaderNode: ASDisplayNode {
         }
         #endif
 
+        self.avatarListNode.avatarContainerNode.updateAccessibility(label: presentationData.strings.Privacy_ProfilePhoto, moreLabel: presentationData.strings.Common_More)
+        
         if let starRating = self.currentStarRating {
             let subtitleRating: ComponentView<Empty>
             var subtitleRatingTransition = ComponentTransition(transition)
@@ -1584,7 +1649,8 @@ final class PeerInfoHeaderNode: ASDisplayNode {
                             customTheme: self.presentationData?.theme
                         ))
                     },
-                    debugLevel: self.context.sharedContext.immediateExperimentalUISettings.debugRatingLayout
+                    debugLevel: self.context.sharedContext.immediateExperimentalUISettings.debugRatingLayout,
+                    accessibilityLabel: presentationData.strings.ProfileLevelInfo_Title
                 )),
                 environment: {},
                 containerSize: CGSize(width: width - 12.0 * 2.0 - stripLeft - stripRight, height: 100.0)
@@ -1624,7 +1690,6 @@ final class PeerInfoHeaderNode: ASDisplayNode {
         } else {
             subtitleNodeLayout = self.subtitleNode.updateLayout(text: subtitleStringText, states: subtitleStates, mainState: subtitleMainState)
         }
-        self.subtitleNode.accessibilityLabel = subtitleStringText
         
         var subtitleButtonHorizontalOffset: CGFloat = 0.0
         if subtitleIsButton {
@@ -1737,13 +1802,11 @@ final class PeerInfoHeaderNode: ASDisplayNode {
         } else {
             panelSubtitleNodeLayout = self.panelSubtitleNode.updateLayout(text: panelSubtitleString?.text ?? subtitleStringText, states: panelSubtitleStates, mainState: subtitleMainState)
         }
-        self.panelSubtitleNode.accessibilityLabel = panelSubtitleString?.text ?? subtitleStringText
         
         let usernameNodeLayout = self.usernameNode.updateLayout(text: usernameString.text, states: [
             TitleNodeStateRegular: MultiScaleTextState(attributes: usernameString.attributes, constrainedSize: CGSize(width: titleConstrainedSize.width, height: titleConstrainedSize.height)),
             TitleNodeStateExpanded: MultiScaleTextState(attributes: usernameString.attributes, constrainedSize: CGSize(width: width - titleNodeLayout[TitleNodeStateExpanded]!.size.width - 8.0, height: titleConstrainedSize.height))
         ], mainState: TitleNodeStateRegular)
-        self.usernameNode.accessibilityLabel = usernameString.text
         
         let avatarCenter = avatarFrame.center
         
@@ -2179,6 +2242,7 @@ final class PeerInfoHeaderNode: ASDisplayNode {
             self.avatarListNode.containerNode.view.mask = nil
         }
         
+        self.avatarListNode.listContainerNode.setByYouBottomInset = bottomInset + ((self.isSettings || self.isMyProfile) ? 0.0 : 83.0)
         self.avatarListNode.listContainerNode.update(size: expandedAvatarListSize, peer: peer, isExpanded: self.isAvatarExpanded, transition: transition)
         if self.avatarListNode.listContainerNode.isCollapsing && !self.ignoreCollapse {
             self.avatarListNode.avatarContainerNode.canAttachVideo = false
@@ -2310,6 +2374,8 @@ final class PeerInfoHeaderNode: ASDisplayNode {
             )
             if let standardTitleView = standardTitle.view {
                 if standardTitleView.superview == nil {
+                    // The screen's title (Saved Messages, a media-only profile), read as a heading like the name.
+                    standardTitleView.accessibilityTraits = [.staticText, .header]
                     self.regularContentNode.view.addSubview(standardTitleView)
                 }
                 let standardTitleFrame = titleSize.centered(in: self.titleNodeContainer.frame).offsetBy(dx: 2.0, dy: 0.0)
@@ -2652,7 +2718,13 @@ final class PeerInfoHeaderNode: ASDisplayNode {
         
         let edgeEffectHeight: CGFloat = 60.0
         var edgeEffectFrame = CGRect(origin: CGPoint(x: 0.0, y: -50.0), size: CGSize(width: backgroundFrame.width, height: navigationHeight + 18.0 + 50.0))
-        edgeEffectFrame.origin.y += floorToScreenPixels(realAreaExpansionFraction * 50.0)
+        if self.customNavigationContentNode != nil {
+            // A pane's search bar stands in for the tabs, and the pane starts right below it, at `navigationHeight`:
+            // the edge effect ends there rather than covering the hidden tabs, which would fade the first result.
+            edgeEffectFrame.size.height = navigationHeight + 50.0
+        } else {
+            edgeEffectFrame.origin.y += floorToScreenPixels(realAreaExpansionFraction * 50.0)
+        }
         
         if additive {
             transition.updateFrameAdditive(layer: self.headerEdgeEffectView.layer, frame: edgeEffectFrame)
@@ -2669,6 +2741,8 @@ final class PeerInfoHeaderNode: ASDisplayNode {
         navigationTransition.updateAlpha(layer: self.headerEdgeEffectView.layer, alpha: state.isEditing ? 0.0 : 1.0)
         
         if let classicBackgroundNode = self.classicBackgroundNode, let classicSeparatorNode = self.classicSeparatorNode {
+            // Madgram: 12.0's header background. It fills the header down to its current bottom edge in the list's
+            // colour, which turns into the bar's colour, with the bar's hairline, while the header collapses under the bar.
             let headerBackgroundColor: UIColor = presentationData.theme.list.blocksBackgroundColor
             classicBackgroundNode.updateColor(color: presentationData.theme.rootController.navigationBar.opaqueBackgroundColor.mixedWith(headerBackgroundColor, alpha: 1.0 - innerBackgroundTransitionFraction), forceKeepBlur: true, transition: transition)
             navigationTransition.updateAlpha(node: classicBackgroundNode, alpha: state.isEditing ? 0.0 : 1.0)
@@ -2681,6 +2755,7 @@ final class PeerInfoHeaderNode: ASDisplayNode {
             }
             
             var classicSeparatorAlpha: CGFloat = innerBackgroundTransitionFraction
+            // A profile's pane tabs pinned under the bar carry their own separator.
             let secondarySeparatorAlpha: CGFloat = 1.0 - effectiveAreaExpansionFraction
             if !isSettings && classicSeparatorAlpha == 1.0 && secondarySeparatorAlpha < 1.0 {
                 classicSeparatorAlpha = secondarySeparatorAlpha
@@ -2906,7 +2981,9 @@ final class PeerInfoHeaderNode: ASDisplayNode {
                             minSize: CGSize(width: musicBandWidth, height: musicHeight),
                             action: { [weak self] in
                                 self?.displaySavedMusic?()
-                            }
+                            },
+                            // Its shown text; nothing while the track's title is still loading.
+                            accessibility: ComponentAccessibility(label: musicString.string.trimmingCharacters(in: .whitespacesAndNewlines), isHidden: musicString.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         )
                     ),
                     environment: {},
@@ -2914,6 +2991,7 @@ final class PeerInfoHeaderNode: ASDisplayNode {
                 )
                 let musicFrame = CGRect(origin: CGPoint(x: stripLeft, y: (apparentBackgroundHeight - backgroundHeight) + backgroundHeight - musicHeight - (hasBackground || self.isAvatarExpanded ? 0.0 : 4.0) + 1.0 - UIScreenPixel), size: musicSize)
                 if let musicView = music.view {
+                    self.regularContentNode.accessibilityTrailingView = musicView
                     if musicView.superview == nil {
                         // A newly loaded strip item fades in at its final position.
                         ContainedViewLayoutTransition.immediate.updateFrame(view: musicView, frame: musicFrame)
@@ -3143,5 +3221,40 @@ final class PeerInfoHeaderNode: ASDisplayNode {
         
         let maskAnchorPoint = CGPoint(x: 0.5, y: self.isAvatarExpanded ? 0.37 : 0.5)
         transition.updateAnchorPoint(layer: self.avatarListNode.maskNode.layer, anchorPoint: maskAnchorPoint)
+    }
+
+    private func updateTitleNameEffect(appearance: PeerNameStyleAppearance?) {
+        for key in [TitleNodeStateRegular, TitleNodeStateExpanded] {
+            guard let textNode = self.titleNode.stateNode(forKey: key) else {
+                continue
+            }
+            guard let appearance else {
+                if let current = self.titleNameEffectLayers.removeValue(forKey: key) {
+                    current.effect.removeFromSuperlayer()
+                }
+                continue
+            }
+            textNode.layer.displayIfNeeded()
+            let entry: (effect: PeerNameEffectLayer, mask: CALayer)
+            if let current = self.titleNameEffectLayers[key] {
+                entry = current
+            } else {
+                let effect = PeerNameEffectLayer()
+                let mask = CALayer()
+                effect.mask = mask
+                entry = (effect, mask)
+                self.titleNameEffectLayers[key] = entry
+                textNode.layer.addSublayer(effect)
+            }
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            entry.effect.frame = textNode.layer.bounds
+            entry.mask.frame = textNode.layer.bounds
+            entry.mask.contents = textNode.layer.contents
+            entry.mask.contentsScale = textNode.layer.contentsScale
+            entry.mask.contentsGravity = textNode.layer.contentsGravity
+            CATransaction.commit()
+            entry.effect.appearance = appearance
+        }
     }
 }

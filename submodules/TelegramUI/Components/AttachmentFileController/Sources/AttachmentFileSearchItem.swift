@@ -74,6 +74,7 @@ final class AttachmentFileSearchItem: ItemListControllerSearch {
     
     func titleContentNode(current: (NavigationBarContentNode & ItemListControllerSearchNavigationContentNode)?) -> (NavigationBarContentNode & ItemListControllerSearchNavigationContentNode)? {
         if ClassicDesign.isEnabled {
+            // Madgram classic design: 12.0 searched files from a flat search bar in the navigation bar, in every mode.
             let placeholder: String
             switch self.mode {
             case .audio:
@@ -1207,6 +1208,8 @@ private final class AttachmentFileSearchNavigationContentNode: NavigationBarCont
     }
 }
 
+/// Madgram classic design (`ClassicDesign.isEnabled`): the flat navigation-bar search bar of 12.0's file picker
+/// (`AttachmentFileSearchNavigationContentNode` at release-12.0), used in place of the glass field and the bottom search panel.
 private final class ClassicAttachmentFileSearchNavigationContentNode: NavigationBarContentNode, ItemListControllerSearchNavigationContentNode {
     private var theme: PresentationTheme
     private let strings: PresentationStrings

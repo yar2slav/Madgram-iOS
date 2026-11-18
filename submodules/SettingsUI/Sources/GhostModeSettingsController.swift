@@ -11,13 +11,16 @@ import UIKit
 private final class GhostModeControllerArguments {
     let update: (@escaping (GhostModeSettings) -> GhostModeSettings) -> Void
     let showInfo: (String, UIView) -> Void
+    let openException: (Int64, String) -> Void
 
     init(
         update: @escaping (@escaping (GhostModeSettings) -> GhostModeSettings) -> Void,
-        showInfo: @escaping (String, UIView) -> Void
+        showInfo: @escaping (String, UIView) -> Void,
+        openException: @escaping (Int64, String) -> Void
     ) {
         self.update = update
         self.showInfo = showInfo
+        self.openException = openException
     }
 }
 
@@ -25,6 +28,7 @@ private enum GhostModeSection: Int32 {
     case master
     case privacy
     case behavior
+    case exceptions
 }
 
 private enum GhostModeEntry: ItemListNodeEntry {
@@ -39,6 +43,10 @@ private enum GhostModeEntry: ItemListNodeEntry {
     case behaviorHeader(String)
     case revealOnInteractions(Bool, Bool)
     case autoOffline(Bool, Bool)
+    case exceptionsHeader(String)
+    case exception(Int32, Int64, String, String)
+    case exceptionsEmpty(String)
+    case exceptionsInfo(String)
 
     var section: ItemListSectionId {
         switch self {
@@ -48,6 +56,8 @@ private enum GhostModeEntry: ItemListNodeEntry {
             return GhostModeSection.privacy.rawValue
         case .behaviorHeader, .revealOnInteractions, .autoOffline:
             return GhostModeSection.behavior.rawValue
+        case .exceptionsHeader, .exception, .exceptionsEmpty, .exceptionsInfo:
+            return GhostModeSection.exceptions.rawValue
         }
     }
 
@@ -64,6 +74,10 @@ private enum GhostModeEntry: ItemListNodeEntry {
         case .behaviorHeader: return 8
         case .revealOnInteractions: return 9
         case .autoOffline: return 10
+        case .exceptionsHeader: return 11
+        case .exceptionsEmpty: return 12
+        case let .exception(index, _, _, _): return 100 + index
+        case .exceptionsInfo: return 100000
         }
     }
 
@@ -73,8 +87,13 @@ private enum GhostModeEntry: ItemListNodeEntry {
             return lhs == rhs
         case let (.masterInfo(lhsText), .masterInfo(rhsText)),
              let (.privacyHeader(lhsText), .privacyHeader(rhsText)),
-             let (.behaviorHeader(lhsText), .behaviorHeader(rhsText)):
+             let (.behaviorHeader(lhsText), .behaviorHeader(rhsText)),
+             let (.exceptionsHeader(lhsText), .exceptionsHeader(rhsText)),
+             let (.exceptionsEmpty(lhsText), .exceptionsEmpty(rhsText)),
+             let (.exceptionsInfo(lhsText), .exceptionsInfo(rhsText)):
             return lhsText == rhsText
+        case let (.exception(lhsIndex, lhsPeerId, lhsTitle, lhsLabel), .exception(rhsIndex, rhsPeerId, rhsTitle, rhsLabel)):
+            return lhsIndex == rhsIndex && lhsPeerId == rhsPeerId && lhsTitle == rhsTitle && lhsLabel == rhsLabel
         case let (.suppressRead(lhsValue, lhsEnabled), .suppressRead(rhsValue, rhsEnabled)),
              let (.suppressStories(lhsValue, lhsEnabled), .suppressStories(rhsValue, rhsEnabled)),
              let (.suppressOnline(lhsValue, lhsEnabled), .suppressOnline(rhsValue, rhsEnabled)),
@@ -129,8 +148,16 @@ private enum GhostModeEntry: ItemListNodeEntry {
             })
         case let .masterInfo(text):
             return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
-        case let .privacyHeader(text), let .behaviorHeader(text):
+        case let .privacyHeader(text), let .behaviorHeader(text), let .exceptionsHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
+        case let .exception(_, peerId, title, label):
+            return ItemListDisclosureItem(presentationData: presentationData, title: title, label: label, sectionId: self.section, style: .blocks, action: {
+                arguments.openException(peerId, title)
+            })
+        case let .exceptionsEmpty(text):
+            return ItemListDisclosureItem(presentationData: presentationData, title: text, enabled: false, label: "", sectionId: self.section, style: .blocks, disclosureStyle: .none, action: nil)
+        case let .exceptionsInfo(text):
+            return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
         case let .suppressRead(value, enabled):
             return switchItem(strings.suppressMessageReadReceipts, strings.suppressMessageReadReceiptsInfo, value, enabled, { current, value in
                 var current = current
@@ -179,6 +206,7 @@ private enum GhostModeEntry: ItemListNodeEntry {
 
 public func ghostModeSettingsController(context: AccountContext) -> ViewController {
     var presentTooltip: ((String, UIView) -> Void)?
+    var presentControllerImpl: ((ViewController) -> Void)?
     let settings = context.engine.messages.ghostModeSettings()
 
     let arguments = GhostModeControllerArguments(
@@ -187,14 +215,58 @@ public func ghostModeSettingsController(context: AccountContext) -> ViewControll
         },
         showInfo: { text, sourceView in
             presentTooltip?(text, sourceView)
+        },
+        openException: { peerId, title in
+            let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+            let sheet = ActionSheetController(presentationData: presentationData)
+            sheet.setItemGroups([
+                ActionSheetItemGroup(items: [
+                    ActionSheetTextItem(title: title),
+                    ActionSheetButtonItem(title: presentationData.strings.localFeatures.extras.ghostExceptionRemove, color: .destructive, action: { [weak sheet] in
+                        sheet?.dismissAnimated()
+                        let _ = context.engine.messages.updateGhostModeSettingsInteractively({ current in
+                            return current.withPeerOverride(nil, peerId: EnginePeer.Id(peerId))
+                        }).start()
+                    })
+                ]),
+                ActionSheetItemGroup(items: [
+                    ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak sheet] in
+                        sheet?.dismissAnimated()
+                    })
+                ])
+            ])
+            presentControllerImpl?(sheet)
         }
     )
 
-    let signal = combineLatest(context.sharedContext.presentationData, settings)
-    |> map { presentationData, settings -> (ItemListControllerState, (ItemListNodeState, Any)) in
-        let enabled = settings.isEnabled
+    let exceptionPeers = settings
+    |> map { settings -> [Int64] in
+        return settings.peerOverrides.keys.sorted()
+    }
+    |> distinctUntilChanged
+    |> mapToSignal { peerIds -> Signal<[Int64: String], NoError> in
+        if peerIds.isEmpty {
+            return .single([:])
+        }
+        return context.engine.data.subscribe(EngineDataMap(peerIds.map { TelegramEngine.EngineData.Item.Peer.Peer(id: EnginePeer.Id($0)) }))
+        |> map { peers -> [Int64: String] in
+            let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+            var result: [Int64: String] = [:]
+            for (id, peer) in peers {
+                if let peer {
+                    result[id.toInt64()] = peer.displayTitle(strings: presentationData.strings, displayOrder: presentationData.nameDisplayOrder)
+                }
+            }
+            return result
+        }
+    }
+
+    let signal = combineLatest(context.sharedContext.presentationData, settings, exceptionPeers)
+    |> map { presentationData, settings, exceptionPeers -> (ItemListControllerState, (ItemListNodeState, Any)) in
+        let enabled = settings.isEnabled || settings.peerOverrides.values.contains(true)
+        let extras = presentationData.strings.localFeatures.extras
         let strings = presentationData.strings.localFeatures.ghostMode
-        let entries: [GhostModeEntry] = [
+        var entries: [GhostModeEntry] = [
             .enabled(settings.isEnabled),
             .masterInfo(strings.masterInfo),
             .privacyHeader(strings.hideSection),
@@ -202,11 +274,29 @@ public func ghostModeSettingsController(context: AccountContext) -> ViewControll
             .suppressStories(settings.suppressStoryReadReceipts, enabled),
             .suppressOnline(settings.suppressOnlineStatus, enabled),
             .suppressTyping(settings.suppressTypingStatus, enabled),
-            .keepViewOnceMedia(settings.keepViewOnceMedia, enabled),
+            .keepViewOnceMedia(settings.keepViewOnceMedia, true),
             .behaviorHeader(strings.behaviorSection),
             .revealOnInteractions(settings.revealOnInteractions, enabled),
             .autoOffline(settings.goOfflineAutomatically, enabled)
         ]
+        entries.append(.exceptionsHeader(extras.ghostExceptions.uppercased()))
+        if settings.peerOverrides.isEmpty {
+            entries.append(.exceptionsEmpty(extras.ghostExceptionsEmpty))
+        } else {
+            let sortedOverrides = settings.peerOverrides.sorted(by: { lhs, rhs in
+                let lhsTitle = exceptionPeers[lhs.key] ?? ""
+                let rhsTitle = exceptionPeers[rhs.key] ?? ""
+                if lhsTitle != rhsTitle {
+                    return lhsTitle < rhsTitle
+                }
+                return lhs.key < rhs.key
+            })
+            for (index, item) in sortedOverrides.enumerated() {
+                let title = exceptionPeers[item.key] ?? "\(item.key)"
+                entries.append(.exception(Int32(index), item.key, title, item.value ? extras.ghostExceptionOn : extras.ghostExceptionOff))
+            }
+        }
+        entries.append(.exceptionsInfo(extras.ghostExceptionsInfo))
         return (
             ItemListControllerState(
                 presentationData: ItemListPresentationData(presentationData),
@@ -227,6 +317,9 @@ public func ghostModeSettingsController(context: AccountContext) -> ViewControll
         )
     }
     let controller = ItemListController(context: context, state: signal)
+    presentControllerImpl = { [weak controller] c in
+        controller?.present(c, in: .window(.root))
+    }
     var currentTooltipController: TooltipController?
     presentTooltip = { [weak controller] text, sourceView in
         guard let controller else {

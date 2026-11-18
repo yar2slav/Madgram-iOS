@@ -1,4 +1,5 @@
 import Foundation
+import MadLockUI
 import UIKit
 import SwiftSignalKit
 import TelegramCore
@@ -24,6 +25,13 @@ extension ChatControllerImpl {
         }
         if let sendPaidMessageStars = self.presentationInterfaceState.sendPaidMessageStars, self.presentationInterfaceState.interfaceState.editMessage == nil {
             let totalAmount = sendPaidMessageStars.value * Int64(count)
+            let originalCompletion = completion
+            let strings = self.presentationData.strings
+            let completion: (Bool) -> Void = { value in
+                MadLock.requireSpend(.spendMessages, strings: strings, completion: {
+                    originalCompletion(value)
+                })
+            }
             
             let _ = (ApplicationSpecificNotice.dismissedPaidMessageWarningNamespace(accountManager: self.context.sharedContext.accountManager, peerId: peer.id)
             |> take(1)

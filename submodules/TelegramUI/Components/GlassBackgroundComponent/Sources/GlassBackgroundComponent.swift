@@ -255,6 +255,9 @@ public class GlassBackgroundView: UIView {
         
         public enum Kind: Equatable {
             case panel
+            /// UIKit's own regular glass with no tint (`UIGlassEffect(style: .regular)`), as the iOS 27 tab bar
+            /// uses. The custom implementation draws it as `panel`.
+            case untinted
             case clear
             case custom(style: CustomStyle, color: UIColor)
         }
@@ -274,6 +277,8 @@ public class GlassBackgroundView: UIView {
             switch self.kind {
             case .panel:
                 return (false, UIColor(white: 1.0, alpha: isDark ? 0.025 : 0.1))
+            case .untinted:
+                return (false, nil)
             case let .custom(style, color):
                 return (style == .clear, color)
             case .clear:
@@ -518,6 +523,7 @@ public class GlassBackgroundView: UIView {
     private let foregroundView: UIImageView?
     private let shadowView: UIImageView?
     
+    /// Madgram classic design (`ClassicDesign.isEnabled`): the plain material drawn instead of either glass.
     private let classicView: ClassicGlassMaterialView?
     private let classicClippingContext: ClippingShapeContext?
     
@@ -531,6 +537,22 @@ public class GlassBackgroundView: UIView {
     /// participates in the shape transition along with its content.
     public var transitionView: UIView {
         return self.nativeView ?? self
+    }
+
+    /// The glass's outline in its bounds, in the shape it was last laid out with. The rounding is drawn by the native
+    /// view (`layer.cornerRadius` there, not here), so a context menu that morphs out of this glass takes its outline
+    /// from this.
+    public var outlinePath: UIBezierPath? {
+        guard let shape = self.params?.shape else {
+            return nil
+        }
+        let bounds = self.bounds
+        switch shape {
+        case let .roundedRect(cornerRadius):
+            return UIBezierPath(roundedRect: bounds, cornerRadius: min(cornerRadius, min(bounds.width, bounds.height) * 0.5))
+        case .customRoundedRect:
+            return UIBezierPath(cgPath: GlassBackgroundView.generateRoundedRectPath(rect: bounds, cornerRadii: shape.cornerRadii(for: bounds.size)))
+        }
     }
 
     public var contentView: UIView {
@@ -568,9 +590,29 @@ public class GlassBackgroundView: UIView {
     }
     
     public private(set) var params: Params?
-        
+
     public static var useCustomGlassImpl: Bool = false
-    
+
+    /// The backdrop luminance native glass sees (`EffectSettingsContainerView`'s limits, applied to every luma UIKit
+    /// reports by the `backdropLayer:didChangeLuma:` override in UIKitRuntimeUtils): the whole range on the theme's
+    /// side of the luminance at which UIKit would flip the glass to the other appearance, so it adapts to its
+    /// backdrop as UIKit's does but never leaves the theme's light or dark mode.
+    ///
+    /// UIKit flips light glass to dark below 0.1 on iOS 27 and below 0.2 on iOS 26, and dark glass to light above
+    /// 0.9 (`GlassMaterialProvider.HysteresisRange.default`: (0.1, 0.3, 0.7, 0.9) on iOS 27, (0.2, 0.5, 0.6, 0.9) on
+    /// iOS 26.5, read in the simulators), after quantizing the luminance to `min(31, floor(luma * 32)) / 31`
+    /// (`GlassGroupLayerView`). 0.125 quantizes to 0.129 and 0.874 to 0.871; iOS 26's 0.22 clears 0.2 either way.
+    static func adaptiveLumaRange(isDark: Bool) -> (min: Double, max: Double) {
+        if isDark {
+            return (0.0, 0.874)
+        }
+        if #available(iOS 27.0, *) {
+            return (0.125, 1.0)
+        } else {
+            return (0.22, 1.0)
+        }
+    }
+
     public override init(frame: CGRect) {
         if ClassicDesign.isEnabled {
             self.legacyView = nil
@@ -712,8 +754,9 @@ public class GlassBackgroundView: UIView {
         // UIKit can sample backdrop luminance synchronously while changing
         // appearance or effect. Install the new limits before either update.
         if let nativeParamsView = self.nativeParamsView {
-            nativeParamsView.lumaMin = isDark ? 0.0 : 0.8
-            nativeParamsView.lumaMax = isDark ? 0.15 : 0.801
+            let lumaRange = GlassBackgroundView.adaptiveLumaRange(isDark: isDark)
+            nativeParamsView.lumaMin = lumaRange.min
+            nativeParamsView.lumaMax = lumaRange.max
         }
 
         if let nativeView = self.nativeView, let nativeViewClippingContext = self.nativeViewClippingContext, (nativeView.bounds.size != size || nativeViewClippingContext.shape != shape || (nativeView.overrideUserInterfaceStyle == .dark) != isDark) {
@@ -731,7 +774,7 @@ public class GlassBackgroundView: UIView {
         if let legacyView = self.legacyView {
             let style: LegacyGlassView.Style
             switch tintColor.kind {
-            case .panel:
+            case .panel, .untinted:
                 style = .normal
             case .clear:
                 style = .clear
@@ -755,6 +798,7 @@ public class GlassBackgroundView: UIView {
             self.legacyHighlightClippingContext?.update(shape: shape, size: size, transition: transition)
         }
         if let classicView = self.classicView {
+            // No press effect, rim, shadow or refraction: a flat, blurred fill in the glass's shape.
             classicView.update(size: size, color: GlassBackgroundView.classicMaterialColor(tintColor: tintColor, isDark: isDark), transition: transition)
             transition.setFrame(view: classicView, frame: CGRect(origin: CGPoint(), size: size))
             self.classicClippingContext?.update(shape: shape, size: size, transition: transition)
@@ -823,7 +867,7 @@ public class GlassBackgroundView: UIView {
                 let fillColor: UIColor
                 let borderWidthFactor: CGFloat
                 switch tintColor.kind {
-                case .panel:
+                case .panel, .untinted:
                     borderWidthFactor = 1.0
                     if isDark {
                         fillColor = UIColor(white: 1.0, alpha: 1.0).mixedWith(.black, alpha: 1.0 - 0.11).withAlphaComponent(0.85)
@@ -978,6 +1022,7 @@ public final class GlassBackgroundContainerView: UIView {
     public init(spacing: CGFloat = 7.0) {
         self.spacing = spacing
         if ClassicDesign.isEnabled {
+            // Classic surfaces stand side by side, as the custom glass's do.
             self.nativeView = nil
             self.nativeParamsView = nil
             self.legacyView = ContentView()
@@ -1093,8 +1138,9 @@ public final class GlassBackgroundContainerView: UIView {
 
     public func update(size: CGSize, isDark: Bool, transition: ComponentTransition) {
         if let nativeParamsView = self.nativeParamsView, let nativeView = self.nativeView {
-            nativeParamsView.lumaMin = isDark ? 0.0 : 0.8
-            nativeParamsView.lumaMax = isDark ? 0.15 : 0.801
+            let lumaRange = GlassBackgroundView.adaptiveLumaRange(isDark: isDark)
+            nativeParamsView.lumaMin = lumaRange.min
+            nativeParamsView.lumaMax = lumaRange.max
             nativeView.overrideUserInterfaceStyle = isDark ? .dark : .light
             if let nativeParamsView = self.nativeParamsView {
                 transition.setFrame(view: nativeParamsView, frame: CGRect(origin: CGPoint(x: 0.0, y: 0.0), size: size))
@@ -1203,6 +1249,7 @@ private func legacyResizableImageMetrics(cornerRadii: GlassBackgroundView.Corner
 public extension GlassBackgroundView {
     static func generateLegacyShadowImage(cornerRadius: CGFloat, shadowInset: CGFloat = 32.0, shadowIntensity: CGFloat = 0.04, shadowBlur: CGFloat = 40.0) -> UIImage? {
         if ClassicDesign.isEnabled {
+            // Madgram classic design: classic surfaces cast no glass shadow (`ButtonComponent` draws its glass one with this).
             return nil
         }
         let shadowInnerInset: CGFloat = 0.5
@@ -1235,6 +1282,7 @@ public extension GlassBackgroundView {
 
     static func generateLegacyShadowImage(cornerRadii: CornerRadii, shadowInset: CGFloat = 32.0, shadowIntensity: CGFloat = 0.04, shadowBlur: CGFloat = 40.0) -> UIImage? {
         if ClassicDesign.isEnabled {
+            // Madgram classic design: classic surfaces cast no glass shadow.
             return nil
         }
         let shadowInnerInset: CGFloat = 0.5
@@ -1561,6 +1609,8 @@ public extension GlassBackgroundView {
         }
         
         if ClassicDesign.isEnabled {
+            // Madgram classic design: the fill alone, without the glass rim and its inner shading. Every caller outside this
+            // module draws the rim over its own background with this ("chrome" views of buttons, keyboards, camera controls).
             return generateImage(size, rotatedContext: { size, context in
                 context.clear(CGRect(origin: CGPoint(), size: size))
                 context.setFillColor(fillColor.cgColor)
@@ -1731,6 +1781,8 @@ public final class GlassContextExtractableContainer: UIView, ContextExtractableC
     private struct NormalParams {
         let size: CGSize
         let cornerRadius: CGFloat
+        /// The bottom corners' own radius (a capsule whose bottom button is a rounded square), nil: `cornerRadius`.
+        var bottomCornerRadius: CGFloat?
         let isDark: Bool
         let tintColor: GlassBackgroundView.TintColor
         let isInteractive: Bool
@@ -1857,8 +1909,9 @@ public final class GlassContextExtractableContainer: UIView, ContextExtractableC
         self.glassView.frame = self.glassFrameBeforeLending
     }
 
-    public func update(size: CGSize, cornerRadius: CGFloat, isDark: Bool, tintColor: GlassBackgroundView.TintColor, isInteractive: Bool = false, isVisible: Bool = true, transition: ComponentTransition) {
-        let normalParams = NormalParams(size: size, cornerRadius: cornerRadius, isDark: isDark, tintColor: tintColor, isInteractive: isInteractive, isVisible: isVisible)
+    public func update(size: CGSize, cornerRadius: CGFloat, bottomCornerRadius: CGFloat? = nil, isDark: Bool, tintColor: GlassBackgroundView.TintColor, isInteractive: Bool = false, isVisible: Bool = true, transition: ComponentTransition) {
+        var normalParams = NormalParams(size: size, cornerRadius: cornerRadius, isDark: isDark, tintColor: tintColor, isInteractive: isInteractive, isVisible: isVisible)
+        normalParams.bottomCornerRadius = bottomCornerRadius
         self.normalParams = normalParams
         
         if case .normal = self.state {
@@ -1874,6 +1927,30 @@ public final class GlassContextExtractableContainer: UIView, ContextExtractableC
         self.applyState(previousState: previousState, transition: transition, completion: completion)
     }
     
+    private func updateNormalGlass(_ normalParams: NormalParams, transition: ComponentTransition) {
+        if let bottomCornerRadius = normalParams.bottomCornerRadius {
+            self.glassView.update(
+                size: normalParams.size,
+                cornerRadii: GlassBackgroundView.CornerRadii(topLeft: normalParams.cornerRadius, topRight: normalParams.cornerRadius, bottomLeft: bottomCornerRadius, bottomRight: bottomCornerRadius),
+                isDark: normalParams.isDark,
+                tintColor: normalParams.tintColor,
+                isInteractive: normalParams.isInteractive,
+                isVisible: normalParams.isVisible,
+                transition: transition
+            )
+        } else {
+            self.glassView.update(
+                size: normalParams.size,
+                cornerRadius: normalParams.cornerRadius,
+                isDark: normalParams.isDark,
+                tintColor: normalParams.tintColor,
+                isInteractive: normalParams.isInteractive,
+                isVisible: normalParams.isVisible,
+                transition: transition
+            )
+        }
+    }
+
     private func applyState(previousState: State?, transition: Transition, completion: ((Bool) -> Void)?) {
         guard let normalParams = self.normalParams else {
             completion?(true)
@@ -1915,15 +1992,7 @@ public final class GlassContextExtractableContainer: UIView, ContextExtractableC
                 completion?(completed)
             })
             
-            self.glassView.update(
-                size: normalParams.size,
-                cornerRadius: normalParams.cornerRadius,
-                isDark: normalParams.isDark,
-                tintColor: normalParams.tintColor,
-                isInteractive: normalParams.isInteractive,
-                isVisible: normalParams.isVisible,
-                transition: mappedTransition,
-            )
+            self.updateNormalGlass(normalParams, transition: mappedTransition)
         case let .extracted(size, cornerRadius, extractionState):
             switch extractionState {
             case .animatedOut:
@@ -1931,15 +2000,7 @@ public final class GlassContextExtractableContainer: UIView, ContextExtractableC
                     completion?(completed)
                 })
                 
-                self.glassView.update(
-                    size: normalParams.size,
-                    cornerRadius: normalParams.cornerRadius,
-                    isDark: normalParams.isDark,
-                    tintColor: normalParams.tintColor,
-                    isInteractive: normalParams.isInteractive,
-                    isVisible: normalParams.isVisible,
-                    transition: mappedTransition
-                )
+                self.updateNormalGlass(normalParams, transition: mappedTransition)
             case .animatedIn:
                 mappedTransition.setAlpha(view: self.normalContentView, alpha: 0.0, completion: { completed in
                     completion?(completed)
@@ -2088,6 +2149,8 @@ extension GlassBackgroundView {
             addNavigationKeyframes(to: legacyMask, key: "navigationGlass.path", keyPath: "path", values: zip(sizes, cornerRadii).map { GlassBackgroundView.generateRoundedRectPath(size: $0.0, cornerRadii: $0.1) }, timing: timing)
         }
         if let classicView = self.classicView {
+            // The classic material is clipped as the native glass is on iOS 26 and later (its layer's own per-corner
+            // radii) and as the legacy glass is before (a mask).
             if let classicMask = classicView.layer.mask as? CAShapeLayer {
                 addNavigationKeyframes(to: classicMask, key: "navigationGlass.path", keyPath: "path", values: zip(sizes, cornerRadii).map { GlassBackgroundView.generateRoundedRectPath(size: $0.0, cornerRadii: $0.1) }, timing: timing)
             } else {

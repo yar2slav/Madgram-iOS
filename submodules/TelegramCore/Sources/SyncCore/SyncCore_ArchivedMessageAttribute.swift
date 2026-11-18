@@ -1,6 +1,8 @@
 import Foundation
 import Postbox
 
+/// Local metadata that connects a live cloud message (or its deleted local copy)
+/// with immutable snapshots stored in Namespaces.Message.ArchivedVersion.
 public final class ArchivedMessageAttribute: MessageAttribute {
     public let originalMessageId: MessageId
     public let versionIds: [MessageId]
@@ -46,6 +48,7 @@ public final class ArchivedMessageAttribute: MessageAttribute {
     }
 }
 
+/// Timestamp attached to an immutable version snapshot.
 public final class ArchivedMessageVersionAttribute: MessageAttribute {
     public let capturedAt: Int32
 

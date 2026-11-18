@@ -395,6 +395,7 @@ public final class ChatRecentActionsController: TelegramBaseController {
     }
     
     private func updateNavigationBarPresentation() {
+        // Classic (12.0): the bar keeps its flat background and separator over the log, as the chat's does.
         let navigationBarTheme = NavigationBarTheme(rootControllerTheme: self.presentationData.theme, hideBadge: false, edgeEffectColor: ClassicDesign.isEnabled ? self.presentationData.theme.rootController.navigationBar.blurredBackgroundColor : .clear, glassStyle: self.preferredGlassType == .clear ? .clear : .default)
         self.navigationBar?.updatePresentationData(NavigationBarPresentationData(theme: navigationBarTheme, strings: NavigationBarStrings(presentationStrings: self.presentationData.strings)), transition: .immediate)
     }

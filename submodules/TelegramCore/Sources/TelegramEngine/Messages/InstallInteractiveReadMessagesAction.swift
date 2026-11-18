@@ -7,7 +7,7 @@ func _internal_installInteractiveReadMessagesAction(postbox: Postbox, stateManag
     return postbox.installStoreMessageAction(peerId: peerId, { messages, transaction in
         let settings = ghostModeSettings(transaction: transaction)
         let isCloudPeer = peerId.namespace == Namespaces.Peer.CloudUser || peerId.namespace == Namespaces.Peer.CloudGroup || peerId.namespace == Namespaces.Peer.CloudChannel
-        let useGhostReadState = settings.hidesMessageReadReceipts && isCloudPeer
+        let useGhostReadState = settings.hidesMessageReadReceipts(peerId: peerId) && isCloudPeer
         var consumeMessageIds: [MessageId] = []
         var readReactionOrPollVotesIds: [MessageId] = []
         

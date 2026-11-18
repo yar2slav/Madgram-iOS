@@ -449,7 +449,7 @@ public func updatePeersCustom(transaction: Transaction, peers: [Peer], update: (
                 break
         }
         
-        return update(previous, updated)
+        return update(previous, updated).flatMap(LocalPremiumOverride.apply)
     })
 }
 

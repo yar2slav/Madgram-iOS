@@ -43,6 +43,7 @@ public final class ChatListProxyButtonComponent: Component {
                 self.addSubnode(proxyNode)
             }
 
+            // Madgram classic design: 12.0 sized the proxy button to its 30 pt icon.
             let size = CGSize(width: ClassicDesign.isEnabled ? 30.0 : 44.0, height: availableSize.height)
             let proxySize = CGSize(width: 30.0, height: 30.0)
 

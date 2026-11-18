@@ -461,6 +461,87 @@ extension PeerInfoScreenNode {
                     })))
                 }
                 
+                if strongSelf.peerId != strongSelf.context.account.peerId && (strongSelf.peerId.namespace == Namespaces.Peer.CloudUser || strongSelf.peerId.namespace == Namespaces.Peer.CloudGroup || strongSelf.peerId.namespace == Namespaces.Peer.CloudChannel) {
+                    let extras = presentationData.strings.localFeatures.extras
+                    let ghostPeerId = strongSelf.peerId
+                    let ghostContext = strongSelf.context
+                    items.append(.action(ContextMenuActionItem(text: extras.ghostInChat, icon: { theme in
+                        generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Eye"), color: theme.contextMenu.primaryColor)
+                    }, action: { c, _ in
+                        let subItems = ghostContext.engine.messages.ghostModeSettings()
+                        |> take(1)
+                        |> map { settings -> ContextController.Items in
+                            let current = settings.peerOverrides[ghostPeerId.toInt64()]
+                            var subItems: [ContextMenuItem] = []
+                            subItems.append(.action(ContextMenuActionItem(text: presentationData.strings.Common_Back, icon: { theme in
+                                return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Back"), color: theme.contextMenu.primaryColor)
+                            }, iconPosition: .left, action: { c, _ in
+                                c?.popItems()
+                            })))
+                            subItems.append(.separator)
+                            let ghostStrings = presentationData.strings.localFeatures.ghostMode
+                            let options: [(String, Bool?)] = [
+                                ("\(extras.ghostInChatDefault) (\(settings.isEnabled ? ghostStrings.on : ghostStrings.off))", nil),
+                                (extras.ghostInChatOn, true),
+                                (extras.ghostInChatOff, false)
+                            ]
+                            for (title, value) in options {
+                                subItems.append(.action(ContextMenuActionItem(text: title, icon: { theme in
+                                    if current == value {
+                                        return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Check"), color: theme.contextMenu.primaryColor)
+                                    }
+                                    return nil
+                                }, action: { _, f in
+                                    f(.default)
+                                    let _ = ghostContext.engine.messages.updateGhostModeSettingsInteractively({ settings in
+                                        return settings.withPeerOverride(value, peerId: ghostPeerId)
+                                    }).startStandalone()
+                                })))
+                            }
+                            return ContextController.Items(content: .list(subItems))
+                        }
+                        c?.pushItems(items: subItems)
+                    })))
+                }
+                
+                if strongSelf.peerId != strongSelf.context.account.peerId && (strongSelf.peerId.namespace == Namespaces.Peer.CloudUser || strongSelf.peerId.namespace == Namespaces.Peer.CloudGroup || strongSelf.peerId.namespace == Namespaces.Peer.CloudChannel) {
+                    let more = presentationData.strings.localFeatures.more
+                    items.append(.action(ContextMenuActionItem(text: more.localName, icon: { theme in
+                        generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Edit"), color: theme.contextMenu.primaryColor)
+                    }, action: { [weak self] _, f in
+                        f(.dismissWithoutContent)
+                        self?.madOpenLocalName()
+                    })))
+                    let isLocked = MadStores.lockedChats.current.contains(strongSelf.peerId.toInt64())
+                    items.append(.action(ContextMenuActionItem(text: isLocked ? more.unlockChat : more.lockChat, icon: { theme in
+                        generateTintedImage(image: UIImage(bundleImageName: isLocked ? "Chat/Context Menu/EyeLocked" : "Chat/Context Menu/Lock"), color: theme.contextMenu.primaryColor)
+                    }, action: { [weak self] _, f in
+                        f(.dismissWithoutContent)
+                        self?.madToggleChatLock()
+                    })))
+                    if strongSelf.peerId.namespace == Namespaces.Peer.CloudUser {
+                        let isWatched = MadStores.presenceWatched.current.contains(strongSelf.peerId.toInt64())
+                        items.append(.action(ContextMenuActionItem(text: more.notifyPresence, icon: { theme in
+                            if isWatched {
+                                return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Check"), color: theme.contextMenu.primaryColor)
+                            }
+                            return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Unmute"), color: theme.contextMenu.primaryColor)
+                        }, action: { [weak self] _, f in
+                            f(.dismissWithoutContent)
+                            self?.madTogglePresenceWatch()
+                        })))
+                    }
+                }
+                
+                if strongSelf.peerId.namespace == Namespaces.Peer.CloudUser || strongSelf.peerId.namespace == Namespaces.Peer.CloudGroup || strongSelf.peerId.namespace == Namespaces.Peer.CloudChannel {
+                    items.append(.action(ContextMenuActionItem(text: presentationData.strings.localFeatures.extras.exportChat, icon: { theme in
+                        generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Download"), color: theme.contextMenu.primaryColor)
+                    }, action: { [weak self] _, f in
+                        f(.dismissWithoutContent)
+                        self?.openChatExport()
+                    })))
+                }
+                
                 var hasDiscussion = false
                 if case let .channel(channel) = chatPeer {
                     switch channel.info {
@@ -872,6 +953,11 @@ extension PeerInfoScreenNode {
                         })))
                     }
                     
+                    if peerInfoCanReportUser(user, accountPeerId: strongSelf.context.account.peerId) {
+                        // On a secret chat's profile this reports the user: the secret chat itself cannot be reported.
+                        items.append(strongSelf.reportContextMenuItem())
+                    }
+                    
                     let clearPeerHistory = ClearPeerHistory(context: strongSelf.context, peer: EnginePeer(user), chatPeer: chatPeer, cachedData: strongSelf.data?.cachedData)
                     if clearPeerHistory.canClearForMyself != nil || clearPeerHistory.canClearForEveryone != nil {
                         items.append(.action(ContextMenuActionItem(text: strongSelf.presentationData.strings.PeerInfo_ClearMessages, icon: { theme in
@@ -1006,15 +1092,7 @@ extension PeerInfoScreenNode {
                         canReport = false
                     }
                     if canReport {
-                        items.append(.action(ContextMenuActionItem(text: presentationData.strings.ReportPeer_Report, icon: { theme in
-                            generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Report"), color: theme.contextMenu.primaryColor)
-                        }, action: { [weak self] c, f in
-                            self?.openReport(type: .default, contextController: c, backAction: { c in
-                                if let mainItemsImpl = mainItemsImpl {
-                                    c.setItems(mainItemsImpl() |> map { ContextController.Items(content: .list($0)) }, minHeight: nil, animated: true)
-                                }
-                            })
-                        })))
+                        items.append(strongSelf.reportContextMenuItem())
                     }
                     
                     if canSetupAutoremoveTimeout {
@@ -1261,15 +1339,7 @@ extension PeerInfoScreenNode {
                         canReport = false
                     }
                     if canReport {
-                        items.append(.action(ContextMenuActionItem(text: presentationData.strings.ReportPeer_Report, icon: { theme in
-                            generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Report"), color: theme.contextMenu.primaryColor)
-                        }, action: { [weak self] c, f in
-                            self?.openReport(type: .default, contextController: c, backAction: { c in
-                                if let mainItemsImpl = mainItemsImpl {
-                                    c.setItems(mainItemsImpl() |> map { ContextController.Items(content: .list($0)) }, minHeight: nil, animated: true)
-                                }
-                            })
-                        })))
+                        items.append(strongSelf.reportContextMenuItem())
                     }
                     
                     let clearPeerHistory = ClearPeerHistory(context: strongSelf.context, peer: EnginePeer(group), chatPeer: EnginePeer(group), cachedData: strongSelf.data?.cachedData)
@@ -1340,5 +1410,13 @@ extension PeerInfoScreenNode {
         case .addContact:
             self.openAddContact()
         }
+    }
+    
+    private func reportContextMenuItem() -> ContextMenuItem {
+        return .action(ContextMenuActionItem(text: self.presentationData.strings.ReportPeer_Report, icon: { theme in
+            generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Report"), color: theme.contextMenu.primaryColor)
+        }, action: { [weak self] c, _ in
+            self?.openReport(type: .default, contextController: c)
+        }))
     }
 }

@@ -13,6 +13,7 @@ private struct GhostModeReadStateRepairVersion: Codable {
     var value: Int32
 }
 
+/// Per-account controls for locally suppressing presence and read receipts.
 public struct GhostModeSettings: Codable, Equatable {
     public static let defaultSettings = GhostModeSettings(
         isEnabled: false,
@@ -33,6 +34,7 @@ public struct GhostModeSettings: Codable, Equatable {
     public var revealOnInteractions: Bool
     public var goOfflineAutomatically: Bool
     public var keepViewOnceMedia: Bool
+    public var peerOverrides: [Int64: Bool]
 
     public init(
         isEnabled: Bool,
@@ -42,7 +44,8 @@ public struct GhostModeSettings: Codable, Equatable {
         suppressTypingStatus: Bool,
         revealOnInteractions: Bool,
         goOfflineAutomatically: Bool,
-        keepViewOnceMedia: Bool
+        keepViewOnceMedia: Bool,
+        peerOverrides: [Int64: Bool] = [:]
     ) {
         self.isEnabled = isEnabled
         self.suppressMessageReadReceipts = suppressMessageReadReceipts
@@ -52,8 +55,11 @@ public struct GhostModeSettings: Codable, Equatable {
         self.revealOnInteractions = revealOnInteractions
         self.goOfflineAutomatically = goOfflineAutomatically
         self.keepViewOnceMedia = keepViewOnceMedia
+        self.peerOverrides = peerOverrides
     }
 
+    // Decoded explicitly so that settings stored before `keepViewOnceMedia` existed keep
+    // decoding instead of falling back to `defaultSettings` and losing the user's choices.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.isEnabled = try container.decode(Bool.self, forKey: .isEnabled)
@@ -64,6 +70,7 @@ public struct GhostModeSettings: Codable, Equatable {
         self.revealOnInteractions = try container.decode(Bool.self, forKey: .revealOnInteractions)
         self.goOfflineAutomatically = try container.decode(Bool.self, forKey: .goOfflineAutomatically)
         self.keepViewOnceMedia = try container.decodeIfPresent(Bool.self, forKey: .keepViewOnceMedia) ?? false
+        self.peerOverrides = try container.decodeIfPresent([Int64: Bool].self, forKey: .peerOverrides) ?? [:]
     }
 
     public var hidesMessageReadReceipts: Bool {
@@ -82,11 +89,42 @@ public struct GhostModeSettings: Codable, Equatable {
         return self.isEnabled && self.suppressTypingStatus
     }
 
+    public func isEnabled(peerId: PeerId) -> Bool {
+        return self.peerOverrides[peerId.toInt64()] ?? self.isEnabled
+    }
+
+    public func hidesMessageReadReceipts(peerId: PeerId) -> Bool {
+        return self.isEnabled(peerId: peerId) && self.suppressMessageReadReceipts
+    }
+
+    public func hidesStoryReadReceipts(peerId: PeerId) -> Bool {
+        return self.isEnabled(peerId: peerId) && self.suppressStoryReadReceipts
+    }
+
+    public func hidesTypingStatus(peerId: PeerId) -> Bool {
+        return self.isEnabled(peerId: peerId) && self.suppressTypingStatus
+    }
+
+    public var hidesAnyMessageReadReceipts: Bool {
+        return self.suppressMessageReadReceipts && (self.isEnabled || self.peerOverrides.values.contains(true))
+    }
+
+    public func withPeerOverride(_ value: Bool?, peerId: PeerId) -> GhostModeSettings {
+        var result = self
+        result.peerOverrides[peerId.toInt64()] = value
+        return result
+    }
+
+    /// When set, opening view-once media neither consumes it nor starts its removal countdown;
+    /// the user burns it explicitly instead.
     public var keepsViewOnceMedia: Bool {
-        return self.isEnabled && self.keepViewOnceMedia
+        return self.keepViewOnceMedia
     }
 }
 
+/// Decides whether consuming view-once media should be deferred until the user burns it explicitly.
+///
+/// Kept as a free function so the rule can be unit-tested without a Postbox transaction.
 public func ghostModeDefersViewOnceConsumption(
     settings: GhostModeSettings,
     isViewOnce: Bool,
@@ -102,6 +140,8 @@ public func ghostModeDefersViewOnceConsumption(
     return settings.keepsViewOnceMedia
 }
 
+/// View-once media may be captured only while Ghost Mode is actively keeping an incoming,
+/// unconsumed item. Paid media and explicit copy protection always win.
 public func ghostModeAllowsViewOnceCapture(
     settings: GhostModeSettings,
     isViewOnce: Bool,
@@ -148,6 +188,10 @@ func ghostModePreviousReadState(transaction: Transaction, peerId: PeerId, namesp
     }
 }
 
+/// The read state Ghost Mode suppressed, reconstructed from the stored markers.
+///
+/// Kept apart from the Postbox writes so that the decisions — which marker rolls back what, and
+/// which one only the server can answer for — stay unit-testable without a transaction.
 public struct GhostModeResetPlan: Equatable {
     public struct PeerRollback: Equatable {
         public let peerId: PeerId
@@ -186,7 +230,10 @@ public struct GhostModeResetPlan: Equatable {
     public var peerRollbacks: [PeerRollback]
     public var threadRollbacks: [ThreadRollback]
     public var storyRollbacks: [StoryRollback]
+    /// Peers whose marker was written before rollback snapshots existed. Their local state is left
+    /// untouched: only the server knows what was still unread there.
     public var peersNeedingServerState: [PeerId]
+    /// The markers this plan takes responsibility for. Markers it skips must stay in place.
     public var consumedMarkers: [GhostModeReadStateMarker]
 
     public var isEmpty: Bool {
@@ -194,6 +241,10 @@ public struct GhostModeResetPlan: Equatable {
     }
 }
 
+/// Splits Ghost Mode markers into the rollbacks that restore the pre-suppression read state.
+///
+/// `includeMessages` / `includeStories` mirror which protection is being lifted: a marker of a kind
+/// that stays suppressed is neither rolled back nor consumed.
 public func ghostModeResetPlan(
     markers: [GhostModeReadStateMarker],
     includeMessages: Bool,
@@ -252,6 +303,11 @@ public func ghostModeResetPlan(
     )
 }
 
+/// True when the user wrote the newest message in the chat.
+///
+/// The server still counts the earlier incoming messages as unread — Ghost Mode never told it
+/// otherwise — but restoring "unread" on a chat the user has since answered reads as a bug, so the
+/// rollback leaves those chats alone.
 func ghostModeUserWroteLast(transaction: Transaction, peerId: PeerId, namespace: MessageId.Namespace) -> Bool {
     guard let index = transaction.getTopPeerMessageIndex(peerId: peerId, namespace: namespace) else {
         return false
@@ -262,6 +318,8 @@ func ghostModeUserWroteLast(transaction: Transaction, peerId: PeerId, namespace:
     return message.flags.intersection(.IsIncomingMask).isEmpty
 }
 
+/// Applies the rollback and returns the cloud peers whose read state it actually restored — the ones
+/// worth asking the server about.
 @discardableResult
 func ghostModeApplyResetPlan(transaction: Transaction, plan: GhostModeResetPlan) -> Set<PeerId> {
     var rolledBackPeerIds = Set<PeerId>()
@@ -330,13 +388,22 @@ public func updateGhostModeSettingsInteractively(
         transaction.updatePreferencesEntry(key: PreferencesKeys.ghostModeSettings, { _ in
             return PreferencesEntry(updated)
         })
-        let shouldRestoreMessageReadStates = previous.hidesMessageReadReceipts && !updated.hidesMessageReadReceipts
-        let shouldRestoreStoryReadStates = previous.hidesStoryReadReceipts && !updated.hidesStoryReadReceipts
-        if shouldRestoreMessageReadStates || shouldRestoreStoryReadStates {
+        let releasedMarkers = transaction.getAllGhostModeReadStates().filter { marker in
+            if marker.namespace == ghostModeStoryNamespace {
+                return previous.hidesStoryReadReceipts(peerId: marker.peerId) && !updated.hidesStoryReadReceipts(peerId: marker.peerId)
+            } else {
+                return previous.hidesMessageReadReceipts(peerId: marker.peerId) && !updated.hidesMessageReadReceipts(peerId: marker.peerId)
+            }
+        }
+        if !releasedMarkers.isEmpty {
+            // Markers created by older builds carry no rollback snapshot; they land in
+            // `peersNeedingServerState` and keep their local state. Asking for a read state
+            // validation instead would spin forever — `validatePeerReadState` refuses to apply a
+            // server state that sits behind the local one, which is exactly the Ghost Mode case.
             let plan = ghostModeResetPlan(
-                markers: transaction.getAllGhostModeReadStates(),
-                includeMessages: shouldRestoreMessageReadStates,
-                includeStories: shouldRestoreStoryReadStates
+                markers: releasedMarkers,
+                includeMessages: true,
+                includeStories: true
             )
             ghostModeApplyResetPlan(transaction: transaction, plan: plan)
         }

@@ -1,4 +1,5 @@
 import Foundation
+import MadLockUI
 import UIKit
 import Display
 import SwiftSignalKit
@@ -25,6 +26,11 @@ public func buyStarGiftImpl(
     completion: @escaping () -> Void
 ) {
     let presentationData = context.sharedContext.currentPresentationData.with { $0 }
+    if MadLock.gate(.spendGifts, strings: presentationData.strings, retry: {
+        buyStarGiftImpl(context: context, recipientPeerId: recipientPeerId, uniqueGift: uniqueGift, showAttributes: showAttributes, acceptedPrice: acceptedPrice, skipConfirmation: skipConfirmation, message: message, starsTopUpOptions: starsTopUpOptions, buyGift: buyGift, getController: getController, updateProgress: updateProgress, updateIsBalanceVisible: updateIsBalanceVisible, completion: completion)
+    }) {
+        return
+    }
                     
     let action: (CurrencyAmount.Currency, GiftMessageScreen.Result, @escaping () -> Void) -> Void = { currency, message, beforeCompletion in
         guard let resellAmount = uniqueGift.resellAmounts?.first(where: { $0.currency == currency }) else {

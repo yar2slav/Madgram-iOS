@@ -15,12 +15,19 @@ private func messageIsViewOnce(_ message: Message) -> Bool {
     return false
 }
 
+/// Pass `force: true` from an explicit "burn now" action to bypass the Ghost Mode deferral and
+/// consume the message the way an ordinary view would.
 func _internal_markMessageContentAsConsumedInteractively(postbox: Postbox, messageId: MessageId, force: Bool = false) -> Signal<Void, NoError> {
     return postbox.transaction { transaction -> Void in
         let settings = ghostModeSettings(transaction: transaction)
         let isSecretChat = messageId.peerId.namespace == Namespaces.Peer.SecretChat
-        let suppressRemoteConsumption = !force && settings.hidesMessageReadReceipts && !isSecretChat
+        // Burning is an explicit request to release the media to the sender, so it must also bypass
+        // the Ghost Mode read-receipt suppression — otherwise the server is never told and the
+        // sender keeps seeing the media as unopened.
+        let suppressRemoteConsumption = !force && settings.hidesMessageReadReceipts(peerId: messageId.peerId) && !isSecretChat
         if let message = transaction.getMessage(messageId), message.flags.contains(.Incoming) {
+            // While deferred, the message keeps its unconsumed attribute and never starts its
+            // removal countdown, so the media stays viewable until the user burns it.
             let deferViewOnceConsumption = ghostModeDefersViewOnceConsumption(
                 settings: settings,
                 isViewOnce: messageIsViewOnce(message),
@@ -153,7 +160,7 @@ func _internal_markMessageContentAsConsumedInteractively(postbox: Postbox, messa
 func _internal_markReactionsOrPollVotesAsSeenInteractively(postbox: Postbox, messageId: MessageId) -> Signal<Void, NoError> {
     return postbox.transaction { transaction -> Void in
         let settings = ghostModeSettings(transaction: transaction)
-        let suppressRemoteConsumption = settings.hidesMessageReadReceipts && messageId.peerId.namespace != Namespaces.Peer.SecretChat
+        let suppressRemoteConsumption = settings.hidesMessageReadReceipts(peerId: messageId.peerId) && messageId.peerId.namespace != Namespaces.Peer.SecretChat
         if let message = transaction.getMessage(messageId), (message.tags.contains(.unseenReaction) || message.tags.contains(.unseenPollVote)) {
             var updateMessage = false
             var updatedAttributes = message.attributes

@@ -39,6 +39,8 @@ public final class HeaderPanelContainerComponent: Component {
     public let preferClearGlass: Bool
     public let tabs: AnyComponent<Empty>?
     public let panels: [Panel]
+    /// A stack shown above the input panel (the chat's bottom topics panel) rather than under the navigation bar.
+    /// Classic design flattens only the header stack: a footer keeps its floating platter.
     public let isFooter: Bool
     
     public init(
@@ -95,6 +97,8 @@ public final class HeaderPanelContainerComponent: Component {
         private var tabsView: ComponentView<Empty>?
         private var panelViews: [AnyHashable: PanelItemView] = [:]
         
+        /// Classic (12.0): a stack without tabs (the chat's title accessory panels) is a full-width flat strip in the
+        /// navigation bar's colours, with a hairline under it, instead of a floating glass platter.
         private var classicBackgroundNode: NavigationBackgroundNode?
         private var classicSeparatorLayer: SimpleLayer?
         
@@ -137,6 +141,9 @@ public final class HeaderPanelContainerComponent: Component {
             self.state = state
             
             let isClassicFlat = ClassicDesign.isEnabled && component.tabs == nil && !component.isFooter
+            // Classic (12.0) with tabs (the chat list's folder tabs): no platter or background of its own, full width.
+            // `ChatListNavigationBar` draws the flat bar and its hairline behind it, and `HorizontalTabsComponent` its own
+            // selection underline.
             let isClassicBare = ClassicDesign.isEnabled && component.tabs != nil && !component.isFooter
             let sideInset: CGFloat = (isClassicFlat || isClassicBare) ? 0.0 : 16.0
             
@@ -332,6 +339,7 @@ public final class HeaderPanelContainerComponent: Component {
             backgroundNode.update(size: backgroundFrame.size, transition: transition.containedViewLayoutTransition)
             
             separatorLayer.backgroundColor = navigationBarTheme.separatorColor.cgColor
+            // Under the strip, as 12.0's bar drew its separator under the accessory panels it extended over.
             transition.setFrame(layer: separatorLayer, frame: CGRect(origin: CGPoint(x: 0.0, y: size.height), size: CGSize(width: size.width, height: UIScreenPixel)))
             transition.setAlpha(layer: separatorLayer, alpha: size.height > 0.0 ? 1.0 : 0.0)
             

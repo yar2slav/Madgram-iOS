@@ -1,5 +1,4 @@
 import Foundation
-import LottieSettings
 import UIKit
 import Display
 import AsyncDisplayKit
@@ -318,6 +317,7 @@ public final class ChatTextInputMediaRecordingButton: TGModernConversationInputM
     
     /// Whether the server has switched the liquid glass blob off, bringing back the previous one.
     private var isGlassRecordingBlobDisabled: Bool {
+        // Madgram classic design: 12.0's recording blob, the plain accent `VoiceBlobView`, instead of the liquid glass one.
         if ClassicDesign.isEnabled {
             return true
         }
@@ -460,8 +460,7 @@ public final class ChatTextInputMediaRecordingButton: TGModernConversationInputM
             transition: .immediate,
             component: AnyComponent(LottieComponent(
                 content: LottieComponent.AppBundleContent(name: animationName),
-                color: animationTintColor,
-                lottieSettings: self.context.lottieRenderingSettings
+                color: animationTintColor
             )),
             environment: {},
             containerSize: animationFrame.size

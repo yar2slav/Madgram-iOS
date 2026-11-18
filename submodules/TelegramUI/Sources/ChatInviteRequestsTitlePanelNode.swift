@@ -107,6 +107,7 @@ final class ChatInviteRequestsTitlePanelNode: ChatTitleAccessoryPanelNode {
             self.theme = interfaceState.theme
             
             if ClassicDesign.isEnabled {
+                // Classic (12.0): the encircled close icon.
                 self.closeButton.setImage(PresentationResourcesChat.chatInputPanelEncircledCloseIconImage(interfaceState.theme), for: [])
             } else {
             self.closeButton.setImage(generateImage(CGSize(width: 12.0, height: 12.0), contextGenerator: { size, context in

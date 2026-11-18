@@ -1,5 +1,4 @@
 import Foundation
-import LottieSettings
 import UIKit
 import AsyncDisplayKit
 import Display
@@ -216,6 +215,7 @@ public final class MediaNavigationAccessoryHeaderNode: ASDisplayNode, ASScrollVi
     private weak var tooltipController: TooltipScreen?
     private let dismissedPromise = ValuePromise<Bool>(false)
     
+    /// The play/pause glyph and the progress line. Classic (12.0) drew both in the navigation bar's accent.
     private static func controlAccentColor(_ theme: PresentationTheme) -> UIColor {
         return ClassicDesign.isEnabled ? theme.rootController.navigationBar.accentTextColor : theme.chat.inputPanel.panelControlColor
     }
@@ -246,6 +246,7 @@ public final class MediaNavigationAccessoryHeaderNode: ASDisplayNode, ASScrollVi
         self.closeButton = HighlightableButtonNode()
         self.closeButton.accessibilityLabel = presentationData.strings.VoiceOver_Media_PlaybackStop
         if ClassicDesign.isEnabled {
+            // Classic (12.0): the bar's own close glyph, in the navigation bar's control colour.
             self.closeButton.setImage(PresentationResourcesRootController.navigationPlayerCloseButton(presentationData.theme), for: [])
         } else {
             self.closeButton.setImage(generateImage(CGSize(width: 12.0, height: 12.0), contextGenerator: { size, context in
@@ -275,7 +276,7 @@ public final class MediaNavigationAccessoryHeaderNode: ASDisplayNode, ASScrollVi
         self.actionButton.hitTestSlop = UIEdgeInsets(top: -8.0, left: -8.0, bottom: -8.0, right: -8.0)
         self.actionButton.displaysAsynchronously = false
         
-        self.playPauseIconNode = PlayPauseIconNode(lottieSettings: context.lottieRenderingSettings)
+        self.playPauseIconNode = PlayPauseIconNode()
         self.playPauseIconNode.customColor = MediaNavigationAccessoryHeaderNode.controlAccentColor(self.theme)
         
         self.scrubbingNode = MediaPlayerScrubbingNode(content: .standard(lineHeight: 2.0, lineCap: .square, scrubberHandle: .none, backgroundColor: .clear, foregroundColor: MediaNavigationAccessoryHeaderNode.controlAccentColor(self.theme), bufferingColor: MediaNavigationAccessoryHeaderNode.controlAccentColor(self.theme).withAlphaComponent(0.5), chapters: []))
@@ -378,6 +379,7 @@ public final class MediaNavigationAccessoryHeaderNode: ASDisplayNode, ASScrollVi
         self.rightMaskNode.image = maskImage
         
         if ClassicDesign.isEnabled {
+            // Classic (12.0): the bar's own close glyph, in the navigation bar's control colour.
             self.closeButton.setImage(PresentationResourcesRootController.navigationPlayerCloseButton(presentationData.theme), for: [])
         } else {
             self.closeButton.setImage(generateImage(CGSize(width: 12.0, height: 12.0), contextGenerator: { size, context in
@@ -630,8 +632,8 @@ private final class PlayPauseIconNode: ManagedAnimationNode {
     private let duration: Double = 0.35
     private var iconState: PlayPauseIconNodeState = .pause
     
-    init(lottieSettings: LottieRenderingSettings) {
-        super.init(size: CGSize(width: 28.0, height: 28.0), lottieSettings: lottieSettings)
+    init() {
+        super.init(size: CGSize(width: 28.0, height: 28.0))
         
         self.trackTo(item: ManagedAnimationItem(source: .local("anim_playpause"), frames: .range(startFrame: 41, endFrame: 41), duration: 0.01))
     }

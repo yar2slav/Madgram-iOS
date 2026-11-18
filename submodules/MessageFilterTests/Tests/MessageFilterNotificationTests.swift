@@ -65,6 +65,7 @@ final class MessageFilterNotificationTests: XCTestCase {
     }
 
     func testAnyHiddenAuthorIdHidesTheMessage() {
+        // A message in Replies is attributed to its forwarded author as well as its own.
         let settings = MessageFilterSettings(
             hideBlockedUsersMessages: false,
             shadowBannedPeerIds: [self.hiddenPeer],

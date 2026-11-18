@@ -866,6 +866,8 @@ public final class ChatTextInputPanelComponent: Component {
                         
                     }
                 )
+                // Madgram classic design: hosted outside a chat (stories, live streams, the camera), the panel keeps the
+                // capsules it is drawn with there; only a chat's panel sits in 12.0's bar.
                 panelNode.isClassicBarStyle = false
                 self.panelNode = panelNode
                 self.addSubview(panelNode.view)

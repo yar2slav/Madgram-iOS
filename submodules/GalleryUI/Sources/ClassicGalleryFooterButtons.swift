@@ -4,6 +4,10 @@ import Display
 import ComponentFlow
 import AppBundle
 
+/// Madgram: the media viewer's footer buttons as Telegram 12.0 drew them while `ClassicDesign.isEnabled` — plain
+/// white 44pt icons on the footer's flat dark bar, with no glass capsule around them: the forward button at the left
+/// edge, delete at the right edge and every other button (edit, picture in picture, playback settings, …) packed
+/// leftwards from delete, where 12.0 put its edit button.
 final class ClassicGalleryFooterButtonsView: UIView {
     enum Content: Equatable {
         case icon(String)
@@ -100,10 +104,13 @@ final class ClassicGalleryFooterButtonsView: UIView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    /// The button of an item, for presenting a menu from it.
     func itemView(id: AnyHashable) -> UIView? {
         return self.buttons[id]
     }
 
+    /// Lays the buttons out in a row of `size`, 44pt each: `left` at the left edge, `right` at the right edge and
+    /// `packed` leftwards from the right edge (after `right`, when there is one).
     func update(left: [Item], packed: [Item], right: [Item], size: CGSize, transition: ContainedViewLayoutTransition) {
         let buttonSize = CGSize(width: 44.0, height: 44.0)
         let spacing: CGFloat = 6.0

@@ -325,6 +325,7 @@ public final class AlertMultilineInputFieldComponent: Component {
             component.externalState.value = self.textFieldExternalState.text
             component.externalState.valuePromise.set(component.externalState.value)
             
+            // Madgram classic design: 12.0's alert text field, a 6pt rounded rect with a 1pt border.
             let isClassic = ClassicDesign.isEnabled
             let backgroundPadding: CGFloat = isClassic ? 8.0 : 14.0
             var height = max(50.0, floor(textFieldSize.height + verticalInset * 2.0))

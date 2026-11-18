@@ -13,6 +13,7 @@ swift_library(
         "//submodules/Camera:CameraBundle",
     ],
     deps = [
+        "//submodules/MadFlags",
         "//submodules/Camera",
         "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
         "//submodules/Display:Display",
@@ -20,7 +21,6 @@ swift_library(
         "//submodules/TelegramCore:TelegramCore",
         "//submodules/Utils/DeviceModel",
         "//submodules/LottieBinding:LottieBinding",
-        "//submodules/LottieSettings:LottieSettings",
         "//submodules/AppBundle",
         "//submodules/GZip",
     ],

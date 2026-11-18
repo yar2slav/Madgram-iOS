@@ -1,5 +1,4 @@
 import Foundation
-import LottieSettings
 import UIKit
 import AsyncDisplayKit
 import SwiftSignalKit
@@ -92,6 +91,7 @@ private let badgeFont = Font.regular(13.0)
 private final class TabBarItemNode: ASDisplayNode {
     let extractedContainerNode: ContextExtractedContentContainingNode
     let containerNode: ContextControllerSourceNode
+    /// The reference the tabs' context menus open from: `tabBarItemContextAction` takes a view.
     let contextSourceView: ContextExtractedContentContainingView
     let imageNode: ASImageNode
     let animationContainerNode: ASDisplayNode
@@ -117,10 +117,8 @@ private final class TabBarItemNode: ASDisplayNode {
     
     var pointerInteraction: PointerInteraction?
     
-    private let lottieSettings: LottieRenderingSettings
 
-    init(lottieSettings: LottieRenderingSettings) {
-        self.lottieSettings = lottieSettings
+    override init() {
         self.extractedContainerNode = ContextExtractedContentContainingNode()
         self.containerNode = ContextControllerSourceNode()
         
@@ -140,7 +138,7 @@ private final class TabBarItemNode: ASDisplayNode {
         
         self.animationContainerNode = ASDisplayNode()
         
-        self.animationNode = DefaultAnimatedStickerNodeImpl(lottieSettings: lottieSettings)
+        self.animationNode = DefaultAnimatedStickerNodeImpl()
         self.animationNode.autoplay = true
         self.animationNode.automaticallyLoadLastFrame = true
         
@@ -367,10 +365,8 @@ class TabBarNode: ASDisplayNode, ASGestureRecognizerDelegate {
     
     private var tapRecognizer: TapLongTapOrDoubleTapGestureRecognizer?
     
-    private let lottieSettings: LottieRenderingSettings
 
-    init(theme: PresentationTheme, itemSelected: @escaping (Int, Bool, [ASDisplayNode]) -> Void, contextAction: @escaping (Int, ContextExtractedContentContainingView, ContextGesture) -> Void, swipeAction: @escaping (Int, TabBarItemSwipeDirection) -> Void, lottieSettings: LottieRenderingSettings) {
-        self.lottieSettings = lottieSettings
+    init(theme: PresentationTheme, itemSelected: @escaping (Int, Bool, [ASDisplayNode]) -> Void, contextAction: @escaping (Int, ContextExtractedContentContainingView, ContextGesture) -> Void, swipeAction: @escaping (Int, TabBarItemSwipeDirection) -> Void) {
         self.itemSelected = itemSelected
         self.contextAction = contextAction
         self.swipeAction = swipeAction
@@ -473,6 +469,8 @@ class TabBarNode: ASDisplayNode, ASGestureRecognizerDelegate {
         return container.imageNode.view
     }
     
+    /// Madgram: Interface ▸ "Show tab labels". Without labels the icons are centred, as a theme
+    /// with a clear tab text colour draws them.
     var showsLabels: Bool = true {
         didSet {
             if self.showsLabels != oldValue {
@@ -500,7 +498,7 @@ class TabBarNode: ASDisplayNode, ASGestureRecognizerDelegate {
         var tabBarNodeContainers: [TabBarNodeContainer] = []
         for i in 0 ..< self.tabBarItems.count {
             let item = self.tabBarItems[i]
-            let node = TabBarItemNode(lottieSettings: self.lottieSettings)
+            let node = TabBarItemNode()
             let container = TabBarNodeContainer(item: item, imageNode: node, updateBadge: { [weak self] value in
                 self?.updateNodeBadge(i, value: value)
             }, updateTitle: { [weak self] _, _ in
@@ -779,6 +777,7 @@ class TabBarNode: ASDisplayNode, ASGestureRecognizerDelegate {
                     ringImageFrame = CGRect(origin: CGPoint(x: UIScreenPixel, y: 5.0 + UIScreenPixel), size: CGSize(width: 23.0, height: 23.0))
                     imageFrame = ringImageFrame.insetBy(dx: -1.0 + UIScreenPixel, dy: -1.0 + UIScreenPixel)
                 } else {
+                    // A centred icon (no labels) sits lower than a labelled one; the animation and the ring follow it.
                     var centeredOffset: CGFloat = 0.0
                     if self.centered, let iconSize = self.tabBarItems[i].item.image?.size {
                         centeredOffset = max(0.0, floor((nodeSize.height - iconSize.height) / 2.0))

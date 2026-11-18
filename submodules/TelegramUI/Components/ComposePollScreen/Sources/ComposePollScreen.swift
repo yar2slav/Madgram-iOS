@@ -310,6 +310,7 @@ final class ComposePollScreenComponent: Component {
             self.addSubview(self.bottomEdgeEffectView)
 
             if ClassicDesign.isEnabled {
+                // Madgram classic design: 12.0's opaque bar and flat sheet had no blurred edge effects.
                 self.topEdgeEffectView.isHidden = true
                 self.bottomEdgeEffectView.isHidden = true
             }
@@ -2895,6 +2896,8 @@ final class ComposePollScreenComponent: Component {
             } else {
                 cancelButtonFrame = CGRect(origin: CGPoint(x: environment.safeInsets.left + 16.0, y: 16.0), size: cancelButtonSize)
             }
+            // Madgram classic design: the screen's own glass Close, Send and title are replaced by 12.0's navigation-bar
+            // Cancel, Create and title (`ComposePollScreen.init`), so they are not added to the bar.
             if let cancelButtonView = self.cancelButton.view, !ClassicDesign.isEnabled {
                 var cancelButtonTransition = transition
                 if sideColumnButtonFrame != nil, let navigationBarView = environment.controller()?.navigationBar?.view, let screenView = navigationBarView.superview {
@@ -2918,6 +2921,7 @@ final class ComposePollScreenComponent: Component {
                 isValid = true
             }
             if ClassicDesign.isEnabled, let controller = environment.controller() as? ComposePollScreen, let sendButtonItem = controller.sendButtonItem {
+                // Madgram classic design: as in 12.0, the navigation-bar Create is enabled only once the poll is complete.
                 if sendButtonItem.isEnabled != isValid {
                     sendButtonItem.isEnabled = isValid
                 }
@@ -3129,6 +3133,7 @@ public class ComposePollScreen: ViewControllerComponentContainer, AttachmentCont
             completion: completion
         ), navigationBarAppearance: ClassicDesign.isEnabled ? .default : .transparent, theme: .default)
         
+        // Madgram classic design: 12.0's opaque bar with plain Cancel and Create buttons (the non-glass branches below).
         self._hasGlassStyle = !ClassicDesign.isEnabled
         
         let presentationData = context.sharedContext.currentPresentationData.with { $0 }

@@ -162,6 +162,7 @@ final class ChatPremiumRequiredInputPanelNode: ChatInputPanelNode {
             size: buttonSize
         )
         transition.setFrame(view: self.backgroundView, frame: backgroundFrame)
+        // Madgram classic design: 12.0 set the notice in the bar itself, with no capsule of its own.
         self.backgroundView.update(size: backgroundFrame.size, cornerRadius: buttonHeight * 0.5, isDark: params.interfaceState.theme.overallDarkAppearance, tintColor: .init(kind: .panel), isInteractive: true, isVisible: !ClassicDesign.isEnabled, transition: transition)
         
         if let buttonView = self.button.view {

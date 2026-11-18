@@ -4,6 +4,9 @@ import SwiftSignalKit
 import TelegramCore
 import AccountContext
 
+/// Read-only chat contents backing the "Edit History" screen: the archived snapshots of a single
+/// message, rendered as regular bubbles. The snapshots are real Postbox messages in
+/// Namespaces.Message.ArchivedVersion, so they only need to be wrapped into a history view.
 final class MessageVersionsChatContents: ChatCustomContentsProtocol {
     let kind: ChatCustomContentsKind
 
@@ -18,6 +21,11 @@ final class MessageVersionsChatContents: ChatCustomContentsProtocol {
         self.kind = .messageVersionHistory(originalMessageId: originalMessageId, versionCount: versions.count)
     }
 
+    /// Snapshots inherit the timestamp of the message they were taken from, so every version shares
+    /// the same MessageIndex timestamp and the list order would be decided by namespace instead of
+    /// chronology. Re-stamp each entry with the moment it stopped (or started) being the current
+    /// version — which is also the timestamp worth showing in the bubble — and keep it strictly
+    /// increasing so the current version always ends up last.
     private static func displayMessages(_ versions: [EngineMessage]) -> [EngineMessage] {
         var result: [EngineMessage] = []
         var previousTimestamp: Int32?

@@ -242,6 +242,9 @@ public final class ChatListNavigationBar: Component {
 
     public final class View: UIView {
         private let edgeEffectView: EdgeEffectView
+        /// Madgram classic design (`ClassicDesign.isEnabled`): 12.0's flat bar behind the header instead of the edge
+        /// effect: a blurred fill of the theme's `blurredBackgroundColor` with a hairline at the visible bottom
+        /// (`ChatListNavigationBar` at release-12.0).
         private let classicBackgroundView: BlurredBackgroundView?
         private let classicSeparatorLayer: SimpleLayer?
         private var classicBackgroundTheme: PresentationTheme?
@@ -255,6 +258,8 @@ public final class ChatListNavigationBar: Component {
         public let headerContent = ComponentView<Empty>()
         
         public private(set) var searchContentNode: NavigationBarSearchContentNode?
+        /// A screen is expanding out of this header: see `updateExpansionContentStaysInScreen`.
+        fileprivate var expansionContentStaysInScreen = false
         
         private var component: ChatListNavigationBar?
         private weak var state: EmptyComponentState?
@@ -317,6 +322,8 @@ public final class ChatListNavigationBar: Component {
             self.edgeEffectView = EdgeEffectView()
             if ClassicDesign.isEnabled {
                 self.classicBackgroundView = BlurredBackgroundView(color: .clear, enableBlur: true)
+                // The default anchor: `ComponentTransition.setFrame(layer:)` animates the position between frame
+                // midpoints, which a zero anchor would offset by half the width while animating.
                 let separatorLayer = SimpleLayer()
                 self.classicSeparatorLayer = separatorLayer
             } else {
@@ -555,11 +562,15 @@ public final class ChatListNavigationBar: Component {
                 var searchSize = CGSize(width: currentLayout.size.width, height: navigationBarSearchContentHeight)
                 var searchFrame = CGRect(origin: CGPoint(x: 0.0, y: visibleSize.height - searchSize.height - self.bottomContentsContainer.bounds.height - 2.0), size: searchSize)
                 if ClassicDesign.isEnabled {
+                    // 12.0: the field is inset 6 pt on each side and sits right above the folder tabs and panels.
                     searchSize.width = currentLayout.size.width - 6.0 * 2.0
                     searchFrame = CGRect(origin: CGPoint(x: 6.0, y: visibleSize.height - searchSize.height - self.bottomContentsContainer.bounds.height), size: searchSize)
                 }
                 if let activeSearch = component.activeSearch, !activeSearch.isExternal {
                     if ClassicDesign.isEnabled {
+                        // The active (non-glass) search bar is laid out in this node's coordinates from the top of the
+                        // screen, as 12.0 laid it out in the bar's (it was the bar's own subnode then). A `.navigation`
+                        // mode bar (54 pt, the row alone: Contacts) starts below the status bar instead.
                         var activeOriginY: CGFloat = 0.0
                         if let activeBarHeight = searchContentNode.classicActiveSearchBarHeight, activeBarHeight < 60.0 {
                             activeOriginY = component.statusBarHeight
@@ -626,6 +637,7 @@ public final class ChatListNavigationBar: Component {
             self.edgeEffectView.update(content: nil, blur: true, alpha: ChatListNavigationBar.View.edgeEffectTintAlpha, rect: edgeEffectFrame, edge: .top, edgeSize: min(ChatListNavigationBar.View.edgeEffectEdgeLength, edgeEffectHeight), transition: transition)
             
             if let classicBackgroundView = self.classicBackgroundView, let classicSeparatorLayer = self.classicSeparatorLayer {
+                // 12.0: a tall fill whose bottom edge follows the visible height, and the hairline right below it.
                 let backgroundFrame = CGRect(origin: CGPoint(x: 0.0, y: visibleSize.height - 1000.0), size: CGSize(width: visibleSize.width, height: 1000.0))
                 transition.setFrame(view: classicBackgroundView, frame: backgroundFrame)
                 classicBackgroundView.update(size: backgroundFrame.size, transition: transition.containedViewLayoutTransition)
@@ -719,6 +731,7 @@ public final class ChatListNavigationBar: Component {
             if component.activeSearch != nil {
                 headerContentY = -headerContentSize.height
             } else if ClassicDesign.isEnabled {
+                // 12.0's flat bar: 5 pt below the status bar, at the top without one.
                 headerContentY = component.statusBarHeight < 1.0 ? 0.0 : component.statusBarHeight + 5.0
             } else {
                 // Also without a status bar (iPhone landscape), matching the regular navigation bar's
@@ -727,6 +740,7 @@ public final class ChatListNavigationBar: Component {
             }
             let headerContentFrame = CGRect(origin: CGPoint(x: 0.0, y: headerContentY), size: headerContentSize)
             if let headerContentView = self.headerContent.view {
+                // The classic design's row has no glass to merge.
                 let hasOwnGlassContainer = component.hasOwnGlassContainer && !ClassicDesign.isEnabled
                 if hasOwnGlassContainer != (self.headerBackgroundContainer is GlassBackgroundContainerView) {
                     let previousContainer = self.headerBackgroundContainer
@@ -759,6 +773,8 @@ public final class ChatListNavigationBar: Component {
                 }
                 transition.setFrameWithAdditivePosition(view: headerContentView, frame: CGRect(origin: CGPoint(), size: headerContentFrame.size))
                 
+                // While searching the header is faded out and scrolled away; VoiceOver must not reach it there.
+                headerContentView.accessibilityElementsHidden = component.activeSearch != nil
                 if (component.activeSearch != nil) != (headerContentView.alpha == 0.0) {
                     headerContentView.alpha = component.activeSearch != nil ? 0.0 : 1.0
                     
@@ -996,6 +1012,8 @@ public final class ChatListNavigationBar: Component {
             
             var contentHeight = component.statusBarHeight
             if ClassicDesign.isEnabled {
+                // 12.0's flat bar: the 44 pt row (kept while searching, the search bar takes its place), then the search
+                // field.
                 if component.statusBarHeight >= 1.0 {
                     contentHeight += 3.0
                 }
@@ -1188,7 +1206,23 @@ extension ChatListNavigationBar.View: NavigationBarComponentTransitionSource {
     }
 
     private func applyEdgeEffectVisibility() {
-        self.edgeEffectBackgroundView.alpha = self.transitionRole == nil || self.keepsOwnBackdrop ? 1.0 : 0.0
+        self.edgeEffectBackgroundView.alpha = self.transitionRole == nil || self.keepsOwnBackdrop || self.expansionContentStaysInScreen ? 1.0 : 0.0
+    }
+
+    /// A screen expands out of this header (or back into it): nothing slides then, and the lifted content stays above that
+    /// screen. What the expansion doesn't take (the search field, the edge effect) stays out of the lift, here in this
+    /// header's own screen, where the expanding screen covers and uncovers it as it does the rest.
+    public func updateExpansionContentStaysInScreen(_ staysInScreen: Bool) {
+        guard self.expansionContentStaysInScreen != staysInScreen else {
+            return
+        }
+        self.expansionContentStaysInScreen = staysInScreen
+        let host: UIView = staysInScreen ? self : self.contentView
+        host.insertSubview(self.edgeEffectView, at: 0)
+        if let searchContentNode = self.searchContentNode {
+            host.insertSubview(searchContentNode.view, aboveSubview: self.edgeEffectView)
+        }
+        self.applyEdgeEffectVisibility()
     }
 
     public func holdGlass(_ held: Bool, interrupted: (() -> Void)?) -> Bool {
@@ -1210,6 +1244,7 @@ extension ChatListNavigationBar.View: NavigationBarComponentTransitionSource {
 
     public var componentTransitionState: NavigationBarComponentTransitionState? {
         if ClassicDesign.isEnabled {
+            // The classic header has no glass for a transition to carry: it slides with its screen, as 12.0's did.
             return nil
         }
         // Everything from the layout the header shows (a lifted header holds its layout while its component may move

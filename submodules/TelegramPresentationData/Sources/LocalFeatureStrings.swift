@@ -208,7 +208,13 @@ public struct InterfaceTuningFeatureStrings {
     public let storyConfirmationAction: String
 }
 
+public struct LocalNotificationFeatureStrings {
+    public let title: String
+    public let info: String
+}
+
 public struct LocalFeatureStrings {
+    public let localNotifications: LocalNotificationFeatureStrings
     public let ghostMode: GhostModeFeatureStrings
     public let localMessageArchive: LocalMessageArchiveFeatureStrings
     public let interfaceTuning: InterfaceTuningFeatureStrings
@@ -217,6 +223,8 @@ public struct LocalFeatureStrings {
     public let messageFilter: MessageFilterFeatureStrings
     public let messageShot: MessageShotFeatureStrings
     public let deleteOwnMessages: DeleteOwnMessagesFeatureStrings
+    public let extras: MadgramExtraFeatureStrings
+    public let more: MadgramMoreFeatureStrings
 
     public init(strings: PresentationStrings) {
         let languageCode = strings.baseLanguageCode
@@ -224,18 +232,24 @@ public struct LocalFeatureStrings {
             .split(whereSeparator: { $0 == "-" || $0 == "_" })
             .first
             .map(String.init) ?? "en"
+        self.extras = MadgramExtraFeatureStrings(languageCode: languageCode)
+        self.more = MadgramMoreFeatureStrings(languageCode: languageCode)
 
         switch languageCode {
         case "ru":
+            self.localNotifications = LocalNotificationFeatureStrings(
+                title: "Локальные уведомления",
+                info: "Показывает уведомления о новых сообщениях, пока приложение свёрнуто. Если закрыть приложение или iOS выгрузит его из памяти, уведомления перестанут приходить."
+            )
             self.ghostMode = GhostModeFeatureStrings(
                 title: "Режим призрака",
                 on: "Вкл.",
                 off: "Выкл.",
-                masterInfo: "Читает облачные сообщения и истории локально, скрывая прочтение, статус «В сети» и набор текста. Секретные чаты не изменяются.",
+                masterInfo: "Читайте сообщения и истории незаметно: собеседники не увидят прочтений, статуса «В сети» и набора текста. Секретные чаты работают как обычно.",
                 suppressMessageReadReceipts: "Не отмечать сообщения прочитанными",
-                suppressMessageReadReceiptsInfo: "Сообщения читаются только на этом iPhone и остаются непрочитанными на сервере до ручного подтверждения или отправки.",
+                suppressMessageReadReceiptsInfo: "Для собеседника сообщения остаются непрочитанными, пока вы не отметите их прочитанными или не ответите.",
                 suppressStoryReadReceipts: "Не отмечать истории просмотренными",
-                suppressStoryReadReceiptsInfo: "Просмотр истории остаётся локальным. Ответ или реакция подтверждает просмотр этой истории.",
+                suppressStoryReadReceiptsInfo: "Автор не узнает, что вы посмотрели историю. Ответ или реакция выдадут просмотр.",
                 suppressOnlineStatus: "Не показывать «В сети»",
                 suppressOnlineStatusInfo: "Скрывает обычный статус «В сети». Отправка и некоторые действия могут временно раскрыть его.",
                 suppressTypingStatus: "Не показывать набор текста",
@@ -247,11 +261,11 @@ public struct LocalFeatureStrings {
                 markViewedMessagesAsRead: "Отметить просмотренные сообщения прочитанными",
                 readReceiptFailed: "Не удалось отправить отметку о прочтении.",
                 keepViewOnceMedia: "Не сжигать одноразовые медиа",
-                keepViewOnceMediaInfo: "Одноразовые фото, видео, голосовые и кружки можно пересматривать сколько угодно раз, включая секретные чаты. Отправитель видит их непросмотренными, пока вы не нажмёте «Сжечь».",
+                keepViewOnceMediaInfo: "Одноразовые фото, видео, голосовые и кружки можно пересматривать сколько угодно раз, включая секретные чаты. Отправитель видит их непросмотренными, пока вы не нажмёте «Сжечь». Работает и с выключенным призраком.",
                 burnViewOnceMedia: "Сжечь",
                 activeIndicator: "Режим призрака включён",
-                readAllLocally: "Прочитать локально",
-                readAllOnServer: "Прочитать на сервере",
+                readAllLocally: "Прочитать только у себя",
+                readAllOnServer: "Прочитать для всех",
                 readAllChats: "Прочитать чаты (без архива)",
                 readAllArchive: "Прочитать архив",
                 readAllEverything: "Прочитать всё",
@@ -275,7 +289,7 @@ public struct LocalFeatureStrings {
                 archiveUsage: "Размер архива",
                 clearMedia: "Очистить медиа",
                 clearArchive: "Очистить архив",
-                clearActionsInfo: "«Очистить медиа» удаляет только сохранённые файлы. «Очистить архив» окончательно удаляет локальные сообщения, версии и связанные медиа с этого iPhone.",
+                clearActionsInfo: "«Очистить медиа» удаляет только сохранённые файлы. «Очистить архив» навсегда удаляет сохранённые сообщения, их прошлые версии и медиа.",
                 history: "История",
                 deleted: "Удалено",
                 deleteForMe: "Удалить у себя",
@@ -342,8 +356,8 @@ public struct LocalFeatureStrings {
                 showCallbackDataInfo: "Долгое нажатие на inline-кнопку показывает передаваемые боту данные и позволяет их скопировать. Обычное нажатие продолжает выполнять кнопку.",
                 callbackDataTitle: "Callback data",
                 hideStoryStrip: "Скрывать ленту историй",
-                hideStoryStripInfo: "Убирает истории с верхней части списка чатов, не удаляя их и не меняя состояние на сервере.",
-                showAppBadge: "Плашка MadGram в статус-баре",
+                hideStoryStripInfo: "Убирает ленту историй сверху списка чатов. Сами истории никуда не пропадают.",
+                showAppBadge: "Плашка mad в статус-баре",
                 showAppBadgeInfo: "Показывает капсулу MADGRAM у выреза экрана. Выключите, чтобы её скрыть.",
                 disableStoryCameraSwipe: "Отключить свайп к камере",
                 disableStoryCameraSwipeInfo: "Не открывает камеру историй свайпом от списка чатов.",
@@ -371,7 +385,7 @@ public struct LocalFeatureStrings {
                 storyConfirmationAction: "Просмотреть"
             )
             self.madgram = MadgramFeatureStrings(
-                title: "MadGram",
+                title: "mad",
                 privacySection: "ПРИВАТНОСТЬ",
                 privacyInfo: "Скрытие номера применяется после перезапуска приложения.",
                 messagesSection: "СООБЩЕНИЯ",
@@ -386,12 +400,12 @@ public struct LocalFeatureStrings {
             )
             self.localPremium = LocalPremiumFeatureStrings(
                 title: "Локальный премиум",
-                info: "Разблокирует интерфейс Telegram Premium только на этом устройстве. Возможности, которые проверяет сервер — большие файлы, премиум-реакции и эмодзи, расшифровка голосовых — продолжат требовать подписку."
+                info: "Аккаунт выглядит как Premium: звезда, эмодзи-статус, премиум-иконки, больше папок и закрепов, без рекламы Premium. Это видите только вы, поэтому премиум-реакции, большие файлы, расшифровка голосовых и папки сверх обычного лимита не заработают."
             )
             self.messageFilter = MessageFilterFeatureStrings(
                 title: "Фильтры сообщений",
                 hideBlockedUsers: "Скрывать сообщения из чёрного списка",
-                hideBlockedUsersInfo: "Не показывает сообщения людей, которых вы заблокировали. Сообщения остаются на сервере и в локальной базе, их просто не видно.",
+                hideBlockedUsersInfo: "Не показывает сообщения людей, которых вы заблокировали. Они не удаляются, их просто не видно.",
                 hiddenPeersSection: "СКРЫТЫЕ ОТПРАВИТЕЛИ",
                 hiddenPeersInfo: "Теневой бан: человек не знает, что скрыт, и не попадает в чёрный список — вы просто не видите его сообщений.",
                 hiddenPeersEmpty: "Пока никто не скрыт. Скрыть отправителя можно через контекстное меню его сообщения.",
@@ -440,15 +454,19 @@ public struct LocalFeatureStrings {
                 empty: "В этом чате нет ваших сообщений."
             )
         case "uk":
+            self.localNotifications = LocalNotificationFeatureStrings(
+                title: "Локальні сповіщення",
+                info: "Показує сповіщення про нові повідомлення, поки застосунок згорнуто. Якщо закрити застосунок або iOS вивантажить його з пам'яті, сповіщення перестануть надходити."
+            )
             self.ghostMode = GhostModeFeatureStrings(
                 title: "Режим привида",
                 on: "Увімк.",
                 off: "Вимк.",
-                masterInfo: "Читає хмарні повідомлення та історії локально, приховуючи прочитання, статус «У мережі» й набір тексту. Секретні чати не змінюються.",
+                masterInfo: "Читайте повідомлення та історії непомітно: співрозмовники не побачать прочитання, статусу «У мережі» і набору тексту. Секретні чати працюють як зазвичай.",
                 suppressMessageReadReceipts: "Не позначати повідомлення прочитаними",
-                suppressMessageReadReceiptsInfo: "Повідомлення читаються лише на цьому iPhone і залишаються непрочитаними на сервері до ручного підтвердження або надсилання.",
+                suppressMessageReadReceiptsInfo: "Для співрозмовника повідомлення лишаються непрочитаними, доки ви не позначите їх прочитаними або не відповісте.",
                 suppressStoryReadReceipts: "Не позначати історії переглянутими",
-                suppressStoryReadReceiptsInfo: "Перегляд історії залишається локальним. Відповідь або реакція підтверджує перегляд цієї історії.",
+                suppressStoryReadReceiptsInfo: "Автор не дізнається, що ви переглянули історію. Відповідь або реакція видадуть перегляд.",
                 suppressOnlineStatus: "Не показувати «У мережі»",
                 suppressOnlineStatusInfo: "Приховує звичайний статус «У мережі». Надсилання та деякі дії можуть тимчасово розкрити його.",
                 suppressTypingStatus: "Не показувати набір тексту",
@@ -460,11 +478,11 @@ public struct LocalFeatureStrings {
                 markViewedMessagesAsRead: "Позначити переглянуті повідомлення прочитаними",
                 readReceiptFailed: "Не вдалося надіслати позначку про прочитання.",
                 keepViewOnceMedia: "Не спалювати одноразові медіа",
-                keepViewOnceMediaInfo: "Одноразові фото, відео, голосові та кружечки можна переглядати скільки завгодно разів, зокрема в секретних чатах. Відправник бачить їх непереглянутими, доки ви не натиснете «Спалити».",
+                keepViewOnceMediaInfo: "Одноразові фото, відео, голосові та кружечки можна переглядати скільки завгодно разів, зокрема в секретних чатах. Відправник бачить їх непереглянутими, доки ви не натиснете «Спалити». Працює й з вимкненим привидом.",
                 burnViewOnceMedia: "Спалити",
                 activeIndicator: "Режим привида увімкнено",
-                readAllLocally: "Прочитати локально",
-                readAllOnServer: "Прочитати на сервері",
+                readAllLocally: "Прочитати лише у себе",
+                readAllOnServer: "Прочитати для всіх",
                 readAllChats: "Прочитати чати (без архіву)",
                 readAllArchive: "Прочитати архів",
                 readAllEverything: "Прочитати все",
@@ -488,7 +506,7 @@ public struct LocalFeatureStrings {
                 archiveUsage: "Розмір архіву",
                 clearMedia: "Очистити медіа",
                 clearArchive: "Очистити архів",
-                clearActionsInfo: "«Очистити медіа» видаляє лише збережені файли. «Очистити архів» остаточно видаляє локальні повідомлення, версії та пов’язані медіа з цього iPhone.",
+                clearActionsInfo: "«Очистити медіа» видаляє лише збережені файли. «Очистити архів» назавжди видаляє збережені повідомлення, їхні попередні версії та медіа.",
                 history: "Історія",
                 deleted: "Видалено",
                 deleteForMe: "Видалити в себе",
@@ -555,8 +573,8 @@ public struct LocalFeatureStrings {
                 showCallbackDataInfo: "Довге натискання inline-кнопки показує дані, що передаються боту, і дозволяє їх скопіювати. Звичайне натискання й надалі виконує кнопку.",
                 callbackDataTitle: "Callback data",
                 hideStoryStrip: "Приховувати стрічку історій",
-                hideStoryStripInfo: "Прибирає історії з верхньої частини списку чатів, не видаляючи їх і не змінюючи стан на сервері.",
-                showAppBadge: "Плашка MadGram у статус-барі",
+                hideStoryStripInfo: "Прибирає стрічку історій угорі списку чатів. Самі історії нікуди не зникають.",
+                showAppBadge: "Плашка mad у статус-барі",
                 showAppBadgeInfo: "Показує капсулу MADGRAM біля вирізу екрана. Вимкніть, щоб її приховати.",
                 disableStoryCameraSwipe: "Вимкнути свайп до камери",
                 disableStoryCameraSwipeInfo: "Не відкриває камеру історій свайпом зі списку чатів.",
@@ -584,7 +602,7 @@ public struct LocalFeatureStrings {
                 storyConfirmationAction: "Переглянути"
             )
             self.madgram = MadgramFeatureStrings(
-                title: "MadGram",
+                title: "mad",
                 privacySection: "ПРИВАТНІСТЬ",
                 privacyInfo: "Приховування номера застосовується після перезапуску застосунку.",
                 messagesSection: "ПОВІДОМЛЕННЯ",
@@ -599,12 +617,12 @@ public struct LocalFeatureStrings {
             )
             self.localPremium = LocalPremiumFeatureStrings(
                 title: "Локальний преміум",
-                info: "Розблоковує інтерфейс Telegram Premium лише на цьому пристрої. Можливості, які перевіряє сервер — великі файли, преміум-реакції та емодзі, розшифрування голосових — і надалі потребують підписки."
+                info: "Акаунт виглядає як Premium: зірка, емодзі-статус, преміум-іконки, більше папок і закріплень, без реклами Premium. Це бачите лише ви, тому преміум-реакції, великі файли, розшифрування голосових і папки понад звичайний ліміт не запрацюють."
             )
             self.messageFilter = MessageFilterFeatureStrings(
                 title: "Фільтри повідомлень",
                 hideBlockedUsers: "Приховувати повідомлення з чорного списку",
-                hideBlockedUsersInfo: "Не показує повідомлення людей, яких ви заблокували. Повідомлення залишаються на сервері та в локальній базі, їх просто не видно.",
+                hideBlockedUsersInfo: "Не показує повідомлення людей, яких ви заблокували. Вони не видаляються, їх просто не видно.",
                 hiddenPeersSection: "ПРИХОВАНІ ВІДПРАВНИКИ",
                 hiddenPeersInfo: "Тіньовий бан: людина не знає, що прихована, і не потрапляє до чорного списку — ви просто не бачите її повідомлень.",
                 hiddenPeersEmpty: "Поки нікого не приховано. Приховати відправника можна через контекстне меню його повідомлення.",
@@ -653,15 +671,19 @@ public struct LocalFeatureStrings {
                 empty: "У цьому чаті немає ваших повідомлень."
             )
         default:
+            self.localNotifications = LocalNotificationFeatureStrings(
+                title: "Local Notifications",
+                info: "Shows notifications for new messages while the app is in the background. Once you close the app or iOS unloads it, notifications stop."
+            )
             self.ghostMode = GhostModeFeatureStrings(
                 title: "Ghost Mode",
                 on: "On",
                 off: "Off",
-                masterInfo: "Reads cloud messages and stories locally while hiding read receipts, online presence and typing. Secret chats are unchanged.",
+                masterInfo: "Read messages and stories unnoticed: nobody sees your read receipts, online status or typing. Secret chats work as usual.",
                 suppressMessageReadReceipts: "Don't Read Messages",
-                suppressMessageReadReceiptsInfo: "Messages are read only on this iPhone and stay unread on the server until manually confirmed or sent.",
+                suppressMessageReadReceiptsInfo: "Messages stay unread for the sender until you mark them as read or reply.",
                 suppressStoryReadReceipts: "Don't Read Stories",
-                suppressStoryReadReceiptsInfo: "Story views stay local. Replying or reacting confirms the view of that story.",
+                suppressStoryReadReceiptsInfo: "The author won't know you viewed the story. A reply or reaction reveals the view.",
                 suppressOnlineStatus: "Don't Send Online",
                 suppressOnlineStatusInfo: "Hides routine online presence. Sending and some interactions can reveal it temporarily.",
                 suppressTypingStatus: "Don't Send Typing",
@@ -673,11 +695,11 @@ public struct LocalFeatureStrings {
                 markViewedMessagesAsRead: "Mark viewed messages as read",
                 readReceiptFailed: "Couldn't send read receipt.",
                 keepViewOnceMedia: "Don't Burn View-Once Media",
-                keepViewOnceMediaInfo: "View-once photos, videos, voice and video messages can be replayed any number of times, including in secret chats. The sender sees them as unopened until you tap Burn.",
+                keepViewOnceMediaInfo: "View-once photos, videos, voice and video messages can be replayed any number of times, including in secret chats. The sender sees them as unopened until you tap Burn. Works even with Ghost Mode off.",
                 burnViewOnceMedia: "Burn",
                 activeIndicator: "Ghost Mode is on",
-                readAllLocally: "Read locally",
-                readAllOnServer: "Read on server",
+                readAllLocally: "Read Only for Me",
+                readAllOnServer: "Read for Everyone",
                 readAllChats: "Read Chats (Not Archived)",
                 readAllArchive: "Read Archive",
                 readAllEverything: "Read Everything",
@@ -701,7 +723,7 @@ public struct LocalFeatureStrings {
                 archiveUsage: "Archive Usage",
                 clearMedia: "Clear Media",
                 clearArchive: "Clear Archive",
-                clearActionsInfo: "“Clear Media” removes only retained files. “Clear Archive” permanently removes local messages, versions and related media from this iPhone.",
+                clearActionsInfo: "“Clear Media” removes only the saved files. “Clear Archive” permanently removes saved messages, their earlier versions and media.",
                 history: "History",
                 deleted: "Deleted",
                 deleteForMe: "Delete for Me",
@@ -758,8 +780,8 @@ public struct LocalFeatureStrings {
                 showCallbackDataInfo: "Long-pressing an inline button shows the data sent to the bot and lets you copy it. A regular tap still performs the button action.",
                 callbackDataTitle: "Callback data",
                 hideStoryStrip: "Hide Story Strip",
-                hideStoryStripInfo: "Removes stories from the top of the chat list without deleting them or changing server state.",
-                showAppBadge: "MadGram Badge in Status Bar",
+                hideStoryStripInfo: "Removes the stories row from the top of the chat list. The stories themselves stay.",
+                showAppBadge: "mad Badge in Status Bar",
                 showAppBadgeInfo: "Shows the MADGRAM capsule next to the screen cutout. Turn off to hide it.",
                 disableStoryCameraSwipe: "Disable Camera Swipe",
                 disableStoryCameraSwipeInfo: "Prevents opening the story camera by swiping from the chat list.",
@@ -787,7 +809,7 @@ public struct LocalFeatureStrings {
                 storyConfirmationAction: "View"
             )
             self.madgram = MadgramFeatureStrings(
-                title: "MadGram",
+                title: "mad",
                 privacySection: "PRIVACY",
                 privacyInfo: "Hiding the phone number applies after restarting the app.",
                 messagesSection: "MESSAGES",
@@ -802,12 +824,12 @@ public struct LocalFeatureStrings {
             )
             self.localPremium = LocalPremiumFeatureStrings(
                 title: "Local Premium",
-                info: "Unlocks the Telegram Premium interface on this device only. Anything the server validates — large uploads, premium reactions and emoji, voice transcription — still requires a subscription."
+                info: "Your account looks like Premium: the star, an emoji status, premium icons, more folders and pins, no Premium ads. Only you see it, so premium reactions, large files, voice transcription and folders above the usual limit won't work."
             )
             self.messageFilter = MessageFilterFeatureStrings(
                 title: "Message Filters",
                 hideBlockedUsers: "Hide Messages from Blocked Users",
-                hideBlockedUsersInfo: "Hides messages from people you have blocked. The messages stay on the server and in the local database, they are simply not displayed.",
+                hideBlockedUsersInfo: "Hides messages from people you blocked. They aren't deleted, just not shown.",
                 hiddenPeersSection: "HIDDEN SENDERS",
                 hiddenPeersInfo: "Shadow ban: the person is not blocked and never learns they are hidden — you just don't see their messages.",
                 hiddenPeersEmpty: "Nobody is hidden yet. Hide a sender from the context menu of their message.",

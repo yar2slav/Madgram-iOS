@@ -17,6 +17,8 @@ import WebUI
 import AvatarNode
 import PeerNameColorItem
 import BoostLevelIconComponent
+import MadProfileLinks
+import MadProfileLinksCore
 
 private let enabledPublicBioEntities: EnabledEntityTypes = [.allUrl, .mention, .hashtag]
 private let enabledPrivateBioEntities: EnabledEntityTypes = [.internalUrl, .mention, .hashtag]
@@ -42,11 +44,13 @@ private func peerVerificationDescriptionEntities(_ verification: PeerVerificatio
 enum InfoSection: Int, CaseIterable {
     case unofficial
     case technical
+    case madAccounts
     case community
     case groupLocation
     case calls
     case personalChannel
     case peerInfo
+    case agentProviders
     case balances
     case permissions
     case peerInfoTrailing
@@ -129,6 +133,9 @@ func infoItems(
         let ItemBotAddToChat = 9002
         let ItemBotAddToChatInfo = 9003
         let ItemVerification = 9004
+        let ItemAgentInfo = 9100
+        let ItemAgentAddProvider = 9101
+        let ItemAgentProvidersInfo = 9102
         let ItemCommunity = 10000
         
         if let cachedUserData = data.cachedData as? CachedUserData, cachedUserData.flags.contains(.unofficialSecurityRisk) {
@@ -175,7 +182,9 @@ func infoItems(
             ))
         }
         
-        if let phone = user.phone {
+        let madTuning = InterfaceTuningSettingsStore.shared.cached
+        let madHidePhone = user.id == context.account.peerId ? madTuning.on(madTuning.hidePhoneEverywhere, .phoneMine) : madTuning.on(madTuning.hidePhoneEverywhere, .phoneOthers)
+        if let phone = user.phone, !madHidePhone {
             let formattedPhone = formatPhoneNumber(context: context, number: phone)
             let label: String
             if formattedPhone.hasPrefix("+888 ") {
@@ -260,6 +269,13 @@ func infoItems(
                 hasWebApp = true
             }
             
+            // An agent bot asks for a key until one is connected, then lists the connected providers.
+            var agentKeys: [EngineAgentProviderKey]?
+            if data.agentSettingsContext != nil, let settings = data.agentState?.settings {
+                agentKeys = settings.keys
+            }
+            let hasAgentKeyButton = agentKeys?.isEmpty == true
+            
             if user.isFake {
                 items[currentPeerInfoSection]!.append(PeerInfoScreenLabeledValueItem(id: ItemAbout, label: "", text: user.botInfo != nil ? presentationData.strings.UserInfo_FakeBotWarning : presentationData.strings.UserInfo_FakeUserWarning, textColor: .primary, textBehavior: .multiLine(maxLines: 100, enabledEntities: user.botInfo != nil ? enabledPrivateBioEntities : []), action: nil, requestLayout: { animated in
                     interaction.requestLayout(animated)
@@ -268,9 +284,13 @@ func infoItems(
                 items[currentPeerInfoSection]!.append(PeerInfoScreenLabeledValueItem(id: ItemAbout, label: user.botInfo == nil ? presentationData.strings.Profile_About : presentationData.strings.Profile_BotInfo, text: user.botInfo != nil ? presentationData.strings.UserInfo_ScamBotWarning : presentationData.strings.UserInfo_ScamUserWarning, textColor: .primary, textBehavior: .multiLine(maxLines: 100, enabledEntities: user.botInfo != nil ? enabledPrivateBioEntities : []), action: nil, requestLayout: { animated in
                     interaction.requestLayout(animated)
                 }))
-            } else if hasAbout || hasNote || hasWebApp {
+            } else if hasAbout || hasNote || hasWebApp || hasAgentKeyButton {
                 var actionButton: PeerInfoScreenLabeledValueItem.Button?
-                if hasWebApp {
+                if hasAgentKeyButton {
+                    actionButton = PeerInfoScreenLabeledValueItem.Button(title: presentationData.strings.Agent_AddKey, action: {
+                        interaction.openAgentConnect()
+                    })
+                } else if hasWebApp {
                     actionButton = PeerInfoScreenLabeledValueItem.Button(title: presentationData.strings.PeerInfo_OpenAppButton, action: {
                         guard let parentController = interaction.getController() else {
                             return
@@ -303,7 +323,7 @@ func infoItems(
                     })
                 }
                 
-                if hasAbout || hasWebApp {
+                if hasAbout || hasWebApp || hasAgentKeyButton {
                     var label: String = ""
                     if let about = cachedData.about, !about.isEmpty {
                         label = user.botInfo == nil ? presentationData.strings.Profile_About : presentationData.strings.Profile_BotInfo
@@ -325,7 +345,11 @@ func infoItems(
                     }))
                 }
                 
-                if let botInfo = user.botInfo, botInfo.flags.contains(.canEdit) {
+                if hasAgentKeyButton {
+                    items[currentPeerInfoSection]!.append(PeerInfoScreenCommentItem(id: ItemAgentInfo, text: presentationData.strings.Agent_AddKeyInfo))
+                    
+                    currentPeerInfoSection = .peerInfoTrailing
+                } else if let botInfo = user.botInfo, botInfo.flags.contains(.canEdit) {
                     items[currentPeerInfoSection]!.append(PeerInfoScreenCommentItem(id: ItemAppFooter, text: presentationData.strings.PeerInfo_AppFooterAdmin, linkAction: { action in
                         if case let .tap(url) = action {
                             context.sharedContext.applicationBindings.openUrl(url)
@@ -339,6 +363,28 @@ func infoItems(
                             context.sharedContext.applicationBindings.openUrl(url)
                         }
                     }))
+                    
+                    currentPeerInfoSection = .peerInfoTrailing
+                }
+                
+                if let agentKeys, !agentKeys.isEmpty {
+                    let providers = data.agentState?.providers ?? []
+                    for key in agentKeys {
+                        let provider = providers.first(where: { $0.id == key.provider }) ?? EngineAgentProvider(id: key.provider, title: key.provider, vendor: "", keyUrl: "", modelsSearchable: false, iconEmojiId: nil)
+                        let isActive = agentKeys.count > 1 && data.agentState?.settings?.activeProvider == key.provider
+                        items[.agentProviders]!.append(PeerInfoScreenAgentProviderItem(id: "agent_\(key.provider)", context: context, provider: provider, isActive: isActive, action: agentKeys.count > 1 ? {
+                            interaction.setAgentActiveProvider(key.provider)
+                        } : nil, contextAction: { node, gesture in
+                            interaction.openAgentProviderContextMenu(key.provider, node, gesture)
+                        }))
+                    }
+                    let connectedIds = Set(agentKeys.map(\.provider))
+                    if providers.contains(where: { !connectedIds.contains($0.id) }) {
+                        items[.agentProviders]!.append(PeerInfoScreenActionItem(id: ItemAgentAddProvider, text: presentationData.strings.Agent_AddAnotherProvider, color: .accent, icon: generateTintedImage(image: UIImage(bundleImageName: "Chat/Input/Text/InputAIIcon"), color: presentationData.theme.list.itemAccentColor), alignment: .peerList, action: {
+                            interaction.openAgentConnect()
+                        }))
+                    }
+                    items[.agentProviders]!.append(PeerInfoScreenCommentItem(id: ItemAgentProvidersInfo, text: presentationData.strings.Agent_ProvidersInfo))
                     
                     currentPeerInfoSection = .peerInfoTrailing
                 }
@@ -437,6 +483,18 @@ func infoItems(
                             }))
                         }
                     }
+                }
+                
+                // Report is in the More menu; a header without More (a secret chat with a non-contact) offers it as a
+                // row instead. On a secret chat it reports the user.
+                var isSecretChat = false
+                if let chatPeer = data.chatPeer, case .secretChat = chatPeer {
+                    isSecretChat = true
+                }
+                if !peerInfoUserHeaderHasMore(user, isSecretChat: isSecretChat, isContact: data.isContact) && peerInfoCanReportUser(user, accountPeerId: context.account.peerId) {
+                    items[currentPeerInfoSection]!.append(PeerInfoScreenActionItem(id: ItemReport, text: presentationData.strings.ReportPeer_Report, action: {
+                        interaction.openReport(.default)
+                    }))
                 }
                 
                 if let encryptionKeyFingerprint = data.encryptionKeyFingerprint {
@@ -990,6 +1048,42 @@ func infoItems(
         technicalItemId += 1
     }
 
+    let madStrings = presentationData.strings.localFeatures.more
+    if interfaceSettings.on(interfaceSettings.showJoinDates, .joinDateMine), case let .channel(channel) = data.peer, case .member = channel.participationStatus, channel.creationDate != 0 {
+        let value = stringForDate(timestamp: channel.creationDate, strings: presentationData.strings)
+        items[.technical]!.append(PeerInfoScreenLabeledValueItem(
+            id: technicalItemId,
+            label: madStrings.youJoined,
+            text: value,
+            textColor: .primary,
+            action: nil,
+            longTapAction: { _ in
+                UIPasteboard.general.string = value
+            },
+            requestLayout: { animated in
+                interaction.requestLayout(animated)
+            }
+        ))
+        technicalItemId += 1
+    }
+    if interfaceSettings.on(interfaceSettings.showJoinDates, .joinDateMembers), let peer = data.peer, case .user = peer, let entry = MadJoinDateCache.shared.entry(userId: peer.id) {
+        let value = stringForDate(timestamp: entry.date, strings: presentationData.strings) + (entry.groupTitle.isEmpty ? "" : " · " + entry.groupTitle)
+        items[.technical]!.append(PeerInfoScreenLabeledValueItem(
+            id: technicalItemId,
+            label: madStrings.memberSince,
+            text: value,
+            textColor: .primary,
+            action: nil,
+            longTapAction: { _ in
+                UIPasteboard.general.string = value
+            },
+            requestLayout: { animated in
+                interaction.requestLayout(animated)
+            }
+        ))
+        technicalItemId += 1
+    }
+
     if let peer = data.peer, case let .user(user) = peer, user.botInfo == nil, peer.id != context.account.peerId, user.flags.contains(.mutualContact) {
         items[.technical]!.append(PeerInfoScreenLabeledValueItem(
             id: technicalItemId,
@@ -1003,10 +1097,78 @@ func infoItems(
         ))
     }
     
+    if let peer = data.peer, case .user = peer {
+        let isOwn = peer.id == context.account.peerId
+        let madProfile = MadLinksCache.shared.profile(accountPeerId: context.account.peerId, peerId: peer.id)
+        if let madProfile {
+            items[.madAccounts]!.append(contentsOf: madAccountsItems(profile: madProfile, isOwn: isOwn, context: context, presentationData: presentationData, interaction: interaction))
+        }
+        if isOwn && items[.madAccounts]!.isEmpty {
+            let strings = presentationData.strings.localFeatures.more.accounts
+            let openAccounts: () -> Void = {
+                interaction.getController()?.push(madAccountsController(context: context))
+            }
+            items[.madAccounts]!.append(PeerInfoScreenHeaderItem(id: 92000, text: strings.title.uppercased(), actionTitle: strings.edit, action: openAccounts))
+            items[.madAccounts]!.append(PeerInfoScreenMadAccountItem(id: 92003, content: .more(strings.addTitle), action: openAccounts))
+        }
+        if peer.id.isMadLocalChat {
+            let more = presentationData.strings.localFeatures.more
+            let links: [(Int, String, String, String)] = [
+                (92100, more.madRepository, "github.com/yar2slav/Madgram-iOS", "https://github.com/yar2slav/Madgram-iOS"),
+                (92101, more.madReleasesChannel, "t.me/+q-f1-sOLGjAzMjEy", "https://t.me/+q-f1-sOLGjAzMjEy")
+            ]
+            for (id, label, text, url) in links {
+                items[.madAccounts]!.append(PeerInfoScreenLabeledValueItem(id: id, label: label, text: text, textColor: .accent, action: { _, _ in
+                    guard let controller = interaction.getController() else {
+                        return
+                    }
+                    context.sharedContext.openExternalUrl(context: context, urlContext: .generic, url: url, forceExternal: false, presentationData: presentationData, navigationController: controller.navigationController as? NavigationController, dismissInput: {})
+                }, requestLayout: { animated in
+                    interaction.requestLayout(animated)
+                }))
+            }
+        }
+    }
+    
     var result: [(AnyHashable, [PeerInfoScreenItem])] = []
     for section in InfoSection.allCases {
         if let sectionItems = items[section], !sectionItems.isEmpty {
             result.append((section, sectionItems))
+        }
+    }
+    return result
+}
+
+private func madAccountsItems(profile: MadLinksProfile, isOwn: Bool, context: AccountContext, presentationData: PresentationData, interaction: PeerInfoInteraction) -> [PeerInfoScreenItem] {
+    let accounts = profile.accounts.filter { $0.visible }
+    guard !accounts.isEmpty else {
+        return []
+    }
+    let strings = presentationData.strings.localFeatures.more.accounts
+    let openAccount: (MadLinksAccount) -> Void = { account in
+        guard let url = account.url, let controller = interaction.getController() else {
+            return
+        }
+        MadLinksUI.openUrl(context: context, url: url, navigationController: controller.navigationController as? NavigationController)
+    }
+    var result: [PeerInfoScreenItem] = []
+    result.append(PeerInfoScreenHeaderItem(id: 92000, text: strings.title.uppercased(), actionTitle: isOwn ? strings.edit : nil, action: isOwn ? {
+        interaction.getController()?.push(madAccountsController(context: context))
+    } : nil))
+    switch profile.design {
+    case .row:
+        result.append(PeerInfoScreenMadAccountsRowItem(id: 92001, accounts: accounts, action: openAccount))
+    case .list:
+        let limit = accounts.count > 3 ? 3 : accounts.count
+        for account in accounts.prefix(limit) {
+            result.append(PeerInfoScreenMadAccountItem(id: AnyHashable("mad-account-\(account.id)"), content: .account(account), action: {
+                openAccount(account)
+            }))
+        }
+        if accounts.count > limit {
+            result.append(PeerInfoScreenMadAccountItem(id: 92002, content: .more(strings.allAccounts(accounts.count)), action: {
+                interaction.getController()?.push(madProfileAccountsListController(context: context, accounts: accounts))
+            }))
         }
     }
     return result

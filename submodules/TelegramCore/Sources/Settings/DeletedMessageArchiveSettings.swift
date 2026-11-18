@@ -2,11 +2,32 @@ import Foundation
 import Postbox
 import SwiftSignalKit
 
+public struct DeletedMessageArchiveExclusions: OptionSet, Codable, Hashable {
+    public var rawValue: Int32
+
+    public init(rawValue: Int32) {
+        self.rawValue = rawValue
+    }
+
+    public static let bots = DeletedMessageArchiveExclusions(rawValue: 1 << 0)
+    public static let savedMessages = DeletedMessageArchiveExclusions(rawValue: 1 << 1)
+    public static let channels = DeletedMessageArchiveExclusions(rawValue: 1 << 2)
+    public static let groups = DeletedMessageArchiveExclusions(rawValue: 1 << 3)
+    public static let privateChats = DeletedMessageArchiveExclusions(rawValue: 1 << 4)
+
+    public static let defaultValue: DeletedMessageArchiveExclusions = [.savedMessages]
+}
+
+/// Per-account controls for the on-device deleted-message archive.
 public struct DeletedMessageArchiveSettings: Codable, Equatable {
     public static let defaultDeletedMessageMarker = "🧹"
     public static let deletedMessageMarkerLimit = 32
     public static let allowedMediaLimitGigabytes: [Int32] = [1, 5, 10, 20, 50]
+    /// Disappearing media is capped separately so that a handful of large one-off videos cannot
+    /// crowd out the ordinary archive.
     public static let allowedDisappearingMediaLimitGigabytes: [Int32] = [1, 2, 5, 10]
+    public static let allowedDeletedMessageOpacities: [Double] = [1.0, 0.85, 0.7, 0.55, 0.4]
+    public static let defaultDeletedMessageOpacity: Double = 0.7
     public static let defaultSettings = DeletedMessageArchiveSettings(
         saveDeletedMessages: true,
         saveEditedVersions: true,
@@ -26,6 +47,8 @@ public struct DeletedMessageArchiveSettings: Codable, Equatable {
     public var mediaLimitGigabytes: Int32
     public var disappearingMediaLimitGigabytes: Int32
     public var sessionId: Int64
+    public var deletedMessageOpacity: Double
+    public var exclusions: DeletedMessageArchiveExclusions
 
     public var isEnabled: Bool {
         get {
@@ -57,7 +80,9 @@ public struct DeletedMessageArchiveSettings: Codable, Equatable {
         keepAcrossLaunches: Bool,
         mediaLimitGigabytes: Int32,
         disappearingMediaLimitGigabytes: Int32,
-        sessionId: Int64
+        sessionId: Int64,
+        deletedMessageOpacity: Double = DeletedMessageArchiveSettings.defaultDeletedMessageOpacity,
+        exclusions: DeletedMessageArchiveExclusions = .defaultValue
     ) {
         self.saveDeletedMessages = saveDeletedMessages
         self.saveEditedVersions = saveEditedVersions
@@ -67,8 +92,12 @@ public struct DeletedMessageArchiveSettings: Codable, Equatable {
         self.mediaLimitGigabytes = DeletedMessageArchiveSettings.allowedMediaLimitGigabytes.contains(mediaLimitGigabytes) ? mediaLimitGigabytes : 5
         self.disappearingMediaLimitGigabytes = DeletedMessageArchiveSettings.allowedDisappearingMediaLimitGigabytes.contains(disappearingMediaLimitGigabytes) ? disappearingMediaLimitGigabytes : 1
         self.sessionId = sessionId
+        self.deletedMessageOpacity = min(1.0, max(0.2, deletedMessageOpacity))
+        self.exclusions = exclusions
     }
 
+    // Decoded explicitly so that archives stored before the disappearing-media limit existed keep
+    // their configuration instead of resetting to defaults.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let legacyIsEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
@@ -80,7 +109,9 @@ public struct DeletedMessageArchiveSettings: Codable, Equatable {
             keepAcrossLaunches: try container.decode(Bool.self, forKey: .keepAcrossLaunches),
             mediaLimitGigabytes: try container.decode(Int32.self, forKey: .mediaLimitGigabytes),
             disappearingMediaLimitGigabytes: try container.decodeIfPresent(Int32.self, forKey: .disappearingMediaLimitGigabytes) ?? 1,
-            sessionId: try container.decode(Int64.self, forKey: .sessionId)
+            sessionId: try container.decode(Int64.self, forKey: .sessionId),
+            deletedMessageOpacity: try container.decodeIfPresent(Double.self, forKey: .deletedMessageOpacity) ?? DeletedMessageArchiveSettings.defaultDeletedMessageOpacity,
+            exclusions: DeletedMessageArchiveExclusions(rawValue: try container.decodeIfPresent(Int32.self, forKey: .exclusions) ?? DeletedMessageArchiveExclusions.defaultValue.rawValue)
         )
     }
 
@@ -95,6 +126,8 @@ public struct DeletedMessageArchiveSettings: Codable, Equatable {
         try container.encode(self.mediaLimitGigabytes, forKey: .mediaLimitGigabytes)
         try container.encode(self.disappearingMediaLimitGigabytes, forKey: .disappearingMediaLimitGigabytes)
         try container.encode(self.sessionId, forKey: .sessionId)
+        try container.encode(self.deletedMessageOpacity, forKey: .deletedMessageOpacity)
+        try container.encode(self.exclusions.rawValue, forKey: .exclusions)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -107,6 +140,8 @@ public struct DeletedMessageArchiveSettings: Codable, Equatable {
         case mediaLimitGigabytes
         case disappearingMediaLimitGigabytes
         case sessionId
+        case deletedMessageOpacity
+        case exclusions
     }
 }
 

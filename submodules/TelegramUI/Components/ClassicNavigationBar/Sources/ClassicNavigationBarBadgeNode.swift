@@ -3,6 +3,7 @@ import UIKit
 import AsyncDisplayKit
 import Display
 
+/// The unread count beside the back arrow (`NavigationBarBadgeNode` as it was before the glass bar).
 final class ClassicNavigationBarBadgeNode: ASDisplayNode {
     private var fillColor: UIColor
     private var strokeColor: UIColor

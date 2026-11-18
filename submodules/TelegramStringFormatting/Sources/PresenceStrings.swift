@@ -1,5 +1,6 @@
 import Foundation
 import TelegramCore
+import TelegramUIPreferences
 import TelegramPresentationData
 import TextFormat
 
@@ -228,6 +229,28 @@ public enum RelativeTimestampFormatDay {
     case today
     case yesterday
     case tomorrow
+}
+
+private func stringForUserPresenceWithSeconds(strings: PresentationStrings, dateTimeFormat: PresentationDateTimeFormat, statusTimestamp: Int32, relativeTo timestamp: Int32) -> String {
+    var t: time_t = time_t(statusTimestamp)
+    var timeinfo: tm = tm()
+    localtime_r(&t, &timeinfo)
+    
+    var now: time_t = time_t(timestamp)
+    var timeinfoNow: tm = tm()
+    localtime_r(&now, &timeinfoNow)
+    
+    let time = stringForShortTimestamp(hours: timeinfo.tm_hour, minutes: timeinfo.tm_min, seconds: timeinfo.tm_sec, dateTimeFormat: dateTimeFormat)
+    if timeinfo.tm_year == timeinfoNow.tm_year {
+        let dayDifference = timeinfo.tm_yday - timeinfoNow.tm_yday
+        if dayDifference == 0 {
+            return strings.LastSeen_TodayAt(time).string
+        } else if dayDifference == -1 {
+            return strings.LastSeen_YesterdayAt(time).string
+        }
+    }
+    let date = stringForTimestamp(day: timeinfo.tm_mday, month: timeinfo.tm_mon + 1, year: timeinfo.tm_year, dateTimeFormat: dateTimeFormat)
+    return strings.LastSeen_AtDate("\(date), \(time)").string
 }
 
 public func stringForUserPresence(strings: PresentationStrings, day: RelativeTimestampFormatDay, dateTimeFormat: PresentationDateTimeFormat, hours: Int32, minutes: Int32) -> String {
@@ -576,6 +599,8 @@ public func stringAndActivityForUserPresence(strings: PresentationStrings, dateT
     case let .present(statusTimestamp):
         if statusTimestamp >= timestamp {
             return (strings.Presence_online, true)
+        } else if TimeSecondsDisplay.inLastSeen {
+            return (stringForUserPresenceWithSeconds(strings: strings, dateTimeFormat: dateTimeFormat, statusTimestamp: statusTimestamp, relativeTo: timestamp), false)
         } else {
             let difference = timestamp - statusTimestamp
             if difference < 60 {

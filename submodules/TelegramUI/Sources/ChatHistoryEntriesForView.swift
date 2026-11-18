@@ -13,6 +13,7 @@ import Markdown
 import Display
 import TelegramStringFormatting
 import TelegramUIPreferences
+import MadgramText
 
 struct ChatHistoryEntriesForViewState {
     private var messageStableIdToLocalId: [UInt32: Int64] = [:]
@@ -32,6 +33,34 @@ struct ChatHistoryEntriesForViewState {
             }
         }
     }
+}
+
+/// Whether `message` is the root of the forum topic `location` shows, which the topic's history does not display: its
+/// `topicCreated` action, or the `groupCreated` one in a monoforum channel's or a forum bot's topic.
+func isUndisplayedForumTopicRoot(_ message: Message, location: ChatLocation, additionalData: [AdditionalMessageHistoryViewDataEntry]) -> Bool {
+    guard case let .replyThread(replyThreadMessage) = location, replyThreadMessage.isForumPost else {
+        return false
+    }
+    for media in message.media {
+        if let action = media as? TelegramMediaAction {
+            if case .topicCreated = action.action {
+                return true
+            } else if case .groupCreated = action.action {
+                var chatPeer: Peer?
+                for entry in additionalData {
+                    if case let .peer(_, peer) = entry {
+                        chatPeer = peer
+                    }
+                }
+                if let channel = chatPeer as? TelegramChannel, channel.isMonoForum {
+                    return true
+                } else if let user = chatPeer as? TelegramUser, user.isForum {
+                    return true
+                }
+            }
+        }
+    }
+    return false
 }
 
 func chatHistoryEntriesForView(
@@ -62,8 +91,11 @@ func chatHistoryEntriesForView(
     dynamicAdMessages: [Message],
     isMusicPlaylist: Bool,
     pinToTopStableId: EngineMessage.StableId?,
-    messageFilterSettings: MessageFilterSettings
+    messageFilterSettings: MessageFilterSettings,
+    contentFilterSettings: ChatContentFilterSettings
 ) -> ([ChatHistoryEntry], ChatHistoryEntriesForViewState) {
+    let adMessage = contentFilterSettings.hideSponsoredMessages ? nil : adMessage
+    let dynamicAdMessages = contentFilterSettings.hideSponsoredMessages ? [] : dynamicAdMessages
     var currentState = currentState
     
     if historyAppearsCleared {
@@ -142,9 +174,70 @@ func chatHistoryEntriesForView(
         }
     }
     
+    var promotedMessageIds = Set<MessageId>()
+    var promotedGroupingKeys = Set<Int64>()
+    if contentFilterSettings.hidePromotedPosts, case .peer = location, let channel = chatPeer as? TelegramChannel, case .broadcast = channel.info {
+        for entry in view.entries {
+            let message = entry.message
+            guard message.flags.contains(.Incoming), message.id.namespace == Namespaces.Message.Cloud else {
+                continue
+            }
+            let entities = message.textEntitiesAttribute?.entities ?? []
+            if PromotedPostDetector.isPromoted(text: message.text, entities: entities, keywords: contentFilterSettings.promotedPostKeywords) {
+                promotedMessageIds.insert(message.id)
+                if let groupingKey = message.groupingKey {
+                    promotedGroupingKeys.insert(groupingKey)
+                }
+            }
+        }
+    }
+    
+    let madTuning = InterfaceTuningSettingsStore.shared.cached
+    let madStripForeignAgents = madTuning.on(madTuning.hideForeignAgentLabels, .foreignAgentMessages)
+    if !contentFilterSettings.hiddenRulesSource.isEmpty, madTuning.sub(.hiddenRulesChats) {
+        let rules = MadHideRuleSet.cached(contentFilterSettings.hiddenRulesSource)
+        if !rules.isEmpty {
+            for entry in view.entries {
+                let message = entry.message
+                guard message.flags.contains(.Incoming), message.id.namespace == Namespaces.Message.Cloud else {
+                    continue
+                }
+                if message.media.contains(where: { $0 is TelegramMediaAction }) {
+                    continue
+                }
+                if rules.matches(message.text) {
+                    promotedMessageIds.insert(message.id)
+                    if let groupingKey = message.groupingKey {
+                        promotedGroupingKeys.insert(groupingKey)
+                    }
+                }
+            }
+        }
+    }
+    
     var count = 0
     loop: for entry in view.entries {
+        if !promotedMessageIds.isEmpty || !promotedGroupingKeys.isEmpty {
+            if promotedMessageIds.contains(entry.message.id) {
+                continue
+            }
+            if let groupingKey = entry.message.groupingKey, promotedGroupingKeys.contains(groupingKey) {
+                continue
+            }
+        }
         var message = entry.message.withAppliedEphemeralReplacementMessage()
+        if contentFilterSettings.revealsSpoilers, madSpoilerRevealAllowed(peerId: message.id.peerId, accountPeerId: context.account.peerId, isBroadcast: { if let channel = message.peers[message.id.peerId] as? TelegramChannel, case .broadcast = channel.info { return true } else { return false } }()) {
+            if let revealedAttributes = messageAttributesRevealingSpoilers(message.attributes, text: contentFilterSettings.revealTextSpoilers, media: contentFilterSettings.revealMediaSpoilers) {
+                message = message.withUpdatedAttributes(revealedAttributes)
+            }
+        }
+        if madStripForeignAgents, !message.text.isEmpty, let stripped = MadForeignAgentStripper.strip(text: message.text, entities: message.textEntitiesAttribute?.entities ?? []) {
+            var attributes = message.attributes.filter { !($0 is TextEntitiesMessageAttribute) }
+            if !stripped.entities.isEmpty {
+                attributes.append(TextEntitiesMessageAttribute(entities: stripped.entities))
+            }
+            message = message.withUpdatedText(stripped.text).withUpdatedAttributes(attributes)
+        }
         var isRead = entry.isRead
         
         var pinToTop = false
@@ -179,24 +272,8 @@ func chatHistoryEntriesForView(
         }
         
         if case let .replyThread(replyThreadMessage) = location, replyThreadMessage.isForumPost {
-            for media in message.media {
-                if let action = media as? TelegramMediaAction {
-                    if case .topicCreated = action.action {
-                        continue loop
-                    } else if case .groupCreated = action.action {
-                        var chatPeer: Peer?
-                        for entry in view.additionalData {
-                            if case let .peer(_, peer) = entry {
-                                chatPeer = peer
-                            }
-                        }
-                        if let channel = chatPeer as? TelegramChannel, channel.isMonoForum {
-                            continue loop
-                        } else if let user = chatPeer as? TelegramUser, user.isForum {
-                            continue loop
-                        }
-                    }
-                }
+            if isUndisplayedForumTopicRoot(message, location: location, additionalData: view.additionalData) {
+                continue loop
             }
         } else if case .peer = location {
             for media in message.media {

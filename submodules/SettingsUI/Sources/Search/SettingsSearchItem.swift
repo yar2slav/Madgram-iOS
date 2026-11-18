@@ -71,6 +71,8 @@ extension SettingsSearchableItemIcon {
                 return PresentationResourcesSettings.premiumGift
             case .powerSaving:
                 return PresentationResourcesSettings.powerSaving
+            case .madgram:
+                return PresentationResourcesSettings.madgram
         }
     }
 }

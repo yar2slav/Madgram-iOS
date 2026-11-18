@@ -9,7 +9,6 @@ import TabBarComponent
 import TabBarLayout
 import TelegramUIPreferences
 import GlassControls
-import LottieSettings
 
 final class TabBarControllerNode: ASDisplayNode {
     private struct Params: Equatable {
@@ -63,6 +62,8 @@ final class TabBarControllerNode: ASDisplayNode {
     private let contextAction: (Int, ContextExtractedContentContainingView, ContextGesture) -> Void
     
     private let tabBarView = ComponentView<Empty>()
+    /// Madgram "Классический дизайн": the flat full-width bar of 12.0 in place of `tabBarView`. Chosen once,
+    /// at creation; nil in the default (glass) design.
     let classicTabBarNode: TabBarNode?
     private var classicToolbarNode: ToolbarNode?
     
@@ -134,7 +135,7 @@ final class TabBarControllerNode: ASDisplayNode {
         self.deactivateSearch = deactivateSearch
         self.interfaceSettings = InterfaceTuningSettingsStore.shared.current
         if ClassicDesign.isEnabled {
-            let classicTabBarNode = TabBarNode(theme: theme, itemSelected: itemSelected, contextAction: contextAction, swipeAction: swipeAction, lottieSettings: .noAccountFallback)
+            let classicTabBarNode = TabBarNode(theme: theme, itemSelected: itemSelected, contextAction: contextAction, swipeAction: swipeAction)
             classicTabBarNode.showsLabels = InterfaceTuningSettingsStore.shared.current.showTabLabels
             self.classicTabBarNode = classicTabBarNode
         } else {
@@ -241,6 +242,7 @@ final class TabBarControllerNode: ASDisplayNode {
     /// out a tab asks this, so they agree on whether the bar's inset applies.
     func sidePlacement(for layout: ContainerViewLayout) -> TabBarSidePlacement? {
         if self.classicTabBarNode != nil {
+            // The classic bar is always the horizontal one along the bottom edge.
             return nil
         }
         return tabBarSidePlacement(layout: layout, itemCount: self.tabBarItems.count)
@@ -272,25 +274,40 @@ final class TabBarControllerNode: ASDisplayNode {
         if params.layout.metrics.widthClass == .regular, let inputHeight = params.layout.inputHeight, inputHeight != 0.0 {
             panelsBottomInset = inputHeight + 8.0
         }
-        if panelsBottomInset == 0.0 {
-            panelsBottomInset = 8.0
-        } else {
-            panelsBottomInset = max(panelsBottomInset, 8.0)
-        }
+        panelsBottomInset = tabBarFloatingBottomInset(bottomInset: panelsBottomInset)
 
-        var tabBarBottomInset: CGFloat = panelsBottomInset
+        let sidePlacement = self.sidePlacement(for: params.layout)
+        let isCompact = tabBarIsCompact(layout: params.layout, sidePlacement: sidePlacement)
+        // Where iOS 27 would switch its tab bar to the wide variant (a vertically compact phone, the bar at least
+        // 568pt wide), the bar keeps its own horizontal layout; elsewhere a horizontal bar takes iOS 27's portrait one.
+        let isWide = params.layout.size.width > params.layout.size.height && params.layout.size.width >= 568.0
+        let isSystemLayout = sidePlacement == nil && !isCompact && !isWide
+
+        var keyboardBottomInset: CGFloat = 0.0
         if let currentController = self.currentController {
             if let tabBarSearchState = currentController.tabBarSearchState, tabBarSearchState.isActive, let inputHeight = params.layout.inputHeight, inputHeight != 0.0 {
-                tabBarBottomInset = max(tabBarBottomInset, inputHeight + 8.0)
+                keyboardBottomInset = inputHeight + 8.0
             }
         }
 
         var sideInset: CGFloat = 12.0
-        if tabBarBottomInset <= 28.0 {
+        if max(panelsBottomInset, keyboardBottomInset) <= 28.0 {
             sideInset = 20.0
         }
-        
-        let sidePlacement = self.sidePlacement(for: params.layout)
+
+        let tabBarBottomInset: CGFloat
+        let tabBarSideInset: CGFloat
+        if isSystemLayout {
+            // iOS 27 floats the bar at least 21pt above the bottom edge and from the sides (`minimumPlatterInsets`),
+            // and higher by as much as the safe area reaches past the home affordance's 21pt allowance in a 34pt
+            // portrait inset.
+            tabBarBottomInset = max(max(21.0, params.layout.insets(options: []).bottom - 13.0), keyboardBottomInset)
+            tabBarSideInset = 21.0
+        } else {
+            tabBarBottomInset = max(panelsBottomInset, keyboardBottomInset)
+            tabBarSideInset = sideInset
+        }
+
         let previousAppliedPlacement = self.tabBarView.view == nil ? nil : self.appliedPlacement
         let appliedPlacement = TabBarAppliedPlacement(placement: sidePlacement, containerSize: params.layout.size, isHidden: self.tabBarHidden)
         self.appliedPlacement = appliedPlacement
@@ -380,9 +397,10 @@ final class TabBarControllerNode: ASDisplayNode {
                     )
                 } : nil,
                 selectedId: selectedId,
-                outerInsets: UIEdgeInsets(top: 0.0, left: sideInset, bottom: tabBarBottomInset, right: sideInset),
+                outerInsets: UIEdgeInsets(top: 0.0, left: tabBarSideInset, bottom: tabBarBottomInset, right: tabBarSideInset),
                 axis: sidePlacement == nil ? .horizontal : .vertical,
-                isCompact: tabBarIsCompact(layout: params.layout, sidePlacement: sidePlacement),
+                isCompact: isCompact,
+                usesSystemLayout: !isWide,
                 layoutOptions: TabBarComponent.LayoutOptions(
                     showTabLabels: self.interfaceSettings.showTabLabels,
                     showSearchShortcut: self.interfaceSettings.showSearchShortcut,
@@ -390,13 +408,20 @@ final class TabBarControllerNode: ASDisplayNode {
                 )
             )),
             environment: {},
-            containerSize: sidePlacement?.frame.size ?? CGSize(width: params.layout.size.width - sideInset * 2.0, height: 100.0)
+            containerSize: sidePlacement?.frame.size ?? CGSize(width: params.layout.size.width - tabBarSideInset * 2.0, height: 100.0)
         )
         let tabBarFrame: CGRect
         if let sidePlacement {
             tabBarFrame = self.tabBarHidden ? sidePlacement.hiddenFrame(containerWidth: params.layout.size.width) : sidePlacement.frame
         } else {
-            tabBarFrame = CGRect(origin: CGPoint(x: floor((params.layout.size.width - tabBarSize.width) * 0.5), y: params.layout.size.height - (self.tabBarHidden ? 0.0 : (tabBarSize.height + tabBarBottomInset))), size: tabBarSize)
+            let centeredX: CGFloat
+            if isSystemLayout {
+                // UIKit rounds the centered bar to pixels half away from zero.
+                centeredX = floor((params.layout.size.width - tabBarSize.width) * 0.5 * UIScreenScale + 0.5) / UIScreenScale
+            } else {
+                centeredX = floor((params.layout.size.width - tabBarSize.width) * 0.5)
+            }
+            tabBarFrame = CGRect(origin: CGPoint(x: centeredX, y: params.layout.size.height - (self.tabBarHidden ? 0.0 : (tabBarSize.height + tabBarBottomInset))), size: tabBarSize)
         }
         
         if let tabBarComponentView = self.tabBarView.view {
@@ -418,6 +443,8 @@ final class TabBarControllerNode: ASDisplayNode {
             }
             tabBarFrameTransition.updateFrame(view: tabBarComponentView, frame: tabBarFrame)
             transition.updateAlpha(layer: tabBarComponentView.layer, alpha: tabBarAlpha)
+            // A hidden bar is moved below the screen, not removed: VoiceOver must not reach it there.
+            tabBarComponentView.accessibilityElementsHidden = self.tabBarHidden
         }
         
         tabBarFrameTransition.updateFrame(node: self.disabledOverlayNode, frame: tabBarFrame)
@@ -450,6 +477,7 @@ final class TabBarControllerNode: ASDisplayNode {
                             items: [GlassControlGroupComponent.Item(
                                 id: "left_" + value.title,
                                 content: .text(value.title),
+                                foregroundColor: value.customTitleColor,
                                 action: value.isEnabled ? { [weak self] in
                                     guard let self else {
                                         return
@@ -465,6 +493,7 @@ final class TabBarControllerNode: ASDisplayNode {
                             items: [GlassControlGroupComponent.Item(
                                 id: "right_" + value.title,
                                 content: .text(value.title),
+                                foregroundColor: value.customTitleColor,
                                 action: value.isEnabled ? { [weak self] in
                                     guard let self else {
                                         return
@@ -480,6 +509,7 @@ final class TabBarControllerNode: ASDisplayNode {
                             items: [GlassControlGroupComponent.Item(
                                 id: "right_" + value.title,
                                 content: .text(value.title),
+                                foregroundColor: value.customTitleColor,
                                 action: value.isEnabled ? { [weak self] in
                                     guard let self else {
                                         return
@@ -521,6 +551,8 @@ final class TabBarControllerNode: ASDisplayNode {
         return params.layout.size.height - tabBarFrame.minY
     }
     
+    /// The 12.0 layout: a full-width bar, 49 pt (34 pt beside a side safe inset) above the bottom inset,
+    /// which an edit toolbar covers in place. Returns the bottom inset the tab gets.
     private func updateClassicImpl(tabBarNode: TabBarNode, params: Params, transition: ContainedViewLayoutTransition) -> CGFloat? {
         let layout = params.layout
         
@@ -531,6 +563,8 @@ final class TabBarControllerNode: ASDisplayNode {
         
         tabBarNode.showsLabels = self.interfaceSettings.showTabLabels
         transition.updateFrame(node: tabBarNode, frame: tabBarFrame)
+        // 12.0 passed the whole layout size: the item nodes' accessibility frames (screen space) are derived
+        // from it, and the background simply runs on below the screen edge.
         tabBarNode.updateLayout(size: layout.size, leftInset: layout.safeInsets.left, rightInset: layout.safeInsets.right, additionalSideInsets: layout.additionalInsets, bottomInset: bottomInset, transition: transition)
         
         transition.updateFrame(node: self.disabledOverlayNode, frame: tabBarFrame)
@@ -622,6 +656,7 @@ final class TabBarControllerNode: ASDisplayNode {
     }
 }
 
+/// The classic bar's bottom inset: the home indicator area, and on a regular-width screen the keyboard.
 func classicTabBarBottomInset(layout: ContainerViewLayout) -> CGFloat {
     var options: ContainerViewLayoutInsetOptions = []
     if layout.metrics.widthClass == .regular {
@@ -630,6 +665,7 @@ func classicTabBarBottomInset(layout: ContainerViewLayout) -> CGFloat {
     return layout.insets(options: options).bottom
 }
 
+/// The classic bar's height including its bottom inset, as 12.0 computed it.
 func classicTabBarHeight(layout: ContainerViewLayout) -> CGFloat {
     let bottomInset = classicTabBarBottomInset(layout: layout)
     if !layout.safeInsets.left.isZero {

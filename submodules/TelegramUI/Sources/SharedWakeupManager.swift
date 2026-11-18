@@ -71,6 +71,10 @@ public final class SharedWakeupManager {
     private let presentationData: () -> PresentationData?
     
     private var inForeground: Bool = false
+    private var localNotificationsEnabled = false
+    private let madKeepAlive = MadSilentKeepAlive()
+    private var localNotificationsDisposable: Disposable?
+    private var localNotificationTask: (UIBackgroundTaskIdentifier, SwiftSignalKit.Timer)?
     private var hasActiveAudioSession: Bool = false
     private var activeExplicitExtensionTimer: SwiftSignalKit.Timer?
     private var activeExplicitExtensionTask: UIBackgroundTaskIdentifier?
@@ -111,7 +115,7 @@ public final class SharedWakeupManager {
     private var backgroundStoryProcessingTaskCancellationRequestedByApp: Bool = false
     private var pendingBackgroundStoryProcessingTaskTimer: SwiftSignalKit.Timer?
 
-    public init(beginBackgroundTask: @escaping (String, @escaping () -> Void) -> UIBackgroundTaskIdentifier?, endBackgroundTask: @escaping (UIBackgroundTaskIdentifier) -> Void, backgroundTimeRemaining: @escaping () -> Double, acquireIdleExtension: @escaping () -> Disposable?, activeAccounts: Signal<(primary: Account?, accounts: [(AccountRecordId, Account)]), NoError>, liveLocationPolling: Signal<AccountRecordId?, NoError>, watchTasks: Signal<AccountRecordId?, NoError>, inForeground: Signal<Bool, NoError>, hasActiveAudioSession: Signal<Bool, NoError>, notificationManager: SharedNotificationManager?, mediaManager: MediaManager, callManager: PresentationCallManager?, accountUserInterfaceInUse: @escaping (AccountRecordId) -> Signal<Bool, NoError>, presentationData: @escaping () -> PresentationData?) {
+    public init(beginBackgroundTask: @escaping (String, @escaping () -> Void) -> UIBackgroundTaskIdentifier?, endBackgroundTask: @escaping (UIBackgroundTaskIdentifier) -> Void, backgroundTimeRemaining: @escaping () -> Double, acquireIdleExtension: @escaping () -> Disposable?, activeAccounts: Signal<(primary: Account?, accounts: [(AccountRecordId, Account)]), NoError>, liveLocationPolling: Signal<AccountRecordId?, NoError>, watchTasks: Signal<AccountRecordId?, NoError>, inForeground: Signal<Bool, NoError>, localNotificationsEnabled: Signal<Bool, NoError>, hasActiveAudioSession: Signal<Bool, NoError>, notificationManager: SharedNotificationManager?, mediaManager: MediaManager, callManager: PresentationCallManager?, accountUserInterfaceInUse: @escaping (AccountRecordId) -> Signal<Bool, NoError>, presentationData: @escaping () -> PresentationData?) {
         assert(Queue.mainQueue().isCurrent())
         
         self.beginBackgroundTask = beginBackgroundTask
@@ -144,11 +148,13 @@ public final class SharedWakeupManager {
         })
         
         self.inForegroundDisposable = (inForeground
+        |> distinctUntilChanged
         |> deliverOnMainQueue).startStrict(next: { [weak self] value in
             guard let strongSelf = self else {
                 return
             }
             strongSelf.inForeground = value
+            strongSelf.updateLocalNotificationTask()
             if value {
                 strongSelf.activeExplicitExtensionTimer?.invalidate()
                 strongSelf.activeExplicitExtensionTimer = nil
@@ -168,12 +174,22 @@ public final class SharedWakeupManager {
             strongSelf.checkTasks()
         })
         
+        self.localNotificationsDisposable = (localNotificationsEnabled
+        |> distinctUntilChanged
+        |> deliverOnMainQueue).start(next: { [weak self] enabled in
+            guard let self else { return }
+            self.localNotificationsEnabled = enabled
+            self.updateLocalNotificationTask()
+            self.checkTasks()
+        })
+
         self.hasActiveAudioSessionDisposable = (hasActiveAudioSession
         |> deliverOnMainQueue).startStrict(next: { [weak self] value in
             guard let strongSelf = self else {
                 return
             }
             strongSelf.hasActiveAudioSession = value
+            strongSelf.updateLocalNotificationTask()
             strongSelf.checkTasks()
         })
         
@@ -355,6 +371,11 @@ public final class SharedWakeupManager {
     }
     
     deinit {
+        self.localNotificationsDisposable?.dispose()
+        if let (task, timer) = self.localNotificationTask {
+            timer.invalidate()
+            self.endBackgroundTask(task)
+        }
         self.accountSettingsDisposable?.dispose()
         self.inForegroundDisposable?.dispose()
         self.hasActiveAudioSessionDisposable?.dispose()
@@ -979,6 +1000,38 @@ public final class SharedWakeupManager {
         self.checkTasks()
     }
     
+    /// A finite grace period, never a keep-alive loop. iOS may expire it earlier.
+    private func updateLocalNotificationTask() {
+        if self.inForeground || !self.localNotificationsEnabled || self.hasActiveAudioSession {
+            self.madKeepAlive.stop()
+        } else {
+            self.madKeepAlive.start()
+        }
+        if self.inForeground || !self.localNotificationsEnabled {
+            self.endLocalNotificationTask()
+        } else if self.localNotificationTask == nil {
+            guard let task = self.beginBackgroundTask("local-notifications", { [weak self] in
+                self?.endLocalNotificationTask()
+                self?.checkTasks()
+            }), task != .invalid else { return }
+            let duration = min(25.0, max(0.0, self.backgroundTimeRemaining() - 2.0))
+            let timer = SwiftSignalKit.Timer(timeout: duration, repeat: false, completion: { [weak self] in
+                self?.endLocalNotificationTask()
+                self?.checkTasks()
+            }, queue: .mainQueue())
+            self.localNotificationTask = (task, timer)
+            timer.start()
+        }
+    }
+
+    private func endLocalNotificationTask() {
+        if let (task, timer) = self.localNotificationTask {
+            self.localNotificationTask = nil
+            timer.invalidate()
+            self.endBackgroundTask(task)
+        }
+    }
+
     func checkTasks() {
         var hasTasksForBackgroundExtension = false
         
@@ -1135,13 +1188,13 @@ public final class SharedWakeupManager {
     private func updateAccounts(hasTasks: Bool, endTaskAfterTransactionsComplete: UIBackgroundTaskIdentifier?) {
         let hasBackgroundLocationTask = self.accountsAndTasks.contains(where: { $0.2.backgroundLocation })
         
-        if self.inForeground || self.hasActiveAudioSession || self.isInBackgroundExtension || self.backgroundProcessingTaskId != nil || self.backgroundStoryProcessingTaskId != nil || hasBackgroundLocationTask || (hasTasks && self.currentExternalCompletion != nil) || self.activeExplicitExtensionTimer != nil || self.silenceAudioRenderer != nil {
+        if self.inForeground || self.hasActiveAudioSession || self.isInBackgroundExtension || self.localNotificationTask != nil || self.backgroundProcessingTaskId != nil || self.backgroundStoryProcessingTaskId != nil || hasBackgroundLocationTask || (hasTasks && self.currentExternalCompletion != nil) || self.activeExplicitExtensionTimer != nil || self.silenceAudioRenderer != nil || self.madKeepAlive.isRunning {
             Logger.shared.log("Wakeup", "enableBeginTransactions: true (active)")
             
             for (account, primary, tasks) in self.accountsAndTasks {
                 account.postbox.setCanBeginTransactions(true)
                 
-                if (self.inForeground && primary) || !tasks.isEmpty || (self.activeExplicitExtensionTimer != nil && primary) {
+                if (self.inForeground && primary) || !tasks.isEmpty || (self.activeExplicitExtensionTimer != nil && primary) || (primary && self.localNotificationsEnabled && (self.localNotificationTask != nil || self.hasActiveAudioSession || self.madKeepAlive.isRunning)) {
                     account.shouldBeServiceTaskMaster.set(.single(.always))
                 } else {
                     account.shouldBeServiceTaskMaster.set(.single(.never))

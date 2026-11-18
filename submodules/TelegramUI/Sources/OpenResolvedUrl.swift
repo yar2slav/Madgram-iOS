@@ -126,15 +126,11 @@ func openResolvedUrlImpl(
             |> deliverOnMainQueue).startStandalone(next: { updatedPeer in
                 let enginePeer = updatedPeer ?? EnginePeer(peer)
                 openPeer(enginePeer, .chat(textInputState: nil, subject: nil, peekData: nil))
-                let text: String
-                if updatedPeer != nil {
-                    text = presentationData.strings.QrStudio_NoPaidToken_Imported(enginePeer.compactDisplayTitle).string
-                } else {
-                    text = presentationData.strings.QrStudio_NoPaidToken_Invalid
+                if updatedPeer == nil {
+                    Queue.mainQueue().after(0.4, {
+                        present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: presentationData.strings.QrStudio_NoPaidToken_Invalid, timeout: nil, customUndoText: nil), elevatedLayout: false, animateInAsReplacement: false, action: { _ in return true }), nil)
+                    })
                 }
-                Queue.mainQueue().after(0.4, {
-                    present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: text, timeout: nil, customUndoText: nil), elevatedLayout: true, animateInAsReplacement: false, action: { _ in return true }), nil)
-                })
             }, error: { _ in
                 openPeer(EnginePeer(peer), .chat(textInputState: nil, subject: nil, peekData: nil))
                 present(textAlertController(context: context, updatedPresentationData: updatedPresentationData, title: nil, text: presentationData.strings.Login_UnknownError, actions: [TextAlertAction(type: .defaultAction, title: presentationData.strings.Common_OK, action: {})]), nil)
@@ -396,9 +392,11 @@ func openResolvedUrlImpl(
             } else if let navigationController = navigationController, let effectiveMessageId = replyThreadMessage.effectiveMessageId {
                 // A link tapped in a message carries its inline progress; the thread fetch then shimmers the link
                 // instead of covering the chat with a modal spinner.
+                // The resolver already fetched a comment thread, so it is only preloaded; a forum topic's resolved thread
+                // carries no read state and is opened as before.
                 let _ = ChatControllerImpl.openMessageReplies(context: context, navigationController: navigationController, present: { c, a in
                     present(c, a)
-                }, messageId: effectiveMessageId, isChannelPost: replyThreadMessage.isChannelPost, atMessage: messageId, displayModalProgress: true, progress: progress).startStandalone()
+                }, messageId: effectiveMessageId, isChannelPost: replyThreadMessage.isChannelPost, atMessage: messageId, displayModalProgress: true, progress: progress, resolvedThread: replyThreadMessage.isForumPost ? nil : replyThreadMessage).startStandalone()
             }
         case let .replyThread(messageId):
             if let navigationController = navigationController {
@@ -775,6 +773,9 @@ func openResolvedUrlImpl(
                 }
             }
             
+            // Madgram: share links prefill a message for the user to send, and spam campaigns post them
+            // ("tap to claim an NFT") so that people forward the spam and get their accounts banned for it.
+            // The exact message is shown before anything opens, and Cancel is the default.
             var sharedContent: [String] = []
             if let url, !url.isEmpty {
                 sharedContent.append(url)
@@ -955,16 +956,15 @@ func openResolvedUrlImpl(
                     rootController.popToRoot(animated: true)
                     rootController.openContacts()
                     
+                    // Contacts is pushed over Settings: its header is there once the push has landed.
                     switch section {
                     case .search:
-                        Queue.mainQueue().after(0.1) {
-                            rootController.getContactsController()?.tabBarActivateSearch()
+                        (rootController.getContactsController() as? ContactsController)?.performWhenAppeared { controller in
+                            controller.tabBarActivateSearch()
                         }
                     case .sort:
-                        Queue.mainQueue().after(0.1) {
-                            if let contactsController = rootController.getContactsController() as? ContactsController {
-                                contactsController.sortPressed()
-                            }
+                        (rootController.getContactsController() as? ContactsController)?.performWhenAppeared { controller in
+                            controller.sortPressed()
                         }
                     case .manage:
                         presentContactAccessPicker(context: context)
@@ -2186,6 +2186,7 @@ func openResolvedUrlImpl(
                     initialUsername: username,
                     initialTitle: title,
                     openAutomatically: true,
+                    viaDeeplink: true,
                     completion: { _ in
                     }
                 ) else {

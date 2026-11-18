@@ -120,17 +120,103 @@ public struct PeerBadgeAssignment: Codable, Equatable {
     }
 }
 
+public enum PeerNameEffect: String, Codable, Equatable {
+    case flow
+    case rainbow
+    case shimmer
+    case pulse
+}
+
+public struct PeerNameStyle: Codable, Equatable {
+    public let peerType: PeerBadgePeerType
+    public let peerId: Int64
+    public let colors: [String]
+    public let effect: String?
+    public let expiresAt: Int64?
+
+    public init(peerType: PeerBadgePeerType, peerId: Int64, colors: [String], effect: String?, expiresAt: Int64?) {
+        self.peerType = peerType
+        self.peerId = peerId
+        self.colors = colors
+        self.effect = effect
+        self.expiresAt = expiresAt
+    }
+
+    public var rgbColors: [UInt32] {
+        return self.colors.compactMap(PeerNameStyle.parseColor)
+    }
+
+    public var parsedEffect: PeerNameEffect? {
+        return self.effect.flatMap(PeerNameEffect.init(rawValue:))
+    }
+
+    public static func parseColor(_ value: String) -> UInt32? {
+        guard value.count == 7, value.hasPrefix("#") else {
+            return nil
+        }
+        let hex = value.dropFirst()
+        guard hex.utf8.allSatisfy({ ($0 >= 48 && $0 <= 57) || ($0 >= 97 && $0 <= 102) || ($0 >= 65 && $0 <= 70) }) else {
+            return nil
+        }
+        return UInt32(hex, radix: 16)
+    }
+
+    var isValid: Bool {
+        guard self.peerId > 0, (self.expiresAt ?? 0) >= 0, !self.colors.isEmpty, self.colors.count <= 4 else {
+            return false
+        }
+        return self.colors.allSatisfy { PeerNameStyle.parseColor($0) != nil }
+    }
+}
+
 public struct PeerBadgeRegistry: Codable, Equatable {
     public let revision: Int64
     public let generatedAt: Int64
     public let badges: [PeerBadge]
     public let assignments: [PeerBadgeAssignment]
+    public let names: [PeerNameStyle]
 
-    public init(revision: Int64, generatedAt: Int64, badges: [PeerBadge], assignments: [PeerBadgeAssignment]) {
+    public init(revision: Int64, generatedAt: Int64, badges: [PeerBadge], assignments: [PeerBadgeAssignment], names: [PeerNameStyle] = []) {
         self.revision = revision
         self.generatedAt = generatedAt
         self.badges = badges
         self.assignments = assignments
+        self.names = names
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case revision
+        case generatedAt
+        case badges
+        case assignments
+        case names
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.revision = try container.decode(Int64.self, forKey: .revision)
+        self.generatedAt = try container.decode(Int64.self, forKey: .generatedAt)
+        self.badges = try container.decode([PeerBadge].self, forKey: .badges)
+        self.assignments = try container.decode([PeerBadgeAssignment].self, forKey: .assignments)
+        self.names = try container.decodeIfPresent([PeerNameStyle].self, forKey: .names) ?? []
+    }
+
+    var namesAreValid: Bool {
+        guard self.names.count <= 100000 else {
+            return false
+        }
+        var seen = Set<PeerBadgeTarget>()
+        for name in self.names {
+            guard name.isValid else {
+                return false
+            }
+            let target = PeerBadgeTarget(peerType: name.peerType, peerId: name.peerId)
+            if seen.contains(target) {
+                return false
+            }
+            seen.insert(target)
+        }
+        return true
     }
 }
 
@@ -155,7 +241,7 @@ public enum PeerBadgeRegistryVerifier {
         else {
             return nil
         }
-        guard registry.badges.allSatisfy({ $0.media.isValid }) else {
+        guard registry.badges.allSatisfy({ $0.media.isValid }), registry.namesAreValid else {
             return nil
         }
         return registry
@@ -269,6 +355,7 @@ public final class PeerBadgeRegistryStore {
     private var registry: PeerBadgeRegistry?
     private var badgeById: [String: PeerBadge] = [:]
     private var assignmentByTarget: [PeerBadgeTarget: PeerBadgeAssignment] = [:]
+    private var nameStyleByTarget: [PeerBadgeTarget: PeerNameStyle] = [:]
     private var etag: String?
     private var isStarted = false
     private var refreshTimer: SwiftSignalKit.Timer?
@@ -379,6 +466,19 @@ public final class PeerBadgeRegistryStore {
         return badge
     }
 
+    public func nameStyle(peerId: EnginePeer.Id, now: Int64 = Int64(Date().timeIntervalSince1970)) -> PeerNameStyle? {
+        guard let target = PeerBadgeTarget(peerId: peerId) else {
+            return nil
+        }
+        self.lock.lock()
+        let style = self.nameStyleByTarget[target]
+        self.lock.unlock()
+        if let expiresAt = style?.expiresAt, expiresAt <= now {
+            return nil
+        }
+        return style
+    }
+
     public func cachedImageData(for badge: PeerBadge, preferredSize: Int = 64) -> Data? {
         guard case let .image(_, _, _, image64Hash, image128Hash) = badge.media else {
             return nil
@@ -478,11 +578,17 @@ public final class PeerBadgeRegistryStore {
             assignmentByTarget[PeerBadgeTarget(peerType: assignment.peerType, peerId: assignment.peerId)] = assignment
         }
 
+        var nameStyleByTarget: [PeerBadgeTarget: PeerNameStyle] = [:]
+        for name in registry.names {
+            nameStyleByTarget[PeerBadgeTarget(peerType: name.peerType, peerId: name.peerId)] = name
+        }
+
         self.lock.lock()
         let changed = self.registry != registry
         self.registry = registry
         self.badgeById = badgeById
         self.assignmentByTarget = assignmentByTarget
+        self.nameStyleByTarget = nameStyleByTarget
         self.etag = etag
         self.lock.unlock()
 

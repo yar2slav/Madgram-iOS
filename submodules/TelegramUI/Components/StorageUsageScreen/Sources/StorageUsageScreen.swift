@@ -1,5 +1,4 @@
 import Foundation
-import LottieSettings
 import UIKit
 import Display
 import AsyncDisplayKit
@@ -28,6 +27,7 @@ import AnimatedTextComponent
 import BottomButtonPanelComponent
 import GlassBackgroundComponent
 import EdgeEffect
+import MessageWidgetStorage
 
 #if DEBUG
 import os.signpost
@@ -872,6 +872,39 @@ final class StorageUsageScreenComponent: Component {
             self.keepScreenActiveDisposable?.dispose()
         }
         
+        // VoiceOver order: the header that floats over the content (title, total, which live in a zero-size container
+        // VoiceOver does not walk into on its own), Edit/Done, the scrolling content, the selection panel. The
+        // edge-effect and progress decorations are not elements.
+        override var accessibilityElements: [Any]? {
+            get {
+                var elements: [Any] = []
+                let headerViews = self.headerOffsetContainer.subviews.filter { !$0.isHidden && $0.alpha > 0.01 && !$0.accessibilityElementsHidden }.sorted { lhs, rhs in
+                    if abs(lhs.frame.minY - rhs.frame.minY) > 1.0 {
+                        return lhs.frame.minY < rhs.frame.minY
+                    }
+                    return lhs.frame.minX < rhs.frame.minX
+                }
+                elements.append(contentsOf: headerViews)
+                if self.navigationRightButtonsBackground.superview != nil, !self.navigationRightButtonsBackground.isHidden, self.navigationRightButtonsBackground.alpha > 0.01 {
+                    elements.append(self.navigationRightButtonsBackground)
+                }
+                // The scrolling content top to bottom (sections are added as data arrives, so their subview order is
+                // not the reading order: the cache-size footer could follow the panel).
+                // The panels (chats / media / files) are the last section; their frame starts above the footer before them.
+                let panelView = self.panelContainer.view
+                let contentViews = self.scrollContainerView.subviews.filter { !$0.isHidden && $0.alpha > 0.01 && !$0.accessibilityElementsHidden && $0 !== panelView }.sorted { $0.frame.minY < $1.frame.minY }
+                elements.append(contentsOf: contentViews)
+                if let panelView, panelView.superview != nil, !panelView.isHidden {
+                    elements.append(panelView)
+                }
+                if let selectionPanelView = self.selectionPanel?.view, selectionPanelView.superview != nil {
+                    elements.append(selectionPanelView)
+                }
+                return elements
+            } set(value) {
+            }
+        }
+        
         override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
             guard let result = super.hitTest(point, with: event) else {
                 return nil
@@ -1556,6 +1589,7 @@ final class StorageUsageScreenComponent: Component {
             let headerViewFrame = CGRect(origin: CGPoint(x: floor(bandCenterX - headerViewSize.width / 2.0), y: contentHeight), size: headerViewSize)
             if let headerComponentView = self.headerView.view {
                 if headerComponentView.superview == nil {
+                    headerComponentView.accessibilityTraits = .header
                     self.headerOffsetContainer.addSubview(headerComponentView)
                 }
                 transition.setPosition(view: headerComponentView, position: headerViewFrame.center)
@@ -1834,6 +1868,7 @@ final class StorageUsageScreenComponent: Component {
                 let keepDurationTitleFrame = CGRect(origin: CGPoint(x: sideInset + 15.0, y: contentHeight), size: keepDurationTitleSize)
                 if let keepDurationTitleComponentView = self.keepDurationTitleView.view {
                     if keepDurationTitleComponentView.superview == nil {
+                        keepDurationTitleComponentView.accessibilityTraits = .header
                         self.scrollContainerView.addSubview(keepDurationTitleComponentView)
                     }
                     transition.setFrame(view: keepDurationTitleComponentView, frame: keepDurationTitleFrame)
@@ -1967,6 +2002,7 @@ final class StorageUsageScreenComponent: Component {
                 let keepSizeTitleFrame = CGRect(origin: CGPoint(x: sideInset + 15.0, y: contentHeight), size: keepSizeTitleSize)
                 if let keepSizeTitleComponentView = self.keepSizeTitleView.view {
                     if keepSizeTitleComponentView.superview == nil {
+                        keepSizeTitleComponentView.accessibilityTraits = .header
                         self.scrollContainerView.addSubview(keepSizeTitleComponentView)
                     }
                     transition.setFrame(view: keepSizeTitleComponentView, frame: keepSizeTitleFrame)
@@ -2287,7 +2323,7 @@ final class StorageUsageScreenComponent: Component {
                     clearingNode = current
                 } else {
                     animateIn = true
-                    clearingNode = StorageUsageClearProgressOverlayNode(presentationData: component.context.sharedContext.currentPresentationData.with { $0 }, lottieSettings: component.context.lottieRenderingSettings)
+                    clearingNode = StorageUsageClearProgressOverlayNode(presentationData: component.context.sharedContext.currentPresentationData.with { $0 })
                     self.clearingNode = clearingNode
                     self.addSubnode(clearingNode)
                     self.clearingDisplayTimestamp = CFAbsoluteTimeGetCurrent()
@@ -2562,9 +2598,9 @@ final class StorageUsageScreenComponent: Component {
             controller.push(childController)
         }
         
-        private func messageGaleryContextAction(messageId: EngineMessage.Id, sourceView: UIView, sourceRect: CGRect, gesture: ContextGesture) {
+        private func messageGaleryContextAction(messageId: EngineMessage.Id, sourceView: UIView, sourceRect: CGRect, gesture: ContextGesture?) {
             guard let component = self.component, let aggregatedData = self.aggregatedData, let message = aggregatedData.messages[messageId] else {
-                gesture.cancel()
+                gesture?.cancel()
                 return
             }
             
@@ -2580,7 +2616,7 @@ final class StorageUsageScreenComponent: Component {
             )
             |> deliverOnMainQueue).start(next: { [weak self] previewData in
                 guard let self, let component = self.component, let previewData else {
-                    gesture.cancel()
+                    gesture?.cancel()
                     return
                 }
                 
@@ -2673,7 +2709,7 @@ final class StorageUsageScreenComponent: Component {
             })
         }
         
-        private func messageContextAction(messageId: EngineMessage.Id, sourceView: ContextExtractedContentContainingView, gesture: ContextGesture) {
+        private func messageContextAction(messageId: EngineMessage.Id, sourceView: ContextExtractedContentContainingView, gesture: ContextGesture?) {
             guard let component = self.component, let aggregatedData = self.aggregatedData else {
                 return
             }
@@ -2922,6 +2958,11 @@ final class StorageUsageScreenComponent: Component {
         private func commitClear(fromCategories: Bool) {
             guard let component = self.component, let aggregatedData = self.aggregatedData else {
                 return
+            }
+            
+            // SDK v1 §5.4: "Clear cache" also deletes every message widget's storage, which Storage Usage does not list.
+            if MessageWidgetStorageStore.clearsWidgetStorage(chatScoped: aggregatedData.peerId != nil, clearingCategories: fromCategories) {
+                let _ = MessageWidgetStorageStore.shared.clearAll(accountPeerId: component.context.account.peerId, writer: MessageWidgetEngineStorageWriter(engine: component.context.engine)).startStandalone()
             }
             
             if let _ = aggregatedData.peerId {
@@ -3566,8 +3607,9 @@ private final class MultiplePeerAvatarsContextItemNode: ASDisplayNode, ContextMe
     }
 }
 
-private class StorageUsageClearProgressOverlayNode: ASDisplayNode {
+public final class StorageUsageClearProgressOverlayNode: ASDisplayNode {
     private let presentationData: PresentationData
+    private let descriptionString: String
     
     private let blurredView: BlurredBackgroundView
     private let animationNode: AnimatedStickerNode
@@ -3580,12 +3622,13 @@ private class StorageUsageClearProgressOverlayNode: ASDisplayNode {
     
     private var validLayout: (CGSize, CGFloat)?
     
-    init(presentationData: PresentationData, lottieSettings: LottieRenderingSettings) {
+    public init(presentationData: PresentationData, description: String? = nil) {
+        self.descriptionString = description ?? presentationData.strings.ClearCache_KeepOpenedDescription
         self.presentationData = presentationData
         
         self.blurredView = BlurredBackgroundView(color: presentationData.theme.list.plainBackgroundColor.withMultipliedAlpha(0.7), enableBlur: true)
         
-        self.animationNode = DefaultAnimatedStickerNodeImpl(lottieSettings: lottieSettings)
+        self.animationNode = DefaultAnimatedStickerNodeImpl()
         self.animationNode.setup(source: AnimatedStickerNodeLocalFileSource(name: "ClearCache"), width: 256, height: 256, playbackMode: .loop, mode: .direct(cachePathPrefix: nil))
         self.animationNode.visibility = true
         
@@ -3609,7 +3652,7 @@ private class StorageUsageClearProgressOverlayNode: ASDisplayNode {
         self.progressDisposable.dispose()
     }
     
-    func setProgressSignal(_ signal: Signal<Float, NoError>) {
+    public func setProgressSignal(_ signal: Signal<Float, NoError>) {
         self.progressDisposable.set((signal
         |> deliverOnMainQueue).start(next: { [weak self] progress in
             if let strongSelf = self {
@@ -3619,7 +3662,7 @@ private class StorageUsageClearProgressOverlayNode: ASDisplayNode {
     }
     
     private var progress: Float = 0.0
-    func setProgress(_ progress: Float) {
+    public func setProgress(_ progress: Float) {
         self.progress = progress
         
         if let (size, bottomInset) = self.validLayout {
@@ -3627,7 +3670,7 @@ private class StorageUsageClearProgressOverlayNode: ASDisplayNode {
         }
     }
     
-    func updateLayout(size: CGSize, bottomInset: CGFloat, transition: ContainedViewLayoutTransition) {
+    public func updateLayout(size: CGSize, bottomInset: CGFloat, transition: ContainedViewLayoutTransition) {
         self.validLayout = (size, bottomInset)
         
         transition.updateFrame(view: self.blurredView, frame: CGRect(origin: CGPoint(), size: size))
@@ -3642,7 +3685,7 @@ private class StorageUsageClearProgressOverlayNode: ASDisplayNode {
         let descriptionTextSize = self.descriptionText.update(
             transition: .immediate,
             component: AnyComponent(BalancedTextComponent(
-                text: .plain(NSAttributedString(string: self.presentationData.strings.ClearCache_KeepOpenedDescription, font: Font.regular(15.0), textColor: self.presentationData.theme.actionSheet.primaryTextColor)),
+                text: .plain(NSAttributedString(string: self.descriptionString, font: Font.regular(15.0), textColor: self.presentationData.theme.actionSheet.primaryTextColor)),
                 balanced: true,
                 horizontalAlignment: .center,
                 maximumNumberOfLines: 0,
@@ -3698,6 +3741,66 @@ private class StorageUsageClearProgressOverlayNode: ASDisplayNode {
             }
             descriptionTextView.frame = CGRect(origin: CGPoint(x: floorToScreenPixels((size.width - descriptionTextSize.width) / 2.0), y: progressFrame.maxY + spacing), size: descriptionTextSize)
         }
+    }
+}
+
+public final class StorageUsageProgressOverlayController: ViewController {
+    private let presentationData: PresentationData
+    private let descriptionString: String?
+    private var overlayNode: StorageUsageClearProgressOverlayNode?
+    private var pendingProgress: Float = 0.0
+    private var isDismissing = false
+    public var cancelled: (() -> Void)?
+
+    public init(presentationData: PresentationData, description: String? = nil) {
+        self.presentationData = presentationData
+        self.descriptionString = description
+        super.init(navigationBarPresentationData: nil)
+        self.statusBar.statusBarStyle = .Ignore
+        self.blocksBackgroundWhenInOverlay = true
+    }
+
+    required public init(coder aDecoder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override public func loadDisplayNode() {
+        let node = StorageUsageClearProgressOverlayNode(presentationData: self.presentationData, description: self.descriptionString)
+        node.setProgress(self.pendingProgress)
+        self.overlayNode = node
+        self.displayNode = node
+        self.displayNodeDidLoad()
+        node.alpha = 0.0
+        node.layer.animateAlpha(from: 0.0, to: 1.0, duration: 0.25, removeOnCompletion: false, completion: { [weak node] _ in
+            node?.alpha = 1.0
+            node?.layer.removeAllAnimations()
+        })
+    }
+
+    public func setProgress(_ progress: Float) {
+        self.pendingProgress = progress
+        self.overlayNode?.setProgress(progress)
+    }
+
+    override public func containerLayoutUpdated(_ layout: ContainerViewLayout, transition: ContainedViewLayoutTransition) {
+        super.containerLayoutUpdated(layout, transition: transition)
+        self.overlayNode?.updateLayout(size: layout.size, bottomInset: layout.intrinsicInsets.bottom, transition: transition)
+    }
+
+    override public func dismiss(completion: (() -> Void)? = nil) {
+        guard !self.isDismissing else {
+            return
+        }
+        self.isDismissing = true
+        guard let node = self.overlayNode else {
+            self.presentingViewController?.dismiss(animated: false, completion: nil)
+            completion?()
+            return
+        }
+        node.layer.animateAlpha(from: node.alpha, to: 0.0, duration: 0.2, removeOnCompletion: false, completion: { [weak self] _ in
+            self?.presentingViewController?.dismiss(animated: false, completion: nil)
+            completion?()
+        })
     }
 }
 

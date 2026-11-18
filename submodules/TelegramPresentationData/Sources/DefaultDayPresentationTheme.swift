@@ -53,6 +53,8 @@ public func dateFillNeedsBlur(theme: PresentationTheme, wallpaper: TelegramWallp
 
 public let defaultServiceBackgroundColor = UIColor(rgb: 0x000000, alpha: 0.2)
 public let defaultPresentationTheme = makeDefaultDayPresentationTheme(serviceBackgroundColor: defaultServiceBackgroundColor, day: false, preview: false)
+// Madgram classic design: Telegram 12.0's blue (the glass redesign moved it to iOS 26's 0x0088ff). A global is
+// initialized on first use, which comes after `ClassicDesign.isEnabled` is set at launch.
 public let defaultDayAccentColor = ClassicDesign.isEnabled ? UIColor(rgb: 0x007aff) : UIColor(rgb: 0x0088ff)
 
 public func customizeDefaultDayTheme(theme: PresentationTheme, editing: Bool, title: String?, accentColor: UIColor?, outgoingAccentColor: UIColor?, backgroundColors: [UInt32], bubbleColors: [UInt32], animateBubbleColors: Bool?, wallpaper forcedWallpaper: TelegramWallpaper? = nil, serviceBackgroundColor: UIColor?) -> PresentationTheme {
@@ -395,6 +397,8 @@ public func makeDefaultDayPresentationTheme(extendingThemeReference: Presentatio
         serviceBackgroundColor = UIColor(white: 0.0, alpha: 0.2)
     }
     
+    // Madgram classic design: where the glass redesign retuned a colour of this theme, the classic design keeps
+    // Telegram 12.0's value. Read once per theme; the flag is fixed for the process.
     let classic = ClassicDesign.isEnabled
     
     let intro = PresentationThemeIntro(

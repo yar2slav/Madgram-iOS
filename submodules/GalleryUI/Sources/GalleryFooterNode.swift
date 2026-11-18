@@ -8,6 +8,7 @@ import ComponentDisplayAdapters
 
 public final class GalleryFooterNode: ASDisplayNode {
     private let edgeEffectView: EdgeEffectView
+    /// Madgram classic: 12.0's flat translucent black bar behind the footer, in place of the edge effect.
     private let classicBackgroundNode: ASDisplayNode?
     private var contentsFrame = CGRect()
     
@@ -187,6 +188,7 @@ public final class GalleryFooterNode: ASDisplayNode {
         }
         ComponentTransition(transition).setAlpha(view: self.edgeEffectView, alpha: self.visibilityAlpha * self.defaultEdgeEffectAlpha)
         if let classicBackgroundNode = self.classicBackgroundNode {
+            // 12.0: the bar spans exactly the footer's contents, and slides with them.
             edgeEffectTransition.setFrame(view: classicBackgroundNode.view, frame: backgroundFrame)
             ComponentTransition(transition).setAlpha(view: classicBackgroundNode.view, alpha: self.visibilityAlpha)
         }

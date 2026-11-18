@@ -97,6 +97,8 @@ func _internal_deleteAllMessagesWithAuthor(transaction: Transaction, mediaBox: M
         }
         return true
     })
+    // User-initiated bulk deletion (delete all messages from this member): no local copies are kept,
+    // same rule as any other deletion performed from this device.
     removeDeletedMessageArchiveForLocalDeletion(transaction: transaction, mediaBox: mediaBox, ids: archiveIds)
     var resourceIds: [MediaResourceId] = []
     transaction.removeAllMessagesWithAuthor(peerId, authorId: authorId, namespace: namespace, forEachMedia: { media in

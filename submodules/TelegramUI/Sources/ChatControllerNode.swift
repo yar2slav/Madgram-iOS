@@ -76,6 +76,10 @@ import RichTextEditorUIKit
 import RichTextEditorMediaView
 import InstantPageUI
 import ChatRichTextEditorComposer
+import ChatHistoryListViewBackend
+import MessageWidget
+import TabBarLayout
+import DebugCompanionScreen
 
 final class VideoNavigationControllerDropContentItem: NavigationControllerDropContentItem {
     let itemNode: OverlayMediaItemNode
@@ -262,6 +266,8 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
     private var plainInputSeparatorAlpha: CGFloat?
     private var usePlainInputSeparator: Bool
     
+    /// Madgram classic design (`ClassicDesign.isEnabled`): Telegram 12.0's full-width input bar, drawn inside
+    /// `inputPanelBackgroundNode` (which stays the transparent frame it is in the glass design), with its hairline on top.
     private let classicInputPanelBackgroundNode: NavigationBackgroundNode?
     private let classicInputPanelSeparatorNode: ASDisplayNode?
     
@@ -308,6 +314,10 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
     private var inputMediaNodeStateContext = ChatEntityKeyboardInputNode.StateContext()
         
     let navigateButtons: ChatHistoryNavigationButtons
+    private var companionView: CompanionCharacterView?
+    private var companionBottomY: CGFloat = 0.0
+    private var companionSafeLeft: CGFloat = 0.0
+    private var companionIsInteracting = false
     
     private var ignoreUpdateHeight = false
     private var overrideUpdateTextInputHeightTransition: ContainedViewLayoutTransition?
@@ -501,6 +511,11 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         self.controller = controller
         
         self.backgroundNode = backgroundNode
+        if case .standard(.embedded) = chatPresentationInterfaceState.mode {
+            // A history embedded in a profile pane (Saved): the wallpaper is decoration there. The chat screen itself is
+            // left as it is (its own pass).
+            backgroundNode.accessibilityElementsHidden = true
+        }
         
         self.wrappingNode = SpaceWarpNodeImpl()
         
@@ -582,8 +597,14 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
                         })
 
                         var messageText = message.text
-                        var messageMedia = message.media
-                        var hasDice = false
+                        // widget-sandbox v0.2: a widget is previewed as the copy the forward makes (no queries, no chat
+                        // state), as its local echo shows it.
+                        var messageMedia = message.media.map { media -> Media in
+                            return (media as? TelegramMediaWidget)?.forwardedCopy() ?? media
+                        }
+                        // Dice and widgets keep their sender under "hide sender names": the server keeps the header
+                        // (widget-sandbox v0.2, tgw-format.md).
+                        var keepsSender = false
                         
                         if hideNames || options.hideCaptions {
                             for media in message.media {
@@ -598,15 +619,15 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
                                     updatedMedia.append(TelegramMediaPoll(pollId: poll.pollId, publicity: poll.publicity, kind: poll.kind, text: poll.text, textEntities: poll.textEntities, options: poll.options, correctAnswers: poll.correctAnswers, results: TelegramMediaPollResults(voters: nil, totalVoters: nil, recentVoters: [], solution: nil, hasUnseenVotes: false, canViewStats: false), isClosed: false, deadlineTimeout: nil, deadlineDate: nil, pollHash: poll.pollHash))
                                     messageMedia = updatedMedia
                                 }
-                                if let _ = media as? TelegramMediaDice {
-                                    hasDice = true
+                                if media is TelegramMediaDice || media is TelegramMediaWidget {
+                                    keepsSender = true
                                 }
                             }
                         }
 
                         let ephemeralParams = ephemeralForwardParams(message)
                         if ephemeralParams != nil {
-                            if message.id.namespace == Namespaces.Message.EphemeralLocal || (hideNames && !hasDice) {
+                            if message.id.namespace == Namespaces.Message.EphemeralLocal || (hideNames && !keepsSender) {
                                 attributes.removeAll(where: { $0 is InlineBotMessageAttribute })
                             } else if let inlineBotPeerId = ephemeralParams?.inlineBotPeerId, !attributes.contains(where: { $0 is InlineBotMessageAttribute }) {
                                 attributes.append(InlineBotMessageAttribute(peerId: inlineBotPeerId, title: nil))
@@ -621,7 +642,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
                         } else {
                             forwardInfo = MessageForwardInfo(author: message.author, source: nil, sourceMessageId: nil, date: message.timestamp, authorSignature: nil, psaType: nil, flags: [])
                         }
-                        if hideNames && !hasDice {
+                        if hideNames && !keepsSender {
                             forwardInfo = nil
                         }
                         
@@ -928,6 +949,10 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
     
         self.addSubnode(self.wrappingNode)
         self.wrappingNode.contentNode.addSubnode(self.contentContainerNode)
+        // VoiceOver: this container holds the history, the navigation bar and its accessory panels, which all start at
+        // the top of the screen, so ASDK's frame-sorted collector reads the navigation bar after the history. Keep
+        // UIKit's own order here until the chat screen gets its own VoiceOver pass.
+        self.contentContainerNode.accessibilityUsesViewElements = true
         self.contentContainerNode.contentNode.addSubnode(self.backgroundNode)
         self.contentContainerNode.contentNode.addSubnode(self.historyNodeContainer)
         
@@ -995,6 +1020,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         }
         self.textInputPanelNode?.formulaRenderer = chatInputFormulaRenderResult
         if let data = self.context.currentAppConfiguration.with({ $0 }).data, let value = data["ios_disable_ai_chat"] as? Double, value == 1.0 {
+        } else if InterfaceTuningSettingsStore.shared.cached.on(InterfaceTuningSettingsStore.shared.cached.disableTelegramAI, .aiInput) {
         } else if let peerId = self.chatPresentationInterfaceState.chatLocation.peerId, peerId.namespace != Namespaces.Peer.SecretChat {
             self.textInputPanelNode?.isAIEnabled = true
         }
@@ -1051,7 +1077,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             self?.paste(data)
         }
         self.textInputPanelNode?.pastedMarkdownParser = { context, text in
-            return chatInputContentFromPastedMarkdown(context: context, plainText: text)
+            return chatInputContentFromPastedMarkdown(context: context, plainText: text, keepsBlankLines: true)
         }
         self.textInputPanelNode?.displayAttachmentMenu = { [weak self] in
             self?.displayAttachmentMenu()
@@ -1131,10 +1157,16 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         }
         self.panRecognizer = recognizer
         self.view.addGestureRecognizer(recognizer)
+        // While a message widget's control is held, a finger anywhere else in the chat does nothing until it lifts.
+        self.view.addGestureRecognizer(MessageWidgetChatLockRecognizer())
         
         self.view.disablesInteractiveTransitionGestureRecognizerNow = { [weak self] in
             guard let strongSelf = self else {
                 return false
+            }
+            // With the side list open a right swipe closes the list, not the chat.
+            if strongSelf.sideListOffset > 0.0 {
+                return true
             }
             if let _ = strongSelf.chatPresentationInterfaceState.inputTextPanelState.mediaRecordingState {
                 return true
@@ -1214,6 +1246,70 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         return CGSize(width: layout.size.width, height: height)
     }
     
+    /// How far the chat is moved left for the side list (`ChatSideListPanelNode`); the panel itself is the controller's.
+    private(set) var sideListOffset: CGFloat = 0.0
+
+    /// Dims the chat while the side list is out (the strip of it left on screen).
+    private var sideListDimNode: ASDisplayNode?
+
+    func updateSideListOffset(_ offset: CGFloat, dimAlpha: CGFloat, transition: ContainedViewLayoutTransition, completion: (() -> Void)? = nil) {
+        self.sideListOffset = offset
+        guard let (layout, _) = self.validLayout else {
+            completion?()
+            return
+        }
+        if dimAlpha > 0.0 || self.sideListDimNode != nil {
+            let dimNode: ASDisplayNode
+            if let current = self.sideListDimNode {
+                dimNode = current
+            } else {
+                dimNode = ASDisplayNode()
+                dimNode.backgroundColor = .black
+                dimNode.alpha = 0.0
+                dimNode.isUserInteractionEnabled = false
+                self.sideListDimNode = dimNode
+            }
+            // Over everything of the chat, panels it inserted later included; inside the card, so it keeps its corners.
+            if dimNode.supernode !== self.wrappingNode.contentNode || self.wrappingNode.contentNode.subnodes?.last !== dimNode {
+                self.wrappingNode.contentNode.addSubnode(dimNode)
+            }
+            dimNode.frame = CGRect(origin: CGPoint(), size: layout.size)
+            transition.updateAlpha(node: dimNode, alpha: dimAlpha, completion: { [weak self, weak dimNode] _ in
+                guard let self, let dimNode, self.sideListOffset == 0.0, self.sideListDimNode === dimNode else {
+                    return
+                }
+                self.sideListDimNode = nil
+                dimNode.removeFromSupernode()
+            })
+        }
+        // Moved aside, the chat is a card: its right corners take the screen's radius over the list's background.
+        if offset > 0.0 {
+            self.wrappingNode.layer.maskedCorners = [.layerMaxXMinYCorner, .layerMaxXMaxYCorner]
+            self.wrappingNode.clipsToBounds = true
+            transition.updateCornerRadius(node: self.wrappingNode, cornerRadius: layout.deviceMetrics.screenCornerRadius)
+        } else {
+            transition.updateCornerRadius(node: self.wrappingNode, cornerRadius: 0.0, completion: { [weak self] _ in
+                guard let self, self.sideListOffset == 0.0 else {
+                    return
+                }
+                self.wrappingNode.clipsToBounds = false
+            })
+        }
+        transition.updateFrame(node: self.wrappingNode, frame: CGRect(origin: CGPoint(x: -offset, y: 0.0), size: layout.size), completion: { _ in
+            completion?()
+        })
+    }
+
+    /// Stops the side list's slide where it is (`updateSideListOffset` follows at the on-screen offset).
+    func removeSideListAnimations() {
+        for layer in [self.wrappingNode.layer, self.sideListDimNode?.layer].compactMap({ $0 }) {
+            layer.removeAnimation(forKey: "position")
+            layer.removeAnimation(forKey: "bounds")
+            layer.removeAnimation(forKey: "cornerRadius")
+            layer.removeAnimation(forKey: "opacity")
+        }
+    }
+
     func forceUpdateWarpContents() {
         guard let (layout, _) = self.validLayout else {
             return
@@ -1229,7 +1325,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             transition = protoTransition
         }
         
-        transition.updateFrame(node: self.wrappingNode, frame: CGRect(origin: CGPoint(), size: layout.size))
+        transition.updateFrame(node: self.wrappingNode, frame: CGRect(origin: CGPoint(x: -self.sideListOffset, y: 0.0), size: layout.size))
         self.wrappingNode.update(size: layout.size, cornerRadius: layout.deviceMetrics.screenCornerRadius, transition: ComponentTransition(transition))
         
         if let statusBar = self.statusBar {
@@ -1486,7 +1582,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         var footerPanels: [HeaderPanelContainerComponent.Panel] = []
         let hideTopPanels = self.controller?.hideTopPanels ?? false
         
-        if !hideTopPanels, self.chatPresentationInterfaceState.search == nil, let headerTopicsPanel = headerTopicsPanelForChatPresentationInterfaceState(self.chatPresentationInterfaceState, context: self.context, controllerInteraction: self.controllerInteraction, interfaceInteraction: self.interfaceInteraction, force: false) {
+        if !hideTopPanels, self.chatPresentationInterfaceState.search == nil, let headerTopicsPanel = headerTopicsPanelForChatPresentationInterfaceState(self.chatPresentationInterfaceState, context: self.context, controllerInteraction: self.controllerInteraction, interfaceInteraction: self.interfaceInteraction, force: false, sideListActive: chatSideListKindForChatPresentationInterfaceState(self.chatPresentationInterfaceState, context: self.context) != nil) {
             let panel = HeaderPanelContainerComponent.Panel(
                 key: "topics",
                 orderIndex: 0,
@@ -1804,7 +1900,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         var immediatelyLayoutFloatingTopicsNodeAndAnimateAppearance = false
         var didChangeFloatingTopicsPanel = false
         
-        if let floatingTopicsPanelComponent = floatingTopicsPanelForChatPresentationInterfaceState(self.chatPresentationInterfaceState, context: self.context, controllerInteraction: self.controllerInteraction, interfaceInteraction: self.interfaceInteraction, force: false) {
+        if let floatingTopicsPanelComponent = floatingTopicsPanelForChatPresentationInterfaceState(self.chatPresentationInterfaceState, context: self.context, controllerInteraction: self.controllerInteraction, interfaceInteraction: self.interfaceInteraction, force: false, sideListActive: chatSideListKindForChatPresentationInterfaceState(self.chatPresentationInterfaceState, context: self.context) != nil) {
             if self.floatingTopicsPanel == nil {
                 self.floatingTopicsPanel = (ComponentView(), floatingTopicsPanelComponent)
                 immediatelyLayoutFloatingTopicsNodeAndAnimateAppearance = true
@@ -1828,6 +1924,8 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         }
         
         if floatingTopicsPanelInsets.top != 0.0 {
+            // Madgram classic design: the header strip hangs flush from the navigation bar, so the history starts
+            // right under it; a floating topics panel above the history keeps its gap (a side one adds no top inset).
             let hasTopFloatingTopicsPanel = self.floatingTopicsPanel.map { $0.component.location != .side } ?? false
             floatingTopicsPanelInsets.top += (ClassicDesign.isEnabled && !hasTopFloatingTopicsPanel) ? 0.0 : 8.0
         }
@@ -1858,6 +1956,15 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             return self.makeMediaInputNode()
         })
         
+        // The gap between the bottom inset and the bottom panels.
+        let inputPanelsInset: CGFloat = ClassicDesign.isEnabled ? chatClassicInputPanelVerticalPadding : 8.0
+        // The bottom inset with neither a keyboard nor an input node, the least the panels sit above.
+        var restingBottomInset = cleanInsets.bottom
+        // iPad: the bottom panels' row (a panel's default height, 40pt) rests centred on the tab bar in the master
+        // pane beside the chat, while there is one (not beside a pushed master screen, such as a forum's topics).
+        if case .tablet = layout.deviceMetrics.type, case .regular = layout.metrics.widthClass, layout.isBesideBottomTabBar, case .standard(.default) = self.chatPresentationInterfaceState.mode {
+            restingBottomInset += tabBarAlignedRowBottomInsetOffset(bottomInset: restingBottomInset, rowSpacing: inputPanelsInset, rowHeight: 40.0)
+        }
         var insets: UIEdgeInsets
         var inputPanelBottomInsetTerm: CGFloat = 0.0
         if let inputNodeForState = inputNodeForState {
@@ -1867,9 +1974,12 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             }
             
             insets = layout.insets(options: [])
+            insets.bottom = restingBottomInset
             inputPanelBottomInsetTerm = max(insets.bottom, layout.standardInputHeight)
         } else {
             insets = layout.insets(options: [.input])
+            // A keyboard taller than the resting inset takes over from it continuously.
+            insets.bottom = max(layout.inputHeight ?? 0.0, restingBottomInset)
         }
 
         switch self.chatPresentationInterfaceState.mode {
@@ -2152,6 +2262,8 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             self.pendingSwitchToChatLocation = nil
             
             let previousHistoryNode = self.historyNode
+            // Switching in place (another forum topic) does not go through viewWillDisappear.
+            previousHistoryNode.readVisibleMessagesBeforeLeaving()
             self.historyNode = pendingSwitchToChatLocation.historyNode
             
             self.historyNode.position = previousHistoryNode.position
@@ -2355,7 +2467,6 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             self.overlayContextPanelNode = nil
         }
         
-        let inputPanelsInset: CGFloat = ClassicDesign.isEnabled ? chatClassicInputPanelVerticalPadding : 8.0
         let accessoryPanelsInset: CGFloat = ClassicDesign.isEnabled ? 0.0 : 8.0
         var inputPanelsHeight: CGFloat = 0.0
         
@@ -2407,6 +2518,8 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             }
         }
         
+        // Madgram classic design: the bar's padding above its panels. The height of the panels the bar covers is kept
+        // apart, as the footer panels added below float above the bar.
         var classicInputPanelsHeight: CGFloat = 0.0
         if ClassicDesign.isEnabled, inputPanelsHeight > 0.0 {
             inputPanelsHeight += chatClassicInputPanelVerticalPadding
@@ -2436,9 +2549,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             }
             
             var footerPanelsWidth = layout.size.width - layout.safeInsets.left - layout.safeInsets.right + 16.0
-            if containerInsets.bottom <= 32.0 {
-                footerPanelsWidth -= 36.0
-            }
+            footerPanelsWidth -= 2.0 * chatBottomControlsCompactSideInset(bottomInset: containerInsets.bottom, deviceMetrics: layout.deviceMetrics)
             
             let footerPanelsSizeValue = footerPanelsView.update(
                 transition: footerPanelsTransition,
@@ -2447,6 +2558,8 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
                     preferClearGlass: self.chatPresentationInterfaceState.preferredGlassType == .clear,
                     tabs: nil,
                     panels: footerPanels,
+                    // Madgram classic design: only the header stack becomes 12.0's flat strip; this one floats above
+                    // the input bar.
                     isFooter: true
                 )),
                 environment: {},
@@ -2479,11 +2592,17 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         
         var inputBackgroundFrame = CGRect(origin: CGPoint(x: 0.0, y: layout.size.height - insets.bottom - bottomOverflowOffset - inputPanelsHeight - inputPanelsInset), size: CGSize(width: layout.size.width, height: inputPanelsHeight))
         if ClassicDesign.isEnabled {
+            // 12.0: the bar spans its panels and their padding, and runs on under the home indicator when nothing (no
+            // keyboard, no input view) is below it.
             let classicPanelsHeight: CGFloat = inputPanelsHeight.isZero ? 0.0 : classicInputPanelsHeight
             var classicBottomExtension: CGFloat = 0.0
             if !classicPanelsHeight.isZero {
                 if cleanInsets.bottom < insets.bottom {
                     if self.inputNode == nil, let inputHeight = layout.inputHeight, inputHeight > 0.0 {
+                        // Madgram classic design: the system keyboard is drawn in its own window with rounded top
+                        // corners since iOS 26, so the bar runs on behind it and fills those corners as it did in
+                        // 12.0, instead of leaving the wallpaper showing in them. Telegram's own input views lie
+                        // under this background, so they are left out.
                         classicBottomExtension = insets.bottom
                     } else if case .regular = layout.metrics.widthClass, insets.bottom < 88.0 {
                         classicBottomExtension = insets.bottom
@@ -2511,6 +2630,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         }
         
         var bottomBackgroundEdgeEffectNode: WallpaperEdgeEffectNode?
+        // Madgram classic design: 12.0's bar is opaque, with no fade of the wallpaper under it.
         if self.historyNode.rotated && !isOverlay && !ClassicDesign.isEnabled {
             if let current = self.bottomBackgroundEdgeEffectNode {
                 bottomBackgroundEdgeEffectNode = current
@@ -2552,6 +2672,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         var contentBottomInset: CGFloat = inputPanelsHeight + inputPanelsInset
         if previewing {
         } else {
+            // Madgram classic design: 12.0's messages end 4pt above the bar.
             contentBottomInset += ClassicDesign.isEnabled ? 4.0 : 11.0
         }
         
@@ -2718,6 +2839,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         })
         
         var topBackgroundEdgeEffectNode: WallpaperEdgeEffectNode?
+        // Madgram classic design: 12.0 had no fade of the wallpaper under the navigation bar either.
         if self.historyNode.rotated && !isOverlay && !ClassicDesign.isEnabled {
             if let current = self.topBackgroundEdgeEffectNode {
                 topBackgroundEdgeEffectNode = current
@@ -2763,14 +2885,14 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         self.historyNode.scrollEnabled = !(self.isScrollingLockedAtTop || self.chatPresentationInterfaceState.focusedPollAddOptionMessageId != nil)
         
         let navigateButtonsSize = self.navigateButtons.updateLayout(transition: transition)
+        // Madgram classic design: 12.0 kept the buttons 6pt above the bar.
         let navigateButtonsMinY = layout.size.height - containerInsets.bottom - inputPanelsHeight - navigateButtonsSize.height - (ClassicDesign.isEnabled ? (inputPanelsInset + 6.0) : 20.0)
         // iPhone Duo: beside a free bottom corner the input panel runs into the strip; the buttons follow it
         // (and keep the strip beside the column). Without corner blocks this is the plain safe inset.
         let navigateButtonsRightInset = sideColumnBandInsets(layout: layout, bandMinY: navigateButtonsMinY, bandMaxY: navigateButtonsMinY + navigateButtonsSize.height, column: sideColumnExtent).right
         var navigateButtonsFrame = CGRect(origin: CGPoint(x: layout.size.width - navigateButtonsRightInset - navigateButtonsSize.width - (ClassicDesign.isEnabled ? 6.0 : 8.0), y: navigateButtonsMinY), size: navigateButtonsSize)
-        if containerInsets.bottom <= 32.0 {
-            navigateButtonsFrame.origin.x -= 18.0
-        }
+        // Over the panels' right edge on iPad, which does not step in there.
+        navigateButtonsFrame.origin.x -= chatBottomControlsCompactSideInset(bottomInset: containerInsets.bottom, deviceMetrics: layout.deviceMetrics)
         if case .overlay = self.chatPresentationInterfaceState.mode {
             navigateButtonsFrame = navigateButtonsFrame.offsetBy(dx: -8.0, dy: -8.0)
         }
@@ -2797,7 +2919,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         }
         
         var isInputExpansionEnabled = false
-        if case .media = self.chatPresentationInterfaceState.inputMode {
+        if case .media = self.chatPresentationInterfaceState.inputMode, inputNodeForState != nil {
             isInputExpansionEnabled = true
         }
         
@@ -2815,10 +2937,12 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             classicInputPanelBackgroundNode.update(size: classicBackgroundSize, transition: transition, beginWithCurrentState: true)
             transition.updateFrame(node: classicInputPanelSeparatorNode, frame: CGRect(origin: CGPoint(), size: CGSize(width: classicBackgroundSize.width, height: UIScreenPixel)), beginWithCurrentState: true)
             transition.updateAlpha(node: classicInputPanelBackgroundNode, alpha: classicBackgroundSize.height.isZero ? 0.0 : 1.0)
+            // With no panels the bar has no height, and its hairline would be left standing on its own.
             classicInputPanelSeparatorNode.isHidden = classicBackgroundSize.height.isZero
         }
         
         if let headerPanelsComponentView = self.headerPanelsView?.view, let headerPanelsSize {
+            // Madgram classic design: 12.0's title accessory panels hung flush from the navigation bar (`insets.top`).
             sidePanelTopInset += ClassicDesign.isEnabled ? 4.0 : 8.0
             let headerPanelsFrame = CGRect(origin: CGPoint(x: layout.safeInsets.left, y: sidePanelTopInset), size: headerPanelsSize)
             var headerPanelsTransition = ComponentTransition(transition)
@@ -2889,6 +3013,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         
         transition.updateFrame(node: self.navigateButtons, frame: apparentNavigateButtonsFrame)
         self.navigateButtons.update(rect: apparentNavigateButtonsFrame, within: layout.size, transition: transition)
+        self.updateCompanion(layout: layout, bottomY: apparentNavigateButtonsFrame.maxY, transition: transition)
         
         if let secondaryInputPanelNode = self.secondaryInputPanelNode, let apparentSecondaryInputPanelFrame = apparentSecondaryInputPanelFrame, !secondaryInputPanelNode.frame.equalTo(apparentSecondaryInputPanelFrame) {
             if immediatelyLayoutSecondaryInputPanelAndAnimateAppearance {
@@ -2930,6 +3055,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
                 if let emojisPanelNode = inputContextPanelNode as? EmojisChatInputContextPanelNode {
                     emojisPanelNode.cursorAnchorX = self.textInputPanelNode?.currentCaretRect(in: emojisPanelNode.view)?.midX
                 }
+                inputContextPanelNode.coveredBottomInset = insets.bottom
                 inputContextPanelNode.updateLayout(size: panelFrame.size, leftInset: layout.safeInsets.left, rightInset: layout.safeInsets.right, bottomInset: insets.bottom + inputPanelsHeight + inputPanelsInset, transition: .immediate, interfaceState: self.chatPresentationInterfaceState)
             }
 
@@ -2937,6 +3063,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             if let emojisPanelNode = inputContextPanelNode as? EmojisChatInputContextPanelNode {
                 emojisPanelNode.cursorAnchorX = self.textInputPanelNode?.currentCaretRect(in: emojisPanelNode.view)?.midX
             }
+            inputContextPanelNode.coveredBottomInset = insets.bottom
             inputContextPanelNode.updateLayout(size: panelFrame.size, leftInset: layout.safeInsets.left, rightInset: layout.safeInsets.right, bottomInset: insets.bottom + inputPanelsHeight + inputPanelsInset, transition: transition, interfaceState: self.chatPresentationInterfaceState)
         }
         
@@ -3137,7 +3264,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         
         if let disappearingNode = self.disappearingNode {
             let targetY: CGFloat
-            if cleanInsets.bottom.isLess(than: insets.bottom) {
+            if restingBottomInset.isLess(than: insets.bottom) {
                 targetY = layout.size.height - insets.bottom
             } else {
                 targetY = layout.size.height
@@ -3399,6 +3526,9 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
                             self.controller?.updateChatPresentationInterfaceState(animated: true, interactive: true, { state in
                                 var state = state
                                 state = state.updatedDisplayHistoryFilterAsList(false)
+                                if let search = state.search, let resultsState = search.resultsState, let currentId = chatSearchResultsCurrentId(selecting: message.id, in: resultsState.messageIndices) {
+                                    state = state.updatedSearch(search.withUpdatedResultsState(ChatSearchResultsState(messageIndices: resultsState.messageIndices, currentId: currentId, state: resultsState.state, totalCount: resultsState.totalCount, completed: resultsState.completed)))
+                                }
                                 if let channel = state.renderedPeer?.peer as? TelegramChannel, channel.isMonoForum, let linkedMonoforumId = channel.linkedMonoforumId, let mainChannel = self.chatPresentationInterfaceState.renderedPeer?.peers[linkedMonoforumId] as? TelegramChannel, mainChannel.hasPermission(.manageDirect) {
                                     state = state.updatedSearch(nil)
                                 }
@@ -3499,7 +3629,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
                             return nil
                         }
                         let strings = self.chatPresentationInterfaceState.strings
-                        let foundLocalPeers = context.engine.messages.searchLocalSavedMessagesPeers(query: query.lowercased(), indexNameMapping: [
+                        let foundLocalPeers = context.engine.messages.searchLocalSavedMessagesPeers(peerId: context.account.peerId, query: query.lowercased(), indexNameMapping: [
                             context.account.peerId: [
                                 PeerIndexNameRepresentation.title(title: strings.DialogList_MyNotes.lowercased(), addressNames: []),
                                 PeerIndexNameRepresentation.title(title: "my notes".lowercased(), addressNames: [])
@@ -4097,6 +4227,8 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             break
         case .inputButtons:
             if let peer = self.chatPresentationInterfaceState.renderedPeer?.peer as? TelegramUser, peer.botInfo != nil, self.chatPresentationInterfaceState.keyboardButtonsMessage?.visibleButtonKeyboardMarkup?.flags.contains(.persistent) == true {
+            } else if chatDisplaysBotStartButton(self.chatPresentationInterfaceState) {
+                // The reply keyboard is hidden behind Start (a blocked bot), not shown: keep it for when Start goes.
             } else {
                 self.interfaceInteraction?.updateInputModeAndDismissedButtonKeyboardMessageId({ state in
                     return (.none, state.keyboardButtonsMessage?.id ?? state.interfaceState.messageActionsState.closedButtonKeyboardMessageId)
@@ -4208,8 +4340,8 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
     }
     
     func sendButtonFrame() -> CGRect? {
-        if let frame = self.textInputPanelNode?.sendActionButtons.frame {
-            return self.textInputPanelNode?.convert(frame, to: self)
+        if let sendActionButtons = self.textInputPanelNode?.sendActionButtons {
+            return sendActionButtons.view.convert(sendActionButtons.bounds, to: self.view)
         } else {
             return nil
         }
@@ -4900,7 +5032,9 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
                     self.controller?.presentFormulaEditor(initialValue: initialValue, completion: completion)
                 },
                 pastedMarkdownParser: { context, text in
-                    return chatInputContentFromPastedMarkdown(context: context, plainText: text)
+                    // The expanded composer keeps a pasted reply's blank lines as the inline one does: it sends the same
+                    // text + entities whenever the content allows.
+                    return chatInputContentFromPastedMarkdown(context: context, plainText: text, keepsBlankLines: true)
                 }
             )
             editorScreen.navigationPresentation = .modal
@@ -5620,6 +5754,9 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         
         resolvedValue = resolvedValue * (1.0 - self.inputPanelContainerNode.expansionFraction)
         
+        // Madgram classic design: 12.0's hairline on top of the bar. `ChatControllerLoadDisplayNode` reports the
+        // history's scroll position through `updatePlainInputSeparatorAlpha` (as in 12.0): with a plain separator the
+        // line shows once the history is scrolled off the bottom, and until the first report it stays shown.
         if let classicInputPanelSeparatorNode = self.classicInputPanelSeparatorNode {
             var classicValue: CGFloat = 1.0
             if self.accessoryPanelNode == nil, self.usePlainInputSeparator, let plainInputSeparatorAlpha = self.plainInputSeparatorAlpha {
@@ -5774,6 +5911,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
         let navigationButtonsSnapshotState: ChatHistoryNavigationButtons.SnapshotState
         let titleAccessoryPanelSnapshot: UIView?
         let inputPanelNodeSnapshot: UIView?
+        let inputPanelOverscrollIslandHandOver: ((UIView) -> Void)?
 
         fileprivate init(
             backgroundNode: WallpaperBackgroundNode,
@@ -5782,7 +5920,8 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             avatarSnapshotState: ChatAvatarNavigationNode.SnapshotState?,
             navigationButtonsSnapshotState: ChatHistoryNavigationButtons.SnapshotState,
             titleAccessoryPanelSnapshot: UIView?,
-            inputPanelNodeSnapshot: UIView?
+            inputPanelNodeSnapshot: UIView?,
+            inputPanelOverscrollIslandHandOver: ((UIView) -> Void)?
         ) {
             self.backgroundNode = backgroundNode
             self.historySnapshotState = historySnapshotState
@@ -5791,6 +5930,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             self.navigationButtonsSnapshotState = navigationButtonsSnapshotState
             self.titleAccessoryPanelSnapshot = titleAccessoryPanelSnapshot
             self.inputPanelNodeSnapshot = inputPanelNodeSnapshot
+            self.inputPanelOverscrollIslandHandOver = inputPanelOverscrollIslandHandOver
         }
     }
 
@@ -5800,9 +5940,12 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
     ) -> SnapshotState {
         let titleAccessoryPanelSnapshot: UIView? = nil
         var inputPanelNodeSnapshot: UIView?
+        var inputPanelOverscrollIslandHandOver: ((UIView) -> Void)?
         if let inputPanelNode = self.inputPanelNode, let snapshot = inputPanelNode.view.snapshotView(afterScreenUpdates: false) {
             snapshot.frame = inputPanelNode.frame
             inputPanelNodeSnapshot = snapshot
+            // Bubble-free mode: a "next channel" island leaves with the panel's snapshot (nil without one).
+            inputPanelOverscrollIslandHandOver = inputPanelNode.overscrollIslandHandOver()
         }
         return SnapshotState(
             backgroundNode: self.backgroundNode,
@@ -5811,7 +5954,8 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
             avatarSnapshotState: avatarSnapshotState,
             navigationButtonsSnapshotState: self.navigateButtons.prepareSnapshotState(),
             titleAccessoryPanelSnapshot: titleAccessoryPanelSnapshot,
-            inputPanelNodeSnapshot: inputPanelNodeSnapshot
+            inputPanelNodeSnapshot: inputPanelNodeSnapshot,
+            inputPanelOverscrollIslandHandOver: inputPanelOverscrollIslandHandOver
         )
     }
 
@@ -5835,6 +5979,7 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
 
         if let inputPanelNode = self.inputPanelNode, let inputPanelNodeSnapshot = snapshotState.inputPanelNodeSnapshot {
             inputPanelNode.view.superview?.insertSubview(inputPanelNodeSnapshot, belowSubview: inputPanelNode.view)
+            snapshotState.inputPanelOverscrollIslandHandOver?(inputPanelNodeSnapshot)
 
             inputPanelNodeSnapshot.layer.animateAlpha(from: 1.0, to: 0.0, duration: 0.3, removeOnCompletion: false, completion: { [weak inputPanelNodeSnapshot] _ in
                 inputPanelNodeSnapshot?.removeFromSuperview()
@@ -6020,15 +6165,82 @@ class ChatControllerNode: ASDisplayNode, ASScrollViewDelegate {
     }
 }
 
+/// Madgram classic design: the padding of 12.0's input bar above and below its panels. A 40pt text field, whose
+/// rounded rect is drawn 3pt in from its top and bottom, then sits 6pt inside the bar, as 12.0's 33pt field did.
 private let chatClassicInputPanelVerticalPadding: CGFloat = 3.0
 
+/// The spacing between stacked input panels: none in the classic design (12.0's panels shared one bar), 8pt between the
+/// floating ones.
 private var chatInputPanelsSpacing: CGFloat {
     return ClassicDesign.isEnabled ? 0.0 : 8.0
 }
 
+/// 12.0's bar color: its own color over a plain wallpaper of the same color, its translucent one otherwise.
 private func chatClassicInputPanelBackgroundColor(theme: PresentationTheme, wallpaper: TelegramWallpaper) -> UIColor {
     if case let .color(color) = wallpaper, UIColor(rgb: color).isEqual(theme.chat.inputPanel.panelBackgroundColorNoWallpaper) {
         return theme.chat.inputPanel.panelBackgroundColorNoWallpaper
     }
     return theme.chat.inputPanel.panelBackgroundColor
 }
+
+extension ChatControllerNode {
+    fileprivate func showsCompanion() -> Bool {
+        guard InterfaceTuningSettingsStore.shared.current.showChatCompanion else {
+            return false
+        }
+        guard case .standard(.default) = self.chatPresentationInterfaceState.mode else {
+            return false
+        }
+        guard let user = self.chatPresentationInterfaceState.renderedPeer?.peer as? TelegramUser, user.botInfo == nil, user.id != self.context.account.peerId else {
+            return false
+        }
+        if case .peer = self.chatPresentationInterfaceState.chatLocation {
+            return true
+        }
+        return false
+    }
+
+    fileprivate func updateCompanion(layout: ContainerViewLayout, bottomY: CGFloat, transition: ContainedViewLayoutTransition) {
+        guard self.showsCompanion() else {
+            if let companionView = self.companionView {
+                self.companionView = nil
+                companionView.removeFromSuperview()
+            }
+            return
+        }
+        self.companionBottomY = bottomY
+        self.companionSafeLeft = layout.safeInsets.left
+        let placement = CompanionChatPlacementStore.shared.current
+        let side = max(CompanionChatPlacementStore.minSize, min(CompanionChatPlacementStore.maxSize, placement.size))
+        var originX = layout.safeInsets.left + placement.x
+        originX = max(-side * 0.25, min(layout.size.width - side * 0.75, originX))
+        var originY = bottomY - placement.bottom - side
+        originY = max(60.0, min(bottomY - side * 0.25, originY))
+        let frame = CGRect(x: originX, y: originY, width: side, height: side)
+        if let companionView = self.companionView {
+            if !self.companionIsInteracting {
+                transition.updateFrame(view: companionView, frame: frame)
+            }
+        } else {
+            let companionView = CompanionCharacterView(frame: frame)
+            companionView.interactiveFrameChanged = { [weak self] frame, finished in
+                guard let self else {
+                    return
+                }
+                self.companionIsInteracting = !finished
+                CompanionChatPlacementStore.shared.current = CompanionChatPlacementStore.Placement(
+                    x: frame.minX - self.companionSafeLeft,
+                    bottom: self.companionBottomY - frame.maxY,
+                    size: frame.width
+                )
+            }
+            self.companionView = companionView
+            self.contentContainerNode.contentNode.view.insertSubview(companionView, belowSubview: self.navigateButtons.view)
+            companionView.alpha = 0.0
+            UIView.animate(withDuration: 0.25, animations: {
+                companionView.alpha = 1.0
+            })
+        }
+    }
+}
+

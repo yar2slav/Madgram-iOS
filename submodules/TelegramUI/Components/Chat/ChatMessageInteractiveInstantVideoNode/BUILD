@@ -11,6 +11,8 @@ swift_library(
         #"-Xfrontend", "-debug-time-function-bodies"
     ],
     deps = [
+        "//submodules/TelegramUIPreferences",
+        "//submodules/MadTranscription",
         "//submodules/AsyncDisplayKit",
         "//submodules/Display",
         "//submodules/SSignalKit/SwiftSignalKit",
@@ -25,6 +27,7 @@ swift_library(
         "//submodules/FileMediaResourceStatus",
         "//submodules/Components/HierarchyTrackingLayer",
         "//submodules/ComponentFlow",
+        "//submodules/TelegramUI/Components/StaticGlassBackground",
         "//submodules/TelegramUI/Components/AudioTranscriptionButtonComponent",
         "//submodules/UndoUI",
         "//submodules/TelegramNotices",

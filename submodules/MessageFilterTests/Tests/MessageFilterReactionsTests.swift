@@ -88,6 +88,8 @@ final class MessageFilterReactionsTests: XCTestCase {
     }
 
     func testOwnChosenReactionSurvivesEvenIfCountUnderflows() {
+        // Inconsistent data: my chosen reaction with count 1 while a hidden peer is
+        // also listed for the same value. The chosen reaction must not disappear.
         let attribute = ReactionsMessageAttribute(
             canViewList: true,
             isTags: false,

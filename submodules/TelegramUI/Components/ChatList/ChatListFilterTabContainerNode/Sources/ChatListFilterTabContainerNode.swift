@@ -213,6 +213,8 @@ private final class ItemNode: ASDisplayNode {
         if self.theme !== presentationData.theme {
             self.theme = presentationData.theme
             
+            // Madgram classic design (`ClassicDesign.isEnabled`): 12.0's colors (`ChatListFilterTabContainerNode` at
+            // release-12.0).
             self.badgeBackgroundActiveNode.image = generateStretchableFilledCircleImage(diameter: 18.0, color: ClassicDesign.isEnabled ? presentationData.theme.chatList.unreadBadgeActiveBackgroundColor : presentationData.theme.list.itemCheckColors.fillColor)
             self.badgeBackgroundInactiveNode.image = generateStretchableFilledCircleImage(diameter: 18.0, color: presentationData.theme.chatList.unreadBadgeInactiveBackgroundColor)
             
@@ -301,6 +303,7 @@ private final class ItemNode: ASDisplayNode {
         self.shortTitleActiveNode.visibility = title.enableAnimations
         
         if (themeUpdated || titleUpdated) && ClassicDesign.isEnabled {
+            // 12.0: a secondary title, the selected one in the accent.
             self.titleNode.attributedText = title.attributedString(font: Font.medium(14.0), textColor: presentationData.theme.list.itemSecondaryTextColor)
             self.titleActiveNode.attributedText = title.attributedString(font: Font.medium(14.0), textColor: presentationData.theme.list.itemAccentColor)
             
@@ -570,6 +573,7 @@ public final class ChatListFilterTabContainerNode: ASDisplayNode {
         self.scrollNode.view.scrollsToTop = false
         
         if ClassicDesign.isEnabled {
+            // 12.0's full-width strip: the tabs scroll on the bar itself, with no glass behind them.
             self.addSubnode(self.scrollNode)
         } else {
             self.backgroundView.contentView.addSubview(self.scrollNode.view)
@@ -717,6 +721,7 @@ public final class ChatListFilterTabContainerNode: ASDisplayNode {
         let isClassic = ClassicDesign.isEnabled
         let backgroundSize: CGSize
         if isClassic {
+            // 12.0: the strip is the container itself.
             backgroundSize = containerSize
         } else {
             backgroundSize = CGSize(width: containerSize.width - (16.0 - containerSideInset) * 2.0, height: 44.0)
@@ -739,6 +744,7 @@ public final class ChatListFilterTabContainerNode: ASDisplayNode {
         
         if self.currentParams?.presentationData.theme !== presentationData.theme {
             if isClassic {
+                // 12.0's selection: an accent line with rounded top corners under the selected title.
                 self.selectedBackgroundNode.image = generateImage(CGSize(width: 5.0, height: 3.0), rotatedContext: { size, context in
                     context.clear(CGRect(origin: CGPoint(), size: size))
                     context.setFillColor(presentationData.theme.list.itemAccentColor.cgColor)

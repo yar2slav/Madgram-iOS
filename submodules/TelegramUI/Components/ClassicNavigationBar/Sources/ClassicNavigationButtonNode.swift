@@ -3,6 +3,8 @@ import AsyncDisplayKit
 import Display
 import AppBundle
 
+/// One button of the classic bar: a text, an image or a node the screen owns, tinted with the bar's button colour
+/// (`NavigationButtonItemNode` of the flat bar).
 final class ClassicNavigationButtonItemNode: ImmediateTextNode {
     var requestUpdate: (() -> Void)?
 
@@ -49,6 +51,7 @@ final class ClassicNavigationButtonItemNode: ImmediateTextNode {
                             return
                         }
                         let title: String = (value as String?) ?? ""
+                        // A plain text item (Edit / Done); the sentinel titles and images are set by `updateItems`.
                         if item.customDisplayNode == nil, item.image == nil, !title.hasPrefix("___") {
                             self.text = title
                             self.requestUpdate?()
@@ -69,6 +72,7 @@ final class ClassicNavigationButtonItemNode: ImmediateTextNode {
         set(value) {
             self._text = value
 
+            // VoiceOver reads the item's own label, else this text (`accessibilityLabel`).
             self.attributedText = NSAttributedString(string: self.text, attributes: self.attributesForCurrentState())
         }
     }
@@ -335,15 +339,20 @@ final class ClassicNavigationButtonItemNode: ImmediateTextNode {
     }
 }
 
+/// A row of classic buttons (the back button's text, the left button, or the right buttons), as
+/// `NavigationButtonNodeImpl` drew them before the glass bar.
 final class ClassicNavigationButtonNode: ContextControllerSourceNode {
     private var isBack: Bool = false
 
     private var items: [UIBarButtonItem] = []
     private var nodes: [ClassicNavigationButtonItemNode] = []
+    /// Buttons fading out of a set swap, with the frame and row size they left at: a right-aligned row keeps them where
+    /// they were on screen while the row resizes for the incoming set (12.0 `NavigationButtonNode.disappearingNodes`).
     private var disappearingNodes: [(frame: CGRect, size: CGSize, node: ClassicNavigationButtonItemNode)] = []
 
     var requestUpdate: (() -> Void)?
 
+    /// The title the bar draws for `___close` (the old bar's "Close").
     var closeTitle: String = "Close"
 
     var pressed: (Int) -> () = { _ in }
@@ -464,6 +473,7 @@ final class ClassicNavigationButtonNode: ContextControllerSourceNode {
                 node.image = nil
                 node.text = ""
             } else if items[i].title == "___close" {
+                // The glass bar draws an X; the flat bar said "Close".
                 node.image = nil
                 node.text = self.closeTitle
             } else if items[i].title == "___clear" {
@@ -495,6 +505,7 @@ final class ClassicNavigationButtonNode: ContextControllerSourceNode {
                             return
                         }
                         itemNode.removeFromSupernode()
+                        // Its item's listeners would otherwise outlive it in the item.
                         itemNode.item = nil
                         if let self, let index = self.disappearingNodes.firstIndex(where: { $0.node === itemNode }) {
                             self.disappearingNodes.remove(at: index)
@@ -510,6 +521,8 @@ final class ClassicNavigationButtonNode: ContextControllerSourceNode {
         }
     }
 
+    /// `isLeftAligned`: the row grows from its left edge (the left button); the right buttons' row grows leftwards from
+    /// its right edge, so its fading-out buttons are re-anchored to that edge.
     func updateLayout(constrainedSize: CGSize, isLandscape: Bool, isLeftAligned: Bool = true) -> CGSize {
         var nodeOrigin = CGPoint(x: 0.0, y: 0.0)
         var totalHeight: CGFloat = 0.0
@@ -545,6 +558,7 @@ final class ClassicNavigationButtonNode: ContextControllerSourceNode {
         return CGSize(width: nodeOrigin.x, height: totalHeight)
     }
 
+    /// The back button's touch area, which also covers the arrow beside it: the row's and its text's.
     func updateHitTestSlop(_ hitTestSlop: UIEdgeInsets) {
         self.hitTestSlop = hitTestSlop
         if self.isBack, let node = self.nodes.first {
@@ -554,6 +568,7 @@ final class ClassicNavigationButtonNode: ContextControllerSourceNode {
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         if self.nodes.count == 1 {
+            // Within the slop (the back arrow left of the back title, the margin around a right button).
             if self.bounds.inset(by: self.hitTestSlop).contains(point) {
                 if self.isBack {
                     return self.nodes[0].view
@@ -567,6 +582,7 @@ final class ClassicNavigationButtonNode: ContextControllerSourceNode {
         }
     }
 
+    /// The view drawing `item`, nil if this row shows none for it.
     func view(for item: UIBarButtonItem) -> UIView? {
         guard let index = self.items.firstIndex(where: { $0 === item }), index < self.nodes.count else {
             return nil
@@ -578,6 +594,7 @@ final class ClassicNavigationButtonNode: ContextControllerSourceNode {
         return node.view
     }
 
+    /// The first button's view, for the bar's own sizing and frames (the back button's text).
     var mainContentView: UIView? {
         return self.nodes.first?.view
     }

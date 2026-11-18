@@ -387,7 +387,18 @@ public func galleryItemForEntry(
                     }
                     
                     if isHLS {
-                        content = HLSVideoContent(id: .message(message.stableId, file.fileId), userLocation: .peer(message.id.peerId), fileReference: .message(message: MessageReference(message), media: file), streamVideo: streamVideos, loopVideo: loopVideos, autoFetchFullSizeThumbnail: true, codecConfiguration: HLSCodecConfiguration(context: context))
+                        // Where the item's player will seek once it owns the content, by the same precedence. A forwarded
+                        // timestamp only for the item the gallery opens on: a neighbour swiped to that already shows its
+                        // video plays from 0, so loading at its timestamp would be wasted, and one that does not seeks.
+                        var startTimestamp = timecode
+                        if startTimestamp == nil && isCentral {
+                            for attribute in message.attributes {
+                                if let attribute = attribute as? ForwardVideoTimestampAttribute {
+                                    startTimestamp = Double(attribute.timestamp)
+                                }
+                            }
+                        }
+                        content = HLSVideoContent(id: .message(message.stableId, file.fileId), userLocation: .peer(message.id.peerId), fileReference: .message(message: MessageReference(message), media: file), streamVideo: streamVideos, loopVideo: loopVideos, autoFetchFullSizeThumbnail: true, captureProtected: captureProtected, codecConfiguration: HLSCodecConfiguration(context: context), startTimestamp: startTimestamp)
                     } else {
                         content = NativeVideoContent(id: .message(message.stableId, file.fileId), userLocation: .peer(message.id.peerId), fileReference: .message(message: MessageReference(message), media: file), imageReference: mediaImage.flatMap({ ImageMediaReference.message(message: MessageReference(message), media: $0) }), streamVideo: .conservative, loopVideo: loopVideos, tempFilePath: tempFilePath, captureProtected: captureProtected, storeAfterDownload: generateStoreAfterDownload?(message, file))
                     }
@@ -714,6 +725,9 @@ private func galleryEntriesForMessageHistoryEntries(_ entries: [MessageHistoryEn
 }
 
 public class GalleryController: ViewController, StandalonePresentableController, KeyShortcutResponder, GalleryControllerProtocol {
+    /// Madgram classic: 12.0's media viewer bar is a flat translucent black (`UIColor(white: 0.0, alpha: 0.6)`) rather
+    /// than no background over an edge fade; the classic navigation bar draws a non-clear edge effect colour as its
+    /// background. `ClassicDesign.isEnabled` is set at launch, before any gallery reads this.
     public static let darkNavigationTheme = NavigationBarTheme(overallDarkAppearance: true, buttonColor: .white, disabledButtonColor: UIColor(rgb: 0x525252), primaryTextColor: .white, badgeBackgroundColor: .clear, badgeTextColor: .clear, edgeEffectColor: ClassicDesign.isEnabled ? UIColor(white: 0.0, alpha: 0.6) : .clear, accentButtonColor: .white, accentDisabledButtonColor: .white, accentForegroundColor: .black)
     
     private var galleryNode: GalleryControllerNode {

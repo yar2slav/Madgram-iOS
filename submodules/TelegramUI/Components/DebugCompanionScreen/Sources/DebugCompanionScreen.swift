@@ -162,8 +162,10 @@ private final class DebugCompanionScreenComponent: Component {
                 self.resourceDirectory = directory
                 let renderer = try CompanionRenderer(device: MetalEngine.shared.device, resourceDirectory: directory)
                 try renderer.loadDefault()
+                CompanionLookStore.shared.apply(to: renderer)
                 self.character.renderer = renderer
-                self.selectedPreset = "classic"
+                let look = CompanionLookStore.shared.current
+                self.selectedPreset = look.components.isEmpty ? (look.presetId ?? "classic") : nil
                 self.refreshRows()
             } catch { self.showError(error.localizedDescription) }
         }
@@ -224,6 +226,7 @@ private final class DebugCompanionScreenComponent: Component {
         private func reset() {
             self.cancelSelection()
             do {
+                CompanionLookStore.shared.reset()
                 if self.character.renderer == nil { self.initializeRenderer() }
                 else { try self.character.renderer?.loadDefault() }
                 self.selectedPreset = "classic"
@@ -317,6 +320,7 @@ private final class DebugCompanionScreenComponent: Component {
                         return
                     }
                     try renderer.applyPreset(preset.id, files: files)
+                    CompanionLookStore.shared.setPreset(preset.id, files: files)
                     for (name, url) in files { self.resourceNames[url.lastPathComponent] = name }
                     self.cancelSelection()
                     self.selectedPreset = preset.id
@@ -401,6 +405,7 @@ private final class DebugCompanionScreenComponent: Component {
             do {
                 guard let renderer = self.character.renderer else { return }
                 try renderer.setComponentAt(url, kind: kind, socket: socket)
+                CompanionLookStore.shared.setComponent(kind: kind, socket: socket, url: url, name: name)
                 self.selectedPreset = nil
                 if let url, let name { self.resourceNames[url.lastPathComponent] = name }
                 if kind == .model { renderer.resetCamera() }

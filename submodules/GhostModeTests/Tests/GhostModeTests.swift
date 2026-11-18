@@ -54,10 +54,11 @@ final class GhostModeTests: XCTestCase {
         XCTAssertFalse(settings.keepsViewOnceMedia)
     }
 
-    func testViewOnceMediaRequiresBothSwitches() {
+    func testViewOnceMediaIsKeptWithoutGhostMode() {
         var settings = GhostModeSettings.defaultSettings
         settings.keepViewOnceMedia = true
-        XCTAssertFalse(settings.keepsViewOnceMedia)
+        XCTAssertTrue(settings.keepsViewOnceMedia)
+        XCTAssertTrue(ghostModeDefersViewOnceConsumption(settings: settings, isViewOnce: true, isSecretChat: false, force: false))
 
         settings.isEnabled = true
         XCTAssertTrue(settings.keepsViewOnceMedia)
@@ -70,8 +71,11 @@ final class GhostModeTests: XCTestCase {
 
         XCTAssertTrue(ghostModeDefersViewOnceConsumption(settings: settings, isViewOnce: true, isSecretChat: false, force: false))
 
+        // Burning explicitly always consumes.
         XCTAssertFalse(ghostModeDefersViewOnceConsumption(settings: settings, isViewOnce: true, isSecretChat: false, force: true))
+        // Secret chats are deferred too; Burn remains the explicit protocol release.
         XCTAssertTrue(ghostModeDefersViewOnceConsumption(settings: settings, isViewOnce: true, isSecretChat: true, force: false))
+        // Ordinary media is unaffected.
         XCTAssertFalse(ghostModeDefersViewOnceConsumption(settings: settings, isViewOnce: false, isSecretChat: false, force: false))
 
         settings.keepViewOnceMedia = false

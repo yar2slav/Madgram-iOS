@@ -30,6 +30,16 @@ public enum TranslationTone: String {
 }
 
 func _internal_translate(network: Network, text: String, toLang: String, entities: [MessageTextEntity] = [], tone: TranslationTone = .neutral, peer: Api.InputPeer? = nil, messageId: Int32? = nil) -> Signal<(String, [MessageTextEntity])?, TranslationError> {
+    if MadCoreFlags.freeTranslation {
+        return MadGoogleTranslate.translate(text: text, toLang: toLang)
+        |> castError(TranslationError.self)
+        |> mapToSignal { result -> Signal<(String, [MessageTextEntity])?, TranslationError> in
+            guard let result else {
+                return .fail(.generic)
+            }
+            return .single((result, []))
+        }
+    }
     var flags: Int32 = 0
 
     if tone != .neutral {
@@ -146,7 +156,8 @@ func _internal_composeRichMessageWithAI(account: Account, instantPage: InstantPa
     var inputRichMessage: Api.InputRichMessage?
     if let instantPage {
         flags |= (1 << 4)
-        inputRichMessage = RichTextMessageAttribute(instantPage: instantPage, fullInstantPage: nil).apiInputRichMessage()
+        // No `users`: this page is rewritten and handed back, not sent; the send that follows lists them.
+        inputRichMessage = RichTextMessageAttribute(instantPage: instantPage, fullInstantPage: nil).apiInputRichMessage(users: [])
     }
 
     return account.network.request(Api.functions.messages.composeRichMessageWithAI(flags: flags, text: inputRichMessage, translateToLang: translateToLang, tone: changeTone))
@@ -172,6 +183,17 @@ func _internal_composeRichMessageWithAI(account: Account, instantPage: InstantPa
 }
 
 func _internal_translateTexts(network: Network, texts: [(String, [MessageTextEntity])], toLang: String, tone: TranslationTone = .neutral) -> Signal<[(String, [MessageTextEntity])], TranslationError> {
+    if MadCoreFlags.freeTranslation {
+        return combineLatest(texts.map { MadGoogleTranslate.translate(text: $0.0, toLang: toLang) })
+        |> castError(TranslationError.self)
+        |> mapToSignal { results -> Signal<[(String, [MessageTextEntity])], TranslationError> in
+            var mapped: [(String, [MessageTextEntity])] = []
+            for (index, result) in results.enumerated() {
+                mapped.append((result ?? texts[index].0, []))
+            }
+            return .single(mapped)
+        }
+    }
     var flags: Int32 = 0
     flags |= (1 << 1)
     
@@ -345,7 +367,19 @@ private func _internal_translateMessagesByPeerId(account: Account, peerId: Engin
         if id.isEmpty {
             msgs = .single(nil)
         } else {
-            if enableLocalIfPossible, let engineExperimentalInternalTranslationService, let fromLang {
+            let madTranslator: (([AnyHashable: String]) -> Signal<[AnyHashable: String]?, NoError>)?
+            if MadCoreFlags.freeTranslation {
+                madTranslator = { texts in
+                    return MadGoogleTranslate.translate(texts: texts, toLang: toLang)
+                }
+            } else if enableLocalIfPossible, let engineExperimentalInternalTranslationService, let fromLang {
+                madTranslator = { texts in
+                    return engineExperimentalInternalTranslationService.translate(texts: texts, fromLang: fromLang, toLang: toLang)
+                }
+            } else {
+                madTranslator = nil
+            }
+            if let madTranslator {
                 msgs = account.postbox.transaction { transaction -> [MessageId: String] in
                     var texts: [MessageId: String] = [:]
                     for messageId in plainMessageIds {
@@ -361,7 +395,7 @@ private func _internal_translateMessagesByPeerId(account: Account, peerId: Engin
                     for (id, text) in messageTexts {
                         mappedTexts[AnyHashable(id)] = text
                     }
-                    return engineExperimentalInternalTranslationService.translate(texts: mappedTexts, fromLang: fromLang, toLang: toLang)
+                    return madTranslator(mappedTexts)
                     |> castError(TranslationError.self)
                     |> mapToSignal { resultTexts -> Signal<Api.messages.TranslatedText?, TranslationError> in
                         guard let resultTexts else {
@@ -955,7 +989,8 @@ func _internal_composeAIMessage(account: Account, text: ComposedRichMessage, mod
         }
     case let .rich(instantPage):
         flags |= (1 << 4)
-        let inputText = RichTextMessageAttribute(instantPage: instantPage, fullInstantPage: nil).apiInputRichMessage()
+        // No `users`: this page is rewritten and handed back, not sent; the send that follows lists them.
+        let inputText = RichTextMessageAttribute(instantPage: instantPage, fullInstantPage: nil).apiInputRichMessage(users: [])
         return account.network.request(Api.functions.messages.composeRichMessageWithAI(flags: flags, text: inputText, translateToLang: translateToLang, tone: changeTone))
         |> `catch` { error -> Signal<Api.messages.ComposedRichMessageWithAI, TelegramAIComposeMessageError> in
             if error.errorDescription == "AICOMPOSE_FLOOD_PREMIUM" {

@@ -24,6 +24,8 @@ private let smallBoldItalicTextFont = Font.with(size: 14.0, weight: .semibold, t
 private let smallFixedTextFont = Font.monospace(14.0)
 private let backgroundInset: CGFloat = 8.0
 
+// Madgram classic design: the type of Telegram 12.0's `TextAlertContentNode` (a semibold 17pt title over 13pt text,
+// and a semibold 17pt text when the alert has no title).
 private let classicTitleFont = Font.semibold(17.0)
 private let classicTextFont = Font.regular(13.0)
 private let classicBoldTextFont = Font.semibold(13.0)
@@ -81,6 +83,7 @@ public final class AlertTitleComponent: Component {
             let environment = environment[AlertComponentEnvironment.self]
             
             let isClassic = ClassicDesign.isEnabled
+            // Classic alerts center their title, as 12.0's did.
             let alignment: Alignment = isClassic ? .center : component.alignment
             
             let inset: CGFloat = -6.0
@@ -107,6 +110,11 @@ public final class AlertTitleComponent: Component {
             case .center:
                 titleOriginX = floorToScreenPixels((availableSize.width - titleSize.width) / 2.0)
             }
+            // VoiceOver: the alert's title is its heading.
+            self.isAccessibilityElement = true
+            self.accessibilityLabel = component.title
+            self.accessibilityTraits = .header
+            
             let titleFrame = CGRect(origin: CGPoint(x: titleOriginX, y: 0.0), size: titleSize)
             if let titleView = self.title.view {
                 if titleView.superview == nil {
@@ -187,6 +195,7 @@ public final class AlertTextComponent: Component {
     let style: Style
     let insets: UIEdgeInsets
     let action: ([NSAttributedString.Key: Any]) -> Void
+    /// Madgram classic design: the text of an alert without a title, which 12.0 set in the title's type.
     var isClassicStandaloneText: Bool = false
     
     public init(
@@ -233,6 +242,16 @@ public final class AlertTextComponent: Component {
         
         private var component: AlertTextComponent?
         private weak var state: EmptyComponentState?
+        private var accessibilityLinkAttributes: [[NSAttributedString.Key: Any]] = []
+        
+        /// Activating the text follows its first link, as a tap on it does.
+        override public func accessibilityActivate() -> Bool {
+            guard let component = self.component, let attributes = self.accessibilityLinkAttributes.first else {
+                return false
+            }
+            component.action(attributes)
+            return true
+        }
         
         func update(component: AlertTextComponent, availableSize: CGSize, state: EmptyComponentState, environment: Environment<AlertComponentEnvironment>, transition: ComponentTransition) -> CGSize {
             self.component = component
@@ -322,6 +341,33 @@ public final class AlertTextComponent: Component {
             case let .textWithEntities(accountContext, text, entities):
                 context = accountContext
                 finalText = stringWithAppliedEntities(text, entities: entities, baseColor: textColor, linkColor: linkColor, baseFont: textFont, linkFont: textFont, boldFont: boldTextFont, italicFont: italicTextFont, boldItalicFont: italicTextFont, fixedFont: fixedTextFont, blockQuoteFont: textFont, message: nil)
+            }
+            
+            // VoiceOver: the text is one element (its words without image attachments); links make it a link, the first
+            // followed on activation and each one a custom action when there are several.
+            let urlKey = NSAttributedString.Key(rawValue: TelegramTextAttributes.URL)
+            let links = accessibilityTextLinks(in: finalText, attribute: urlKey)
+            self.isAccessibilityElement = true
+            self.accessibilityLabel = accessibilityDisplayedText(finalText)
+            self.accessibilityLinkAttributes = links.map { [urlKey: $0.value] }
+            if links.isEmpty {
+                self.accessibilityTraits = .staticText
+                self.accessibilityCustomActions = nil
+            } else {
+                self.accessibilityTraits = [.staticText, .link]
+                if links.count > 1 {
+                    self.accessibilityCustomActions = links.map { link in
+                        return UIAccessibilityCustomAction(name: link.text, actionHandler: { [weak self] _ in
+                            guard let component = self?.component else {
+                                return false
+                            }
+                            component.action([urlKey: link.value])
+                            return true
+                        })
+                    }
+                } else {
+                    self.accessibilityCustomActions = nil
+                }
             }
             
             var hasCenterAlignment = component.alignment == .center || isClassic

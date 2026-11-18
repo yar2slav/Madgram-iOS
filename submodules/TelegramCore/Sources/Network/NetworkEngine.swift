@@ -255,6 +255,8 @@ public protocol NetworkEngineSession: AnyObject {
     /// What the session heard from the server lately, for the local health check
     /// (`NetworkLivenessMonitor`); nil from engines that do not tell, which the check never judges.
     func serverActivity(_ reply: @escaping (NetworkEngineServerActivity?) -> Void)
+    /// Madgram: drops the current transport and starts a new transport transaction (see the default
+    /// implementation below).
     func restartTransport()
 }
 
@@ -266,6 +268,9 @@ public extension NetworkEngineSession {
         reply(nil)
     }
 
+    /// Madgram: drops the current transport and starts a new transport transaction, for a socket
+    /// that was silently killed while the app was suspended. Engines that recover on their own
+    /// need not implement it.
     func restartTransport() {
     }
 }

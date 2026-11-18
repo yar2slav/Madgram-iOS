@@ -12,6 +12,7 @@ import ActivityIndicatorComponent
 
 private let titleFont = Font.medium(17.0)
 private let boldTitleFont = Font.semibold(17.0)
+// Madgram classic design: the action titles of Telegram 12.0's `TextAlertContentActionNode`.
 private let classicTitleFont = Font.regular(17.0)
 private let classicBoldTitleFont = Font.semibold(17.0)
 
@@ -19,6 +20,7 @@ final class AlertActionComponent: Component {
     typealias EnvironmentType = AlertComponentEnvironment
     
     static let actionHeight: CGFloat = 48.0
+    /// Madgram classic design: the height of a Telegram 12.0 alert action row.
     static let classicActionHeight: CGFloat = 44.0
     
     struct Theme: Equatable {
@@ -81,6 +83,9 @@ final class AlertActionComponent: Component {
         private var hasProgress = false
         
         private var isUpdating = false
+        
+        /// VoiceOver: performs the action, as tapping it does (the alert's gesture recognizer picks it by location).
+        var accessibilityPerform: (() -> Void)?
                 
         override init(frame: CGRect) {
             super.init(frame: frame)
@@ -96,6 +101,14 @@ final class AlertActionComponent: Component {
         deinit {
             self.isEnabledDisposable?.dispose()
             self.progressDisposable?.dispose()
+        }
+        
+        override func accessibilityActivate() -> Bool {
+            guard self.isEnabled, let accessibilityPerform = self.accessibilityPerform else {
+                return false
+            }
+            accessibilityPerform()
+            return true
         }
         
         func update(component: AlertActionComponent, availableSize: CGSize, state: EmptyComponentState, environment: Environment<AlertComponentEnvironment>, transition: ComponentTransition) -> CGSize {
@@ -143,11 +156,17 @@ final class AlertActionComponent: Component {
                 attributedString.addAttribute(.baselineOffset, value: 2.0, range: NSRange(range, in: attributedString.string))
             }
                   
+            // Classic: 12.0 drew a disabled action's title in the action sheet's disabled color.
             var titleColor = component.theme.foreground
             if isClassic && !self.isEnabled {
                 titleColor = environment[AlertComponentEnvironment.self].theme.actionSheet.disabledActionTextColor
             }
 
+            // VoiceOver: one button named by its title ("$" stands for the Premium icon and is not read).
+            self.isAccessibilityElement = true
+            self.accessibilityLabel = component.title.replacingOccurrences(of: "$", with: "").trimmingCharacters(in: .whitespaces)
+            self.accessibilityTraits = self.isEnabled ? .button : [.button, .notEnabled]
+            
             let titlePadding: CGFloat = 16.0
             let titleSize = self.title.update(
                 transition: .immediate,
@@ -196,6 +215,8 @@ final class AlertActionComponent: Component {
             }
             
             if isClassic {
+                // Madgram classic design: a flat row of the alert (12.0's `TextAlertContentActionNode`), whose
+                // background is only the highlight, shown while it is pressed.
                 transition.setBackgroundColor(view: self.backgroundView, color: component.theme.background)
                 transition.setAlpha(view: self.backgroundView, alpha: (self.isEnabled && component.isHighlighted) ? 1.0 : 0.0)
                 self.backgroundView.layer.cornerRadius = 0.0

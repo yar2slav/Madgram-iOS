@@ -76,6 +76,12 @@ public final class SearchBarPlaceholderContentView: UIView {
     private var params: Params?
     
     public var onCancel: (() -> Void)?
+    /// VoiceOver label of the close button shown while the search is active.
+    public var closeAccessibilityLabel: String? {
+        didSet {
+            self.close?.background.accessibilityLabel = self.closeAccessibilityLabel
+        }
+    }
     
     init(fieldStyle: SearchBarStyle, hasOwnGlassContainer: Bool) {
         self.fieldStyle = fieldStyle
@@ -238,6 +244,8 @@ public final class SearchBarPlaceholderContentView: UIView {
         var iconSize = CGSize()
         var totalWidth = labelLayoutResult.size.width
         
+        // Madgram classic design (`ClassicDesign.isEnabled`): a flat field is 12.0's (`SearchBarPlaceholderNode` at
+        // release-12.0): its loupe 6 pt from the centered text, a rounded rect of the style's corner, no glass.
         let isClassicField = ClassicDesign.isEnabled && (self.fieldStyle == .modern || self.fieldStyle == .legacy)
         
         var spacing: CGFloat = 4.0
@@ -386,6 +394,9 @@ public final class SearchBarPlaceholderContentView: UIView {
                     })?.withRenderingMode(.alwaysTemplate)
                     
                     close.background.contentView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(self.onCloseTapGesture(_:))))
+                    close.background.isAccessibilityElement = true
+                    close.background.accessibilityLabel = self.closeAccessibilityLabel
+                    close.background.accessibilityTraits = .button
                     
                     close.background.contentView.addSubview(close.icon)
                     self.insertSubview(close.background, at: 0)
@@ -499,6 +510,8 @@ public class SearchBarPlaceholderNode: ASDisplayNode {
         return self.contentView.labelNode
     }
     
+    /// The loupe and placeholder text actually on screen: a glass field draws `iconNode`/`labelNode` on its glass, a
+    /// flat field the plain copies on its plain background (the same frames, in the field's coordinates).
     public var visibleIconNode: ASImageNode {
         return self.contentView.glassBackgroundView != nil ? self.contentView.iconNode : self.contentView.plainIconNode
     }
@@ -544,6 +557,10 @@ public class SearchBarPlaceholderNode: ASDisplayNode {
         self.contentView = SearchBarPlaceholderContentView(fieldStyle: fieldStyle, hasOwnGlassContainer: hasOwnGlassContainer)
         
         super.init()
+        
+        // A button that opens the search (its own field appears then), named by its placeholder ("Search").
+        self.isAccessibilityElement = true
+        self.accessibilityTraits = .button
         
         self.view.addSubview(self.containerView)
         self.containerView.addSubview(self.contentView)
@@ -627,11 +644,14 @@ public class SearchBarPlaceholderNode: ASDisplayNode {
     
     public func takeContents() -> SearchBarPlaceholderContentView {
         self.isTakenOut = true
+        // The search bar that took the contents is the field now; this placeholder stays behind it, empty.
+        self.accessibilityElementsHidden = true
         return self.contentView
     }
     
     public func putBackContents() {
         self.isTakenOut = false
+        self.accessibilityElementsHidden = false
         self.containerView.addSubview(self.contentView)
         if let params = self.params {
             let _ = self.update(params: params, transition: .immediate)
@@ -641,6 +661,9 @@ public class SearchBarPlaceholderNode: ASDisplayNode {
     public func updateLayout(placeholderString: NSAttributedString?, compactPlaceholderString: NSAttributedString?, constrainedSize: CGSize, expansionProgress: CGFloat, iconColor: UIColor, foregroundColor: UIColor, backgroundColor: UIColor, controlColor: UIColor, preferClearGlass: Bool = false, displayGlassBackgroundWhenInactive: Bool = false, alignPlaceholderToLeftWhenInactive: Bool = false, transition: ContainedViewLayoutTransition) -> CGFloat {
         let params = Params(placeholderString: placeholderString, compactPlaceholderString: compactPlaceholderString, constrainedSize: constrainedSize, expansionProgress: expansionProgress, iconColor: iconColor, foregroundColor: foregroundColor, backgroundColor: backgroundColor, controlColor: controlColor, preferClearGlass: preferClearGlass, displayGlassBackgroundWhenInactive: displayGlassBackgroundWhenInactive, alignPlaceholderToLeftWhenInactive: alignPlaceholderToLeftWhenInactive)
         self.params = params
+        if (self.accessibilityLabel ?? "").isEmpty, let placeholderString, !placeholderString.string.isEmpty {
+            self.accessibilityLabel = placeholderString.string
+        }
         
         if self.isTakenOut {
             return self.currentLayoutHeight ?? 44.0

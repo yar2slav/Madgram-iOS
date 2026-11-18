@@ -1,5 +1,4 @@
 import Foundation
-import LottieSettings
 import UIKit
 import Display
 import AsyncDisplayKit
@@ -969,6 +968,12 @@ private final class StickerPackContainer: ASDisplayNode {
                 copyEmoji(file)
                 f(.default)
             })))
+            menuItems.append(.action(ContextMenuActionItem(text: presentationData.strings.localFeatures.extras.copyEmojiId, icon: { theme in
+                return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Copy"), color: theme.actionSheet.primaryTextColor)
+            }, action: { _, f in
+                UIPasteboard.general.string = "\(file.fileId.id)"
+                f(.default)
+            })))
             
             if menuItems.isEmpty {
                 return nil
@@ -1146,6 +1151,19 @@ private final class StickerPackContainer: ASDisplayNode {
             }
         })))
         
+        if self.currentStickerPacks.count <= 1, let (info, _, _) = self.currentStickerPack, let ownerId = stickerPackOwnerId(packId: info.id.id) {
+            items.append(.action(ContextMenuActionItem(text: strings.localFeatures.extras.copyPackOwnerId, icon: { theme in
+                return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Copy"), color: theme.contextMenu.primaryColor)
+            }, action: { [weak self] _, f in
+                f(.default)
+                UIPasteboard.general.string = "\(ownerId)"
+                if let strongSelf = self {
+                    let presentationData = strongSelf.context.sharedContext.currentPresentationData.with { $0 }
+                    strongSelf.controller?.present(UndoOverlayController(presentationData: presentationData, content: .copy(text: presentationData.strings.localFeatures.extras.packOwnerIdCopied), elevatedLayout: false, animateInAsReplacement: false, action: { _ in return false }), in: .window(.root))
+                }
+            })))
+        }
+        
         if let (info, packItems, _) = self.currentStickerPack, info.flags.contains(.isCreator) && !info.flags.contains(.isEmoji) {
             items.append(.separator)
             if packItems.count > 0 {
@@ -1207,7 +1225,7 @@ private final class StickerPackContainer: ASDisplayNode {
         
         let contextController = makeContextController(
             presentationData: presentationData,
-            source: .reference(StickerPackContextReferenceContentSource(controller: controller, sourceView: view)),
+            source: .reference(StickerPackContextReferenceContentSource(controller: controller, sourceView: (view as? GlassBarButtonComponent.View)?.menuSourceView ?? view)),
             items: .single(ContextController.Items(content: .list(items))),
             recognizer: nil,
             gesture: gesture
@@ -2089,8 +2107,7 @@ private final class StickerPackContainer: ASDisplayNode {
                         ),
                         color: self.presentationData.theme.chat.inputPanel.panelControlColor,
                         size: CGSize(width: 34.0, height: 34.0),
-                        playOnce: self.moreButtonPlayOnce,
-                        lottieSettings: self.context.lottieRenderingSettings
+                        playOnce: self.moreButtonPlayOnce
                     )
                 )),
                 action: { [weak self] view in
@@ -3484,4 +3501,12 @@ private func stickerPackHeaderStripInsets(layout: ContainerViewLayout) -> CGFloa
         return 0.0
     }
     return layout.safeInsets.left + layout.safeInsets.right
+}
+
+func stickerPackOwnerId(packId: Int64) -> Int64? {
+    var ownerId = packId >> 32
+    if (packId >> 24) & 0xff != 0 {
+        ownerId += 0x100000000
+    }
+    return ownerId > 0 ? ownerId : nil
 }

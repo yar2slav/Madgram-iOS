@@ -89,14 +89,11 @@ build-system/local-development-configuration.json
 *.p12
 *.mobileprovision
 
+# Madgram badge backend local work (not part of the client)
+services/badge-service/
 # Generated from swift_scheme.tl by generate-swiftpm.sh for SwiftPM builds (Bazel generates its own).
 submodules/TelegramApi/Sources/SwiftPMGenerated/
 submodules/TelegramApi/ObjC/SwiftPMGenerated/
 submodules/TelegramApi/Tests/SwiftPMGenerated/
-buildServer.json
-Telegram.LSP.json
-spm-files
-xcode-files
-.bsp/**
-.sourcekit-lsp/**
-**/.vscode/launch.json
+/Telegram.app/
+build/accessibility/

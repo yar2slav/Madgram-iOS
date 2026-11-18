@@ -1,4 +1,5 @@
 import Foundation
+import TelegramUIPreferences
 import UIKit
 import AsyncDisplayKit
 import Display
@@ -80,6 +81,7 @@ public final class ChatAvatarNavigationNode: ASDisplayNode {
         }
         
         if ClassicDesign.isEnabled {
+            // Classic (12.0): a plain 37pt avatar in the flat bar, reaching 10pt into the bar's trailing inset.
             self.containerNode.frame = CGRect(origin: CGPoint(), size: CGSize(width: 37.0, height: 37.0)).offsetBy(dx: 10.0, dy: 1.0)
             self.avatarNode.frame = self.containerNode.bounds
         } else {
@@ -257,7 +259,7 @@ public final class ChatAvatarNavigationNode: ASDisplayNode {
                 
                 if isKnown {
                     let photo = personalPhoto ?? profilePhoto
-                    if let photo = photo, !photo.videoRepresentations.isEmpty || photo.emojiMarkup != nil {
+                    if let photo = photo, !InterfaceTuningSettingsStore.shared.cached.on(InterfaceTuningSettingsStore.shared.cached.staticAnimatedAvatars, .staticAvatarsChats), !photo.videoRepresentations.isEmpty || photo.emojiMarkup != nil {
                         let videoNode: AvatarVideoNode
                         if let current = strongSelf.avatarVideoNode {
                             videoNode = current

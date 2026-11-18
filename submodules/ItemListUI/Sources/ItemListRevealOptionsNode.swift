@@ -1,5 +1,4 @@
 import Foundation
-import LottieSettings
 import UIKit
 import AsyncDisplayKit
 import Display
@@ -306,7 +305,7 @@ private final class ItemListRevealOptionNode: ASDisplayNode {
                     colors[colorToReplace] = color.rgb
                 }
             }
-            self.animationNode = SimpleAnimationNode(animationName: animation, replaceColors: colors, size: CGSize(width: 66.0, height: 66.0), playOnce: true, startFrame: startFrame, lottieSettings: .noAccountFallback)
+            self.animationNode = SimpleAnimationNode(animationName: animation, replaceColors: colors, size: CGSize(width: 66.0, height: 66.0), playOnce: true, startFrame: startFrame)
             if !enableAnimations {
                 self.animationNode!.seekToEnd(immediately: true)
             }
@@ -647,6 +646,10 @@ private final class ItemListRevealOptionNode: ASDisplayNode {
     }
 }
 
+/// Madgram classic design (`ClassicDesign.isEnabled`): one of 12.0's swipe actions (`ItemListRevealOptionNode` at
+/// release-12.0): a full-height rectangle of the option's color with its icon above a 13 pt title (a 17 pt title
+/// without an icon), both in the option's foreground color. The first one (the outermost) extends far past the edge,
+/// so the row never shows through while it stretches.
 private final class ClassicItemListRevealOptionNode: ASDisplayNode {
     enum Alignment {
         case left
@@ -690,7 +693,7 @@ private final class ClassicItemListRevealOptionNode: ASDisplayNode {
                     colors[colorToReplace] = color.rgb
                 }
             }
-            let animationNode = SimpleAnimationNode(animationName: animation, replaceColors: colors, size: CGSize(width: 79.0, height: 79.0), playOnce: true, startFrame: startFrame, lottieSettings: .noAccountFallback)
+            let animationNode = SimpleAnimationNode(animationName: animation, replaceColors: colors, size: CGSize(width: 79.0, height: 79.0), playOnce: true, startFrame: startFrame)
             if !enableAnimations {
                 animationNode.seekToEnd(immediately: true)
             }
@@ -833,6 +836,8 @@ public final class ItemListRevealOptionsNode: ASDisplayNode {
     private var sideInset: CGFloat = 0.0
     private var currentMetrics: (containerSize: CGSize, metrics: ItemListRevealOptionLayoutMetrics)?
 
+    /// Madgram classic design: 12.0's rectangles in place of the glass circles (`ClassicItemListRevealOptionNode`),
+    /// laid out by 12.0's rule (`updateClassicNodesLayout`). Fixed for the node's lifetime.
     private let isClassic: Bool = ClassicDesign.isEnabled
     private var classicOptionNodes: [ClassicItemListRevealOptionNode] = []
 
@@ -865,6 +870,7 @@ public final class ItemListRevealOptionsNode: ASDisplayNode {
         gestureRecognizer.highlight = { [weak self] location in
             guard let self else { return }
             if self.isClassic {
+                // 12.0 drew no highlight while a finger was down.
                 return
             }
             for node in self.optionNodes {
@@ -890,6 +896,7 @@ public final class ItemListRevealOptionsNode: ASDisplayNode {
                 node.removeFromSupernode()
             }
             if self.isClassic {
+                // The classic rectangles draw their title on the option's color, in its foreground (`iconColor`).
                 self.optionNodes = []
                 self.classicOptionNodes = options.map { option in
                     return ClassicItemListRevealOptionNode(title: option.title, icon: option.icon, color: option.color, textColor: option.iconColor, enableAnimations: enableAnimations)
@@ -938,6 +945,7 @@ public final class ItemListRevealOptionsNode: ASDisplayNode {
         return updatedMetrics
     }
 
+    /// Madgram classic design: 12.0's option width, the widest option's, which every option takes.
     private func classicOptionWidth(_ constrainedSize: CGSize) -> CGFloat {
         var maxWidth: CGFloat = 0.0
         for node in self.classicOptionNodes {
@@ -960,6 +968,7 @@ public final class ItemListRevealOptionsNode: ASDisplayNode {
 
     func motionParameters(width: CGFloat, sideInset: CGFloat, displayScale: CGFloat) -> ItemListRevealMotionParameters {
         if self.isClassic {
+            // 12.0 opened the row by exactly its options' width (and the safe inset), with no gaps or margins.
             self.sideInset = self.isLeft ? abs(sideInset) : -abs(sideInset)
             let optionWidth = self.classicOptionWidth(CGSize(width: CGFloat.greatestFiniteMagnitude, height: self.bounds.height))
             return ItemListRevealMotionParameters(width: Double(width), buttonWidth: Double(optionWidth), spacing: 0.0, edgeInset: 0.0, sideInset: Double(abs(sideInset)), count: self.options.count, isDestructive: (self.isLeft ? self.options.first : self.options.last)?.isDestructive ?? false, displayScale: Double(displayScale))
@@ -1198,6 +1207,9 @@ public final class ItemListRevealOptionsNode: ASDisplayNode {
         }
     }
 
+    /// Madgram classic design: 12.0's layout (`ItemListRevealOptionsNode.updateNodesLayout` at release-12.0). The
+    /// options share the revealed width equally, each stretching with the swipe, and the outermost one expands over the
+    /// others past the boundary (a full swipe).
     private func updateClassicNodesLayout(transition: ContainedViewLayoutTransition) {
         let size = self.bounds.size
         if size.width.isLessThanOrEqualTo(0.0) || self.classicOptionNodes.isEmpty {
@@ -1222,6 +1234,8 @@ public final class ItemListRevealOptionsNode: ASDisplayNode {
         
         let animated = transition.isAnimated
         var completionCount = optionNodes.count
+        // A strong capture, as 12.0's: a `[weak]` closure that also captures the mutable `completionCount` is the shape
+        // Swift 6.4 miscompiles (CLAUDE.md, "Swift 6.4: `[weak]` in a local closure that also captures a `var`").
         let intermediateCompletion = {
             if completionCount == 0 && animated && abs(self.revealOffset) < CGFloat.ulpOfOne {
                 for node in self.classicOptionNodes {

@@ -12,6 +12,12 @@ public struct DeleteAllOwnMessagesProgress: Equatable {
     }
 }
 
+/// Deletes every cloud message authored by the account in the given peer, for all participants.
+///
+/// Enumerates the account's messages via server-side search (pages are anchored to offset ids, so
+/// pagination stays stable while earlier pages are being deleted) and deletes each page through the
+/// interactive-deletion pipeline: messages disappear locally right away, server deletion goes through
+/// the resilient cloud-operation queue. Emits cumulative progress after each page.
 func _internal_deleteAllOwnMessages(account: Account, peerId: PeerId) -> Signal<DeleteAllOwnMessagesProgress, NoError> {
     let location: SearchMessagesLocation = .peer(peerId: peerId, fromId: account.peerId, tags: nil, reactions: nil, threadId: nil, minDate: nil, maxDate: nil)
 

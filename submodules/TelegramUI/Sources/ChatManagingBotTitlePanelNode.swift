@@ -98,6 +98,7 @@ private final class ChatManagingBotTitlePanelComponent: Component {
             let topInset: CGFloat = 6.0
             let bottomInset: CGFloat = 6.0
             let avatarDiameter: CGFloat = 36.0
+            // Classic (12.0) metrics: 10pt avatar spacing, 12pt leading inset, a 15pt subtitle.
             let avatarTextSpacing: CGFloat = ClassicDesign.isEnabled ? 10.0 : 8.0
             let titleTextSpacing: CGFloat = 1.0
             let leftInset: CGFloat = component.insets.left + (ClassicDesign.isEnabled ? 12.0 : 6.0)

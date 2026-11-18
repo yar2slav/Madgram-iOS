@@ -9,6 +9,19 @@ import EdgeEffect
 import ComponentFlow
 import ComponentDisplayAdapters
 
+private final class GalleryControllerNodeView: UITracingLayerView {
+    override var accessibilityElements: [Any]? {
+        get {
+            guard let node = self.asyncdisplaykit_node as? GalleryControllerNode else {
+                return super.accessibilityElements
+            }
+            return node.accessibilityOrderedSubviews(self.subviews)
+        } set(value) {
+            super.accessibilityElements = value
+        }
+    }
+}
+
 open class GalleryControllerNode: ASDisplayNode, ASScrollViewDelegate, ASGestureRecognizerDelegate {
     public enum CustomDismissType {
         case `default`
@@ -60,6 +73,21 @@ open class GalleryControllerNode: ASDisplayNode, ASScrollViewDelegate, ASGesture
         }
     }
     
+    /// VoiceOver: the navigation bar, then the title (author, date), then the page and its controls, then the footer.
+    /// The page is added first and the title after the footer, so UIKit's order would read the page before the bar and
+    /// the title last.
+    fileprivate func accessibilityOrderedSubviews(_ subviews: [UIView]) -> [Any] {
+        var elements: [UIView] = subviews.filter { !$0.isHidden && $0.alpha >= 0.01 && !$0.accessibilityElementsHidden }
+        var leading: [UIView] = []
+        if let navigationBarView = self.navigationBar?.view, let barIndex = elements.firstIndex(where: { $0 === navigationBarView }) {
+            leading.append(elements.remove(at: barIndex))
+        }
+        if let titleView = self.titleView, let titleIndex = elements.firstIndex(where: { $0 === titleView }) {
+            leading.append(elements.remove(at: titleIndex))
+        }
+        return leading + elements
+    }
+    
     public init(context: AccountContext, controllerInteraction: GalleryControllerInteraction, titleView: GalleryTitleView?, pageGap: CGFloat = 20.0, disableTapNavigation: Bool = false) {
         self.context = context
         self.backgroundNode = ASDisplayNode()
@@ -75,16 +103,22 @@ open class GalleryControllerNode: ASDisplayNode, ASScrollViewDelegate, ASGesture
         self.headerEdgeEffectView = EdgeEffectView()
         self.headerEdgeEffectView.isUserInteractionEnabled = false
         if ClassicDesign.isEnabled {
+            // Madgram classic: the navigation bar draws 12.0's flat translucent background itself
+            // (`GalleryController.darkNavigationTheme`'s edge effect colour), so there is no fade behind it.
             self.headerEdgeEffectView.isHidden = true
         }
 
         self.pager = GalleryPagerNode(pageGap: pageGap, disableTapNavigation: disableTapNavigation)
+        let accessibilityStrings = context.sharedContext.currentPresentationData.with { $0 }.strings
+        self.pager.accessibilityPageLabel = accessibilityStrings.VoiceOver_Common_Page
+        // No "N of M" value: the pager holds a window of the loaded items, not the whole album, so its count would mislead.
+        // The title above reads the item's author and date.
         self.footerNode = GalleryFooterNode(controllerInteraction: controllerInteraction)
         
         super.init()
         
         self.setViewBlock({
-            return UITracingLayerView()
+            return GalleryControllerNodeView()
         })
         
         self.pager.toggleControlsVisibility = { [weak self] in
@@ -374,6 +408,8 @@ open class GalleryControllerNode: ASDisplayNode, ASScrollViewDelegate, ASGesture
             let thumbnailsBandWidth: CGFloat = layout.safeInsets.left != layout.safeInsets.right ? layout.size.width - bottomInsets.left - bottomInsets.right : layout.size.width
             var thumbnailsOriginY: CGFloat = layout.size.height - 60.0 - panelHeight - buttonPanelInsets.bottom
             if ClassicDesign.isEnabled {
+                // The classic footer (`ChatItemGalleryFooterContentNode`) is 12.0's 44pt button row on the bottom inset;
+                // the ribbon is centred in the band reserved above it.
                 var classicBottomInset = layout.intrinsicInsets.bottom
                 if !classicBottomInset.isZero && classicBottomInset < 30.0 {
                     classicBottomInset -= 7.0

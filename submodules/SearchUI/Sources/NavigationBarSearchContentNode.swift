@@ -11,6 +11,8 @@ import AppBundle
 import ActivityIndicator
 
 private let searchBarFont = Font.regular(17.0)
+/// The search row's height: 60 pt for the glass field, 54 pt for 12.0's flat one under the Madgram classic design
+/// (`ClassicDesign.isEnabled`, fixed for the process's lifetime).
 public var navigationBarSearchContentHeight: CGFloat {
     return ClassicDesign.isEnabled ? 54.0 : 60.0
 }
@@ -53,6 +55,7 @@ public class NavigationBarSearchContentNode: NavigationBarContentNode {
         self.displayGlassBackgroundWhenInactive = displayGlassBackgroundWhenInactive
         self.alignPlaceholderToLeftWhenInactive = alignPlaceholderToLeftWhenInactive
         
+        // The classic design draws 12.0's flat rounded-rect field (`.modern`, no glass).
         self.placeholderNode = SearchBarPlaceholderNode(fieldStyle: ClassicDesign.isEnabled ? .modern : .glass, hasOwnGlassContainer: hasOwnGlassContainer)
         self.placeholderNode.labelNode.displaysAsynchronously = false
         
@@ -60,7 +63,7 @@ public class NavigationBarSearchContentNode: NavigationBarContentNode {
         
         self.placeholderNode.isAccessibilityElement = true
         self.placeholderNode.accessibilityLabel = placeholder
-        self.placeholderNode.accessibilityTraits = .searchField
+        self.placeholderNode.accessibilityTraits = .button
         
         self.addSubnode(self.placeholderNode)
         self.placeholderNode.activate = activate
@@ -181,6 +184,8 @@ public class NavigationBarSearchContentNode: NavigationBarContentNode {
         }
     }
     
+    /// Madgram classic design: 12.0's field (`NavigationBarSearchContentNode` at release-12.0): 36 pt tall, 10 pt in from
+    /// the row's sides, in the theme's search input fill, sinking into the row's bottom as the list scrolls.
     private func updateClassicPlaceholder(_ progress: CGFloat, size: CGSize, leftInset: CGFloat, rightInset: CGFloat, transition: ContainedViewLayoutTransition) {
         let padding: CGFloat = 10.0
         let baseWidth = size.width - padding * 2.0 - leftInset - rightInset
@@ -220,6 +225,9 @@ public class NavigationBarSearchContentNode: NavigationBarContentNode {
         }
     }
     
+    /// Madgram classic design: the height of the active search bar a `SearchDisplayController` added to this node, if
+    /// any. A `.list` bar is laid out from the top of the screen (status bar included, at least 64 pt), a `.navigation`
+    /// one is the 54 pt row alone, so the host places this node differently for the two.
     public var classicActiveSearchBarHeight: CGFloat? {
         guard let subnodes = self.subnodes else {
             return nil
@@ -234,6 +242,9 @@ public class NavigationBarSearchContentNode: NavigationBarContentNode {
 
     override public func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         if ClassicDesign.isEnabled, let subnodes = self.subnodes {
+            // Madgram classic design: an active flat search bar (`SearchDisplayController`'s, added as a subnode) is
+            // laid out from the top of the screen and reaches far past this node's 54 pt bounds, so its field, clear
+            // and Cancel buttons would otherwise receive no touches.
             for subnode in subnodes.reversed() {
                 guard let searchBar = subnode as? SearchBarNode, searchBar.isNodeLoaded, !searchBar.isHidden, searchBar.isUserInteractionEnabled else {
                     continue

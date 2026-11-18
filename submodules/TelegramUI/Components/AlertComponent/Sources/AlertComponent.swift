@@ -72,16 +72,24 @@ private final class AlertScreenComponent: Component {
         private let containerView = GlassBackgroundContainerView()
         private let backgroundView = GlassBackgroundView()
         
+        // Madgram classic design (`ClassicDesign.isEnabled`): Telegram 12.0's alert (`AlertControllerNode` +
+        // `TextAlertContentNode`) in place of the glass one: a 270pt rounded rect of 14pt, the system blur under the
+        // action sheet's item color, and full-width action rows of 44pt divided by hairlines. Nil otherwise, and then
+        // the glass views above are the alert.
         private let classicBackgroundView: UIView?
         private let classicEffectView: UIVisualEffectView?
         private let classicColorView: UIView?
         private var classicBlurStyle: UIBlurEffect.Style?
         private var classicSeparatorViews: [UIView] = []
+        /// Cuts the alert out of the dim, as 12.0's dim views framed it, so the blur samples the undimmed screen. It is
+        /// a large square centered on the alert, which scales around the alert with it in the show and hide animations.
         private let classicDimMaskLayer: CAShapeLayer?
 
+        /// The view the actions' frames are in and their selection gesture is on.
         private var actionHostView: UIView {
             return self.classicBackgroundView ?? self.backgroundView
         }
+        /// The view the content and actions are added to.
         private var contentHostView: UIView {
             return self.classicBackgroundView ?? self.backgroundView.contentView
         }
@@ -224,15 +232,26 @@ private final class AlertScreenComponent: Component {
         }
         
         @objc private func dimTapped() {
-            guard let component = self.component, component.configuration.dismissOnOutsideTap else {
-                return
+            let _ = self.dismissWithoutAction()
+        }
+        
+        /// A dismissal that is not one of the alert's actions — a tap outside, the Escape key, VoiceOver's escape
+        /// gesture — follows the outside-tap rule: allowed only when the configuration allows it, and reported as
+        /// "by outside tap" (hosts such as web `alert`/`confirm` panels finish their request only then).
+        private func dismissWithoutAction() -> Bool {
+            guard let component = self.component else {
+                return false
             }
-            self.dismissedByTapOutside = true
-            self.requestDismiss()
+            return AlertOutsideDismissal.perform(configuration: component.configuration, markDismissedByOutsideTap: { [weak self] in
+                self?.dismissedByTapOutside = true
+            }, dismiss: { [weak self] in
+                self?.requestDismiss()
+            })
         }
         
         func animateIn() {
             if let classicBackgroundView = self.classicBackgroundView {
+                // 12.0's `AlertControllerNode.animateIn`.
                 let alphaTransition = ComponentTransition(animation: .curve(duration: 0.3, curve: .linear))
                 alphaTransition.setAlpha(view: self.dimView, alpha: 1.0)
                 classicBackgroundView.layer.animateAlpha(from: 0.0, to: 1.0, duration: 0.25)
@@ -250,6 +269,7 @@ private final class AlertScreenComponent: Component {
         
         func animateOut(completion: @escaping () -> Void) {
             if let classicBackgroundView = self.classicBackgroundView {
+                // 12.0's `AlertControllerNode.animateOut`.
                 let transition = ComponentTransition(animation: .curve(duration: 0.3, curve: .linear))
                 transition.setAlpha(view: self.dimView, alpha: 0.0, completion: { _ in
                     completion()
@@ -286,6 +306,11 @@ private final class AlertScreenComponent: Component {
             return result
         }
         
+        /// VoiceOver's escape gesture: as a tap outside the alert.
+        override func accessibilityPerformEscape() -> Bool {
+            return self.dismissWithoutAction()
+        }
+        
         func requestDismiss() {
             guard let controller = self.environment?.controller() as? AlertScreen else {
                 return
@@ -316,7 +341,7 @@ private final class AlertScreenComponent: Component {
                 }
                 self.updateActionHighlight(previous: false)
             case .escape:
-                self.requestDismiss()
+                let _ = self.dismissWithoutAction()
             case .enter:
                 self.performHighlightedAction()
             }
@@ -409,6 +434,8 @@ private final class AlertScreenComponent: Component {
             let isClassic = self.classicBackgroundView != nil
             
             var alertHeight: CGFloat = 0.0
+            // Classic: 12.0's 270pt alert with 18pt insets (the title and text components reach 6pt past their
+            // frame, hence 24), and 6pt between the title and the text.
             let alertWidth: CGFloat = isClassic ? 270.0 : 300.0
             let contentTopInset: CGFloat = isClassic ? 18.0 : 22.0
             let contentBottomInset: CGFloat = isClassic ? 18.0 : 21.0
@@ -614,6 +641,15 @@ private final class AlertScreenComponent: Component {
                     }
                     itemView.applySize(size: itemFrame.size, transition: itemTransition)
                     itemTransition.setFrame(view: itemView, frame: itemFrame)
+                    let actionId = AnyHashable(action.id)
+                    itemView.accessibilityPerform = { [weak self] in
+                        guard let self else {
+                            return
+                        }
+                        self.highlightedAction = actionId
+                        self.performHighlightedAction()
+                        self.highlightedAction = nil
+                    }
                 }
                 
                 var removeActionIds: [AnyHashable] = []
@@ -652,9 +688,11 @@ private final class AlertScreenComponent: Component {
                 availableHeight -= environment.inputHeight
             }
                         
-            // Centered in the band between the side safe insets (iPhone Duo's side strip); with equal insets this
-            // is the full width's center.
-            let alertX = environment.safeInsets.left + floorToScreenPixels((availableSize.width - environment.safeInsets.left - environment.safeInsets.right - alertSize.width) / 2.0)
+            let alertY = environment.statusBarHeight + floorToScreenPixels((availableHeight - alertSize.height) / 2.0)
+            // Beside iPhone Duo's side strip (`centeredAlertSideInsets`): the screen's center in portrait unless the alert
+            // reaches a corner block, the band's in landscape, as the sheets; with equal insets the full width's center.
+            let sideInsets = centeredAlertSideInsets(alertWidth: alertSize.width, alertMinY: alertY, alertMaxY: alertY + alertSize.height, containerSize: availableSize, safeInsets: environment.safeInsets, reservedCorners: environment.reservedCorners)
+            let alertX = sideInsets.left + floorToScreenPixels((availableSize.width - sideInsets.left - sideInsets.right - alertSize.width) / 2.0)
             if let classicBackgroundView = self.classicBackgroundView, let classicEffectView = self.classicEffectView, let classicColorView = self.classicColorView {
                 let actionSheetTheme = environment.theme.actionSheet
                 let blurStyle: UIBlurEffect.Style = actionSheetTheme.backgroundType == .light ? .light : .dark
@@ -668,23 +706,27 @@ private final class AlertScreenComponent: Component {
                     transition.setBackgroundColor(view: classicColorView, color: actionSheetTheme.itemBackgroundColor)
                 }
                 
-                let alertFrame = CGRect(origin: CGPoint(x: alertX, y: environment.statusBarHeight + floorToScreenPixels((availableHeight - alertSize.height) / 2.0)), size: alertSize)
+                let alertFrame = CGRect(origin: CGPoint(x: alertX, y: alertY), size: alertSize)
                 transition.setFrame(view: classicBackgroundView, frame: alertFrame)
                 transition.setFrame(view: classicEffectView, frame: CGRect(origin: .zero, size: alertSize))
                 transition.setFrame(view: classicColorView, frame: CGRect(origin: .zero, size: alertSize))
 
                 if let classicDimMaskLayer = self.classicDimMaskLayer {
+                    // Large enough to cover the screen from the alert's center while scaled to 0.8.
                     let maskSide = (max(availableSize.width, availableSize.height) + 100.0) * 3.0
                     let maskBounds = CGRect(origin: .zero, size: CGSize(width: maskSide, height: maskSide))
                     let holeRect = CGRect(origin: CGPoint(x: floorToScreenPixels((maskSide - alertSize.width) / 2.0), y: floorToScreenPixels((maskSide - alertSize.height) / 2.0)), size: alertSize)
                     let maskPath = CGMutablePath()
                     maskPath.addRect(maskBounds)
+                    // Circular corners, as the alert's own `layer.cornerRadius` draws them (CGPath traps on a radius
+                    // larger than half the rect, so an alert not laid out yet gets no hole).
                     let holeCornerRadius = min(14.0, floor(min(holeRect.width, holeRect.height) / 2.0))
                     if holeCornerRadius > 0.0 {
                         maskPath.addRoundedRect(in: holeRect, cornerWidth: holeCornerRadius, cornerHeight: holeCornerRadius)
                     }
 
                     let maskTransition: ComponentTransition = classicDimMaskLayer.path == nil ? .immediate : transition
+                    // A standalone layer: no implicit animations, only the transition's own.
                     CATransaction.begin()
                     CATransaction.setDisableActions(true)
                     maskTransition.setBounds(layer: classicDimMaskLayer, bounds: maskBounds)
@@ -693,13 +735,16 @@ private final class AlertScreenComponent: Component {
                     CATransaction.commit()
                 }
             } else {
-                transition.setFrame(view: self.backgroundView, frame: CGRect(origin: CGPoint(x: alertX, y: environment.statusBarHeight +  floorToScreenPixels((availableHeight - alertSize.height) / 2.0)), size: alertSize))
+                transition.setFrame(view: self.backgroundView, frame: CGRect(origin: CGPoint(x: alertX, y: alertY), size: alertSize))
                 self.backgroundView.update(size: alertSize, cornerRadius: 35.0, isDark: environment.theme.overallDarkAppearance, tintColor: .init(kind: .panel), isInteractive: true, transition: transition)
             }
             
             return availableSize
         }
         
+        /// Madgram classic design: lays the actions out as 12.0's `TextAlertContentNode` did, in rows of 44pt across
+        /// the whole alert, side by side when every title fits its share of the width and stacked otherwise, with a
+        /// hairline above them and between them. Returns the alert's height with them.
         private func updateClassicActions(actions: [AlertScreen.Action], component: AlertScreenComponent, theme: PresentationTheme, alertEnvironment: AlertComponentEnvironment, alertWidth: CGFloat, alertHeight: CGFloat, transition: ComponentTransition) -> CGFloat {
             let actionHeight = AlertActionComponent.classicActionHeight
             let actionSheetTheme = theme.actionSheet
@@ -719,6 +764,7 @@ private final class AlertScreenComponent: Component {
                 }
             }
             
+            // `AlertActionComponent` pads its title by 16pt on each side; 12.0 allowed 8pt in all.
             let actionTitlePadding: CGFloat = 16.0
             let actionTitleInsets: CGFloat = 8.0
             let maxActionWidth = floor(alertWidth / CGFloat(max(1, actions.count)))
@@ -793,6 +839,7 @@ private final class AlertScreenComponent: Component {
                 index += 1
             }
             
+            // One hairline above the actions and one between each two of them.
             let separatorCount = actions.count
             while self.classicSeparatorViews.count > separatorCount {
                 self.classicSeparatorViews.removeLast().removeFromSuperview()
@@ -960,6 +1007,8 @@ open class AlertScreen: ViewControllerComponentContainer, KeyShortcutResponder {
             updatedPresentationData: updatedPresentationData
         )
         self.navigationPresentation = .flatModal
+        // VoiceOver reads only the alert while it shows, as UIKit does for an alert (the screens under it are hidden).
+        self.blocksBackgroundWhenInOverlay = true
         
         //self.readyValue.set(componentReady.get() |> timeout(1.0, queue: .mainQueue(), alternate: .single(true)))
     }
@@ -1028,6 +1077,7 @@ open class AlertScreen: ViewControllerComponentContainer, KeyShortcutResponder {
         if !text.isEmpty {
             let textComponent = AlertTextComponent(content: .plain(text), action: textAction)
             if ClassicDesign.isEnabled && title == nil {
+                // Madgram classic design: 12.0 set the text of an alert without a title in the title's type.
                 textComponent.isClassicStandaloneText = true
             }
             content.append(AnyComponentWithIdentity(
@@ -1238,5 +1288,17 @@ public final class ActionSelectionGestureRecognizer: UIGestureRecognizer {
             return CGPoint(x: currentLocation.x - initialLocation.x, y: currentLocation.y - initialLocation.y)
         }
         return CGPoint()
+    }
+}
+
+/// The rule for dismissing an alert without choosing one of its actions (outside tap, Escape key, VoiceOver escape).
+enum AlertOutsideDismissal {
+    static func perform(configuration: AlertScreen.Configuration, markDismissedByOutsideTap: () -> Void, dismiss: () -> Void) -> Bool {
+        guard configuration.dismissOnOutsideTap else {
+            return false
+        }
+        markDismissedByOutsideTap()
+        dismiss()
+        return true
     }
 }

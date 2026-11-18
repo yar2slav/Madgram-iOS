@@ -57,6 +57,7 @@ final class ChatTranslationPanelNode: ASDisplayNode {
         
         let theme: PresentationTheme = context.sharedContext.currentPresentationData.with { $0 }.theme
         self.moreButton = MoreButtonNode(theme: theme)
+        // Classic (12.0): the dots took the navigation bar's button colour (MoreButtonNode's nil-colour default).
         self.moreButton.updateColor(ClassicDesign.isEnabled ? nil : theme.chat.inputPanel.panelControlColor, transition: .immediate)
         self.moreButton.iconNode.enqueueState(.more, animated: false)
         self.moreButton.hitTestSlop = UIEdgeInsets(top: -8.0, left: -8.0, bottom: -8.0, right: -8.0)
@@ -110,6 +111,7 @@ final class ChatTranslationPanelNode: ASDisplayNode {
         }
         
         if themeUpdated, ClassicDesign.isEnabled {
+            // Classic (12.0): accent icon, the bar's button colour for the dots, the encircled accent close button.
             self.buttonIconNode.image = generateTintedImage(image: UIImage(bundleImageName: "Chat/Title Panels/Translate"), color: theme.chat.inputPanel.panelControlAccentColor)
             self.moreButton.theme = theme
             self.moreButton.updateColor(nil, transition: .immediate)
@@ -160,6 +162,7 @@ final class ChatTranslationPanelNode: ASDisplayNode {
 
         let panelHeight: CGFloat = 40.0
         
+        // Classic (12.0): 14pt, sized for the larger encircled close button.
         let contentRightInset: CGFloat = (ClassicDesign.isEnabled ? 14.0 : 11.0) + rightInset
         
         var copyTextView: UIView?
@@ -184,7 +187,7 @@ final class ChatTranslationPanelNode: ASDisplayNode {
         let closeButtonSize = self.closeButton.measure(CGSize(width: 100.0, height: 100.0))
         self.closeButton.frame = CGRect(origin: CGPoint(x: width - contentRightInset - closeButtonSize.width, y: floorToScreenPixels((panelHeight - closeButtonSize.height) / 2.0)), size: closeButtonSize)
         
-        if info.isPremium {
+        if info.isPremium || InterfaceTuningSettingsStore.shared.cached.freeTranslation {
             self.moreButton.isHidden = false
             self.closeButton.isHidden = true
         } else {
@@ -218,7 +221,7 @@ final class ChatTranslationPanelNode: ASDisplayNode {
         }
         let isPremium = info.isPremium
         
-        var translationAvailable = isPremium
+        var translationAvailable = isPremium || InterfaceTuningSettingsStore.shared.cached.freeTranslation
         if case let .channel(channel) = info.peer, channel.flags.contains(.autoTranslateEnabled) {
             translationAvailable = true
         }
@@ -237,7 +240,7 @@ final class ChatTranslationPanelNode: ASDisplayNode {
         
         let isPremium = info.isPremium
         
-        var translationAvailable = isPremium
+        var translationAvailable = isPremium || InterfaceTuningSettingsStore.shared.cached.freeTranslation
         if case let .channel(channel) = info.peer, channel.flags.contains(.autoTranslateEnabled) {
             translationAvailable = true
         }

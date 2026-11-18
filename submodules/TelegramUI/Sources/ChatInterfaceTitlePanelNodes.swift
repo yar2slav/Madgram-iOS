@@ -87,6 +87,7 @@ func titlePanelForChatPresentationInterfaceState(_ chatPresentationInterfaceStat
             switch context {
                 case .pinnedMessage:
                     if case .pinnedMessages = chatPresentationInterfaceState.subject {
+                    } else if InterfaceTuningSettingsStore.shared.cached.hidePinnedMessageBar {
                     } else {
                         if chatPinnedPanelIsVisible(pinnedMessageTopId: chatPresentationInterfaceState.pinnedMessage?.topMessageId, skeletonId: chatPresentationInterfaceState.pinnedMessageSkeletonId, closedPinnedMessageId: chatPresentationInterfaceState.interfaceState.messageActionsState.closedPinnedMessageId, pendingUnpinnedAllMessages: chatPresentationInterfaceState.pendingUnpinnedAllMessages) {
                             selectedContext = context
@@ -252,6 +253,7 @@ func managingBotTitlePanelForChatPresentationInterfaceState(_ chatPresentationIn
     guard let contactStatus = chatPresentationInterfaceState.contactStatus, contactStatus.managingBot != nil else {
         return nil
     }
+    // Madgram: the business-bot panel can be hidden per chat from interface tuning.
     guard let peerId = chatPresentationInterfaceState.chatLocation.peerId, InterfaceTuningSettingsStore.shared.current.isBusinessBotPanelVisible(peerId: peerId.toInt64()) else {
         return nil
     }
@@ -295,7 +297,11 @@ func managingBotTitlePanelForChatPresentationInterfaceState(_ chatPresentationIn
     return panel
 }
 
-func headerTopicsPanelForChatPresentationInterfaceState(_ chatPresentationInterfaceState: ChatPresentationInterfaceState, context: AccountContext, controllerInteraction: ChatControllerInteraction?, interfaceInteraction: ChatPanelInterfaceInteraction?, force: Bool) -> AnyComponent<Empty>? {
+func headerTopicsPanelForChatPresentationInterfaceState(_ chatPresentationInterfaceState: ChatPresentationInterfaceState, context: AccountContext, controllerInteraction: ChatControllerInteraction?, interfaceInteraction: ChatPanelInterfaceInteraction?, force: Bool, sideListActive: Bool) -> AnyComponent<Empty>? {
+    // The side list replaces the strip.
+    if sideListActive {
+        return nil
+    }
     guard let peerId = chatPresentationInterfaceState.chatLocation.peerId else {
         return nil
     }
@@ -413,7 +419,11 @@ func headerTopicsPanelForChatPresentationInterfaceState(_ chatPresentationInterf
     return nil
 }
 
-func floatingTopicsPanelForChatPresentationInterfaceState(_ chatPresentationInterfaceState: ChatPresentationInterfaceState, context: AccountContext, controllerInteraction: ChatControllerInteraction?, interfaceInteraction: ChatPanelInterfaceInteraction?, force: Bool) -> ChatFloatingTopicsPanel? {
+func floatingTopicsPanelForChatPresentationInterfaceState(_ chatPresentationInterfaceState: ChatPresentationInterfaceState, context: AccountContext, controllerInteraction: ChatControllerInteraction?, interfaceInteraction: ChatPanelInterfaceInteraction?, force: Bool, sideListActive: Bool) -> ChatFloatingTopicsPanel? {
+    // The side list replaces the strip.
+    if sideListActive {
+        return nil
+    }
     guard let peerId = chatPresentationInterfaceState.chatLocation.peerId else {
         return nil
     }

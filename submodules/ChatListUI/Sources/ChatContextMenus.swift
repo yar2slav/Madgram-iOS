@@ -16,6 +16,8 @@ import TelegramStringFormatting
 import ChatTimerScreen
 import NotificationPeerExceptionController
 
+/// Running "delete all my messages" operations, keyed by "accountPeerId:peerId". Main queue only.
+/// Held globally so deletion survives menu/controller dismissal and repeated launches are blocked.
 private var deleteAllOwnMessagesDisposables: [String: MetaDisposable] = [:]
 
 private func startDeleteAllOwnMessages(context: AccountContext, peerId: EnginePeer.Id, peerTitle: String, chatListController: ChatListControllerImpl?) {
@@ -86,6 +88,7 @@ func archiveContextMenuItems(context: AccountContext, group: EngineChatList.Grou
     |> map { [weak chatListController] readState, chatArchiveSettingsPreference, ghostModeSettings -> [ContextMenuItem] in
         var items: [ContextMenuItem] = []
         
+        // Chats read only locally in ghost mode still have a server read to send
         if readState.hasLocalUnread || readState.hasServerUnread {
             let markAllAsRead: (String, MarkAllChatsAsReadMode) -> ContextMenuItem = { title, mode in
                 return .action(ContextMenuActionItem(text: title, icon: { theme in generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/MarkAsRead"), color: theme.contextMenu.primaryColor) }, action: { _, f in
@@ -95,7 +98,7 @@ func archiveContextMenuItems(context: AccountContext, group: EngineChatList.Grou
                     })
                 }))
             }
-            if ghostModeSettings.hidesMessageReadReceipts {
+            if ghostModeSettings.hidesAnyMessageReadReceipts {
                 items.append(markAllAsRead(strings.localFeatures.ghostMode.readAllLocally, .localOnly))
                 items.append(markAllAsRead(strings.localFeatures.ghostMode.readAllOnServer, .server))
             } else {
@@ -149,6 +152,26 @@ private func chatContextMenuPeerIsMuted(peer: EnginePeer, notificationSettings: 
 func chatContextMenuItems(context: AccountContext, peerId: EnginePeer.Id, promoInfo: ChatListNodeEntryPromoInfo?, source: ChatContextMenuSource, chatListController: ChatListControllerImpl?, joined: Bool) -> Signal<[ContextMenuItem], NoError> {
     let presentationData = context.sharedContext.currentPresentationData.with({ $0 })
     let strings = presentationData.strings
+
+    if peerId.isMadLocalChat {
+        let madStrings = strings.localFeatures.more
+        let accountId = context.account.peerId.toInt64()
+        let silent = MadChangelogPreferences.isSilent(accountId: accountId)
+        var items: [ContextMenuItem] = []
+        items.append(.action(ContextMenuActionItem(text: silent ? madStrings.changelogUnmute : madStrings.changelogMute, icon: { theme in generateTintedImage(image: UIImage(bundleImageName: silent ? "Chat/Context Menu/Unmute" : "Chat/Context Menu/Muted"), color: theme.contextMenu.primaryColor) }, action: { _, f in
+            MadChangelogPreferences.setSilent(!silent, accountId: accountId)
+            f(.default)
+        })))
+        items.append(.action(ContextMenuActionItem(text: madStrings.changelogHide, textColor: .destructive, icon: { theme in generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Delete"), color: theme.contextMenu.destructiveColor) }, action: { [weak chatListController] _, f in
+            MadChangelogPreferences.setHidden(true, accountId: accountId)
+            let _ = context.engine.peers.removePeerChat(peerId: peerId, reportChatSpam: false).startStandalone()
+            if let chatListController {
+                chatListController.present(UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: madStrings.changelogHidden, timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in return false }), in: .current)
+            }
+            f(.default)
+        })))
+        return .single(items)
+    }
 
     return combineLatest(
         context.engine.data.get(TelegramEngine.EngineData.Item.Messages.ChatListGroup(id: peerId)),
@@ -627,6 +650,7 @@ func chatContextMenuItems(context: AccountContext, peerId: EnginePeer.Id, promoI
                             }
                         }
 
+                        // peer.id == peerId excludes secret chats (their list entry resolves to the underlying user).
                         var canDeleteOwnMessages = false
                         if peer.id == peerId {
                             switch peer {

@@ -556,6 +556,7 @@ public enum DeviceMetrics: CaseIterable, Equatable {
     }
     
     public var showAppBadge: Bool {
+        // The foldable's status bar geometry hasn't been measured, so the capsule stays off there.
         if case .iPhoneDuo = self {
             return false
         }

@@ -3,6 +3,14 @@ import UIKit
 import AsyncDisplayKit
 import Display
 
+/// Madgram: the flat navigation bar of Telegram before Liquid Glass, used for every screen while
+/// `ClassicDesign.isEnabled` (`defaultNavigationBarImpl` in the app delegate).
+///
+/// It is `NavigationBarImpl`'s `.legacy` style as it stood before upstream replaced it with `NavigationBarNode`
+/// (16b065d8d0): a blurred background with a hairline separator, a back arrow with the previous screen's title (or the
+/// unread badge), text buttons in the accent colour, and a centred title, 44pt tall below the status bar. It takes no
+/// part in the glass bar morph (`takeView()` returns nil), so a push or pop slides it with its screen, as the flat bar
+/// always did, and it has no iPhone Duo side column: its buttons stay in the row.
 public final class ClassicNavigationBarImpl: ASDisplayNode, NavigationBar {
     public static var defaultSecondaryContentHeight: CGFloat {
         return 38.0
@@ -10,8 +18,11 @@ public final class ClassicNavigationBarImpl: ASDisplayNode, NavigationBar {
 
     public static let titleFont = Font.with(size: 17.0, design: .regular, weight: .semibold, traits: [.monospacedNumbers])
 
+    /// The flat bar's row: 44pt, where the glass bar centres its 44pt capsules in a 60pt band.
     private static let nominalHeight: CGFloat = 44.0
 
+    /// The bar's row height for the height `ViewController` lays a glass bar out with (60, or 68 for a glass modal,
+    /// whose extra 8pt `ViewController` adds above the row too).
     private static func rowHeight(defaultHeight: CGFloat) -> CGFloat {
         if defaultHeight >= 60.0 {
             return defaultHeight - 16.0
@@ -30,7 +41,9 @@ public final class ClassicNavigationBarImpl: ASDisplayNode, NavigationBar {
 
     public var userInfo: Any?
 
+    /// iPhone Duo: see `NavigationBar.trailingButtonsInset`.
     public var trailingButtonsInset: CGFloat = 0.0
+    /// iPhone Duo: the classic bar keeps every button in its row and lays out no side column.
     public var sideColumnPlacement: NavigationBarSideColumnPlacement?
     public var sideColumnExtentUpdated: ((ContainedViewLayoutTransition) -> Void)?
     public var transitionContentFrameUpdated: ((CGRect) -> Void)?
@@ -308,6 +321,7 @@ public final class ClassicNavigationBarImpl: ASDisplayNode, NavigationBar {
         }
     }
 
+    /// The back button's text: the left item drawn as a back button, else the previous screen's back item or title.
     private func backButtonTitle() -> String? {
         if let leftBarButtonItem = self.item?.leftBarButtonItem, leftBarButtonItem.backButtonAppearance {
             return leftBarButtonItem.title ?? self.presentationData.strings.back
@@ -326,14 +340,17 @@ public final class ClassicNavigationBarImpl: ASDisplayNode, NavigationBar {
         return nil
     }
 
+    /// The item's badge, kept to be shown again when the theme stops hiding it.
     private var badgeText: String?
 
     private func updateBadgeText(text: String?) {
         self.badgeText = text
+        // A theme that hides the badge (`hideBadge`) shows the back title instead.
         let actualText = self.colors.badgeBackgroundColor.alpha == 0.0 ? "" : (text ?? "")
         if self.badgeNode.text != actualText {
             self.badgeNode.text = actualText
             self.badgeNode.isHidden = actualText.isEmpty
+            // The badge takes the back title's place.
             self.backButtonNodeImpl.manualAlpha = self.badgeNode.isHidden ? 1.0 : 0.0
 
             self.invalidateCalculatedLayout()
@@ -383,6 +400,7 @@ public final class ClassicNavigationBarImpl: ASDisplayNode, NavigationBar {
                     self.leftButtonNodeImpl.updateItems([], animated: animated)
                     self.leftButtonNodeImpl.updateItems([leftBarButtonItem], animated: animated)
                 } else {
+                    // The first screen of a modal stack: the flat bar's "Close".
                     self.leftButtonNodeImpl.updateItems([], animated: animated)
                     self.leftButtonNodeImpl.updateItems([UIBarButtonItem(title: "___close", style: .plain, target: nil, action: nil)], animated: animated)
                 }
@@ -477,6 +495,8 @@ public final class ClassicNavigationBarImpl: ASDisplayNode, NavigationBar {
 
     public let customOverBackgroundContentView: UIView
 
+    /// `setHidden` (the controller, from `displayNavigationBar`) and `setRowHiddenByScreen` (the screen) both hide the
+    /// buttons and titles; a replacement content node takes their place too.
     private var isRowHiddenByController = false
     private var isRowHiddenByScreen = false
 
@@ -596,6 +616,8 @@ public final class ClassicNavigationBarImpl: ASDisplayNode, NavigationBar {
         ClassicNavigationBarPaletteSource.shared.register(self)
     }
 
+    // MARK: - Colours
+
     private func applyColors(transition: ContainedViewLayoutTransition = .immediate) {
         let colors = self.colors
 
@@ -631,6 +653,7 @@ public final class ClassicNavigationBarImpl: ASDisplayNode, NavigationBar {
         }
     }
 
+    /// The app switched themes: a bar that heard of the change first resolved its colours without the new palette.
     func paletteSourceUpdated() {
         self.updateColors(transition: .immediate)
     }
@@ -645,6 +668,7 @@ public final class ClassicNavigationBarImpl: ASDisplayNode, NavigationBar {
                 for buttonNode in [self.backButtonNodeImpl, self.leftButtonNodeImpl, self.rightButtonNodeImpl] {
                     buttonNode.closeTitle = presentationData.strings.close
                 }
+                // "Close" and the "Back" fallback are drawn from the strings.
                 self.updateRightButton(animated: false)
             }
 
@@ -652,6 +676,8 @@ public final class ClassicNavigationBarImpl: ASDisplayNode, NavigationBar {
             self.requestLayout()
         }
     }
+
+    // MARK: - Backdrop
 
     public var isBackdropVisible: Bool {
         return self.backgroundAlpha == 1.0
@@ -665,7 +691,10 @@ public final class ClassicNavigationBarImpl: ASDisplayNode, NavigationBar {
     }
 
     public func updateEdgeEffectExtension(value: CGFloat, transition: ContainedViewLayoutTransition) {
+        // The flat bar has no edge effect to extend.
     }
+
+    // MARK: - Layout
 
     private func requestLayout() {
         self.requestedLayout = true
@@ -684,11 +713,15 @@ public final class ClassicNavigationBarImpl: ASDisplayNode, NavigationBar {
     public func updateLayout(size: CGSize, defaultHeight: CGFloat, additionalTopHeight: CGFloat, additionalContentHeight: CGFloat, additionalBackgroundHeight: CGFloat, leftInset: CGFloat, rightInset: CGFloat, appearsHidden: Bool, transition: ContainedViewLayoutTransition) {
         self.validLayout = (size, defaultHeight, additionalTopHeight, additionalContentHeight, additionalBackgroundHeight, leftInset, rightInset, appearsHidden)
 
+        // `ViewController` no longer says whether the screen is in landscape (it passed `size.width > size.height` of its
+        // layout); the window's bounds are that layout's size.
         var isLandscape = false
         if let window = self.view.window {
             isLandscape = window.bounds.width > window.bounds.height
         }
         let contentVerticalOrigin = additionalTopHeight
+        // Content nodes (search fields, a pane's own navigation content) are laid out against the glass bar's row
+        // origin (`NavigationBarNode`: 2pt below the status bar) and place their contents from their own top edge.
         let contentNodeVerticalOrigin = additionalTopHeight + 2.0
         let nominalHeight = ClassicNavigationBarImpl.nominalHeight
 
@@ -702,6 +735,7 @@ public final class ClassicNavigationBarImpl: ASDisplayNode, NavigationBar {
         let apparentAdditionalHeight: CGFloat = self.secondaryContentNode != nil ? self.secondaryContentHeight : 0.0
 
         let leftButtonInset: CGFloat = leftInset + 16.0
+        // Its own side's inset (iPhone Duo's side strip makes them differ; with equal insets this is `leftButtonInset`).
         let rightButtonInset: CGFloat = rightInset + self.trailingButtonsInset + 16.0
         let backButtonInset: CGFloat = leftInset + 27.0
 
@@ -712,8 +746,12 @@ public final class ClassicNavigationBarImpl: ASDisplayNode, NavigationBar {
             var contentNodeFrame: CGRect
             switch contentNode.mode {
             case .replacement:
+                // Not the flat bar's old full-height frame from y = 0: today's replacement nodes (the chat's and the
+                // group's search) draw their field at a fixed offset from their top, which would put it under the
+                // status bar.
                 contentNodeFrame = CGRect(origin: CGPoint(x: 0.0, y: contentNodeVerticalOrigin), size: CGSize(width: size.width, height: contentNode.nominalHeight))
                 transition.updateFrame(node: contentNode, frame: contentNodeFrame)
+                // It takes the bar's row, so its trailing end keeps clear of a status island beside the bar (iPhone Duo).
                 let _ = contentNode.updateLayout(size: contentNodeFrame.size, leftInset: leftInset, rightInset: rightInset + self.trailingButtonsInset, transition: transition)
             case .expansion:
                 let expansionHeight = contentNode.height
@@ -738,6 +776,8 @@ public final class ClassicNavigationBarImpl: ASDisplayNode, NavigationBar {
         var rightTitleInset: CGFloat = rightInset + 1.0
         if self.backButtonNodeImpl.view.superview != nil {
             var backButtonSize = self.backButtonNodeImpl.updateLayout(constrainedSize: CGSize(width: size.width, height: nominalHeight), isLandscape: isLandscape)
+            // A long previous title would crowd the title out: the flat bar's screens name their back button "Back"
+            // (`backBarButtonItem`), and the rest fall back to it.
             let maxBackButtonWidth = max(80.0, floor(size.width * 0.3))
             if backButtonSize.width > maxBackButtonWidth, let item = self.item, item.leftBarButtonItem == nil {
                 self.backButtonNodeImpl.updateManualText(self.presentationData.strings.back, isBack: true)
@@ -745,6 +785,7 @@ public final class ClassicNavigationBarImpl: ASDisplayNode, NavigationBar {
             }
             leftTitleInset = backButtonSize.width + backButtonInset + 1.0
             if !self.badgeNode.isHidden {
+                // The badge takes the back title's place (`updateBadgeText`).
                 let badgeWidth = self.badgeNode.measure(CGSize(width: 200.0, height: 100.0)).width
                 leftTitleInset = leftInset + 8.0 + 16.0 + badgeWidth + 4.0
             }
@@ -785,6 +826,8 @@ public final class ClassicNavigationBarImpl: ASDisplayNode, NavigationBar {
         }
         self.rightButtonNodeUpdated = false
 
+        // Titles are centred in the band between the side insets, clear of the buttons (iPhone Duo's strip makes the
+        // insets differ; with equal insets this is full-width centring).
         (leftTitleInset, rightTitleInset) = navigationBarTitleInsets(leftInset: leftInset, rightInset: rightInset, leftTitleInset: leftTitleInset, rightTitleInset: rightTitleInset)
 
         if self.titleNode.supernode != nil {
@@ -860,6 +903,8 @@ public final class ClassicNavigationBarImpl: ASDisplayNode, NavigationBar {
 
         return result
     }
+
+    // MARK: - Content
 
     public func setContentNode(_ contentNode: NavigationBarContentNode?, animated: Bool) {
         if self.contentNode !== contentNode {
@@ -942,6 +987,8 @@ public final class ClassicNavigationBarImpl: ASDisplayNode, NavigationBar {
         return true
     }
 
+    // MARK: - Visibility
+
     private var buttonsTargetAlpha: CGFloat {
         if let contentNode = self.contentNode, case .replacement = contentNode.mode {
             return 0.0
@@ -987,6 +1034,8 @@ public final class ClassicNavigationBarImpl: ASDisplayNode, NavigationBar {
         }
     }
 
+    // MARK: - Buttons
+
     public func rightButtonView(for item: UIBarButtonItem) -> UIView? {
         guard self.rightButtonNodeImpl.view.superview != nil else {
             return nil
@@ -995,6 +1044,7 @@ public final class ClassicNavigationBarImpl: ASDisplayNode, NavigationBar {
     }
 
     public func navigationButtonContextContainer(sourceView: UIView) -> ContextExtractableContainer? {
+        // The flat bar's buttons have no capsule to morph into a context menu: the menu opens from the button itself.
         return nil
     }
 
@@ -1006,6 +1056,8 @@ public final class ClassicNavigationBarImpl: ASDisplayNode, NavigationBar {
         return self.buttonsContainerNode.view.convert(frame, to: view)
     }
 
+    // MARK: - iPhone Duo side column
+
     public var isBackInSideColumn: Bool {
         return false
     }
@@ -1014,7 +1066,10 @@ public final class ClassicNavigationBarImpl: ASDisplayNode, NavigationBar {
         return nil
     }
 
+    // MARK: - Navigation transition
+
     public func takeView() -> NavigationBarTransitionTakeViewInfo? {
+        // The flat bar slides with its screen, as it did before the glass bar's morph.
         return nil
     }
 
@@ -1023,6 +1078,8 @@ public final class ClassicNavigationBarImpl: ASDisplayNode, NavigationBar {
 
     public func updateTransition(role: NavigationBarTransitionRole?, fraction: CGFloat, transition: ContainedViewLayoutTransition) {
     }
+
+    // MARK: - Touches
 
     override public func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         if let result = self.additionalContentNode.view.hitTest(self.view.convert(point, to: self.additionalContentNode.view), with: event) {

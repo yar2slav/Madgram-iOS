@@ -202,6 +202,7 @@ public final class SearchDisplayController {
             } else {
                 searchBarFrame = listSearchBarFrame(navigationBarFrame: navigationBarFrame, fieldStyle: searchBar.fieldStyle)
                 if ClassicDesign.isEnabled && searchBar.fieldStyle != .glass {
+                    // Madgram classic design: 12.0's flat search bar ends where its frame does.
                     navigationBarHeight = navigationBarFrame.maxY
                 } else {
                     navigationBarHeight = navigationBarFrame.maxY + 8.0
@@ -263,6 +264,7 @@ public final class SearchDisplayController {
             self.backgroundNode.layer.animateAlpha(from: 0.0, to: 1.0, duration: 0.2, timingFunction: CAMediaTimingFunctionName.linear.rawValue)
             
             if ClassicDesign.isEnabled, let searchBar = self.searchBar, searchBar.fieldStyle != .glass {
+                // Madgram classic design: 12.0's results grew into place as they faded in.
                 self.backgroundNode.layer.animateScale(from: 0.85, to: 1.0, duration: 0.5, timingFunction: kCAMediaTimingFunctionSpring)
             }
         }

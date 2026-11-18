@@ -419,6 +419,12 @@ final class EmojisChatInputContextPanelNode: ChatInputContextPanelNode {
                     copyEmoji(file)
                     f(.default)
                 })))
+                menuItems.append(.action(ContextMenuActionItem(text: presentationData.strings.localFeatures.extras.copyEmojiId, icon: { theme in
+                    return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Copy"), color: theme.actionSheet.primaryTextColor)
+                }, action: { _, f in
+                    UIPasteboard.general.string = "\(file.fileId.id)"
+                    f(.default)
+                })))
             }
             
             if menuItems.isEmpty {

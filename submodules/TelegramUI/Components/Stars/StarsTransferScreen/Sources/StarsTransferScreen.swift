@@ -1,4 +1,5 @@
 import Foundation
+import MadLockUI
 import UIKit
 import Display
 import ComponentFlow
@@ -167,6 +168,9 @@ private final class SheetContent: CombinedComponent {
         }
         
         func buy(requestTopUp: @escaping (@escaping () -> Void) -> Void, completion: @escaping (Bool) -> Void) {
+            if MadLock.gate(.spendPayments, strings: self.context.sharedContext.currentPresentationData.with { $0 }.strings, retry: { [weak self] in self?.buy(requestTopUp: requestTopUp, completion: completion) }) {
+                return
+            }
             guard let form, let balance else {
                 return
             }

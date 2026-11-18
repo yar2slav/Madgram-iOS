@@ -9,6 +9,7 @@ import TelegramPresentationData
 import AccountContext
 import WallpaperBackgroundNode
 import UndoUI
+import TelegramUIPreferences
 
 public struct MessageShotOptions: Equatable {
     public var showWallpaper: Bool = true
@@ -29,6 +30,10 @@ private let messageShotTimezoneOffset: Int32 = {
 
 private let messageShotDayGranularity: Int32 = 60 * 60 * 24
 
+/// Buckets a timestamp into the day the chat would draw a date header for.
+///
+/// Mirrors `dateHeaderTimestampId` in `ChatMessageDateHeader`, which is private to the chat module.
+/// The two must agree, or a shot could split a day the chat keeps together.
 private func messageShotDayTimestamp(_ timestamp: Int32) -> Int32 {
     return ((timestamp + messageShotTimezoneOffset) / messageShotDayGranularity) * messageShotDayGranularity
 }
@@ -271,21 +276,8 @@ private final class MessageShotScreenNode: ASDisplayNode {
         if !self.options.showReactions {
             attributes = attributes.filter { !($0 is ReactionsMessageAttribute) }
         }
-        if self.options.revealSpoilers {
-            attributes = attributes.compactMap { attribute in
-                if attribute is MediaSpoilerMessageAttribute {
-                    return nil
-                }
-                if let entities = attribute as? TextEntitiesMessageAttribute {
-                    return TextEntitiesMessageAttribute(entities: entities.entities.filter { entity in
-                        if case .Spoiler = entity.type {
-                            return false
-                        }
-                        return true
-                    })
-                }
-                return attribute
-            }
+        if self.options.revealSpoilers, let revealedAttributes = messageAttributesRevealingSpoilers(attributes, text: true, media: true) {
+            attributes = revealedAttributes
         }
         attributes.append(MessagePreviewForceIncomingAttribute())
         let flags = rawMessage.flags.union([.Incoming])
@@ -296,6 +288,7 @@ private final class MessageShotScreenNode: ASDisplayNode {
         return EngineMessage(updatedMessage)
     }
 
+    // Mirrors the bubble's own `hasAvatar` decision (ChatMessageBubbleItemNode).
     private func bubbleReservesAvatarSpace(_ message: EngineMessage) -> Bool {
         let accountPeerId = self.context.account.peerId
         guard message.effectivelyIncoming(accountPeerId), message.author != nil else {
@@ -364,6 +357,8 @@ private final class MessageShotScreenNode: ASDisplayNode {
         }
 
         let contentWidth = containerSize.width
+        // The bubble already leaves room for the avatar where the chat draws one (incoming messages in groups and
+        // Saved Messages); elsewhere the shot's avatar needs that room added, or it lands under the bubble.
         let itemParams: [ListViewItemLayoutParams] = groupedMessages.map { group in
             var leftInset: CGFloat = 0.0
             if self.options.showAvatar, let message = group.first, !self.bubbleReservesAvatarSpace(message) {
@@ -411,6 +406,7 @@ private final class MessageShotScreenNode: ASDisplayNode {
             self.messageNodes = messageNodes
         }
 
+        // A date header belongs above the first group of each day, exactly as the chat draws it.
         var dateHeaderItems: [Int: ListViewItemHeader] = [:]
         if self.options.showDateHeader {
             var previousDay: Int32?
@@ -465,6 +461,9 @@ private final class MessageShotScreenNode: ASDisplayNode {
         var minY: CGFloat = .greatestFiniteMagnitude
         var maxY: CGFloat = 0.0
         if let messageNodes = self.messageNodes {
+            // The container is flipped, so this runs newest-first and stacks upwards. A day's header
+            // is keyed to the oldest group of that day, so laying it out right after that group
+            // places it above the whole day.
             for index in stride(from: messageNodes.count - 1, through: 0, by: -1) {
                 let itemNode = messageNodes[index]
                 let itemFrame = CGRect(origin: CGPoint(x: 0.0, y: bottomOffset), size: itemNode.frame.size)

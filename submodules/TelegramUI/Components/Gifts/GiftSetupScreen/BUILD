@@ -10,6 +10,7 @@ swift_library(
         "-warnings-as-errors",
     ],
     deps = [
+        "//submodules/MadLockUI",
         "//submodules/AsyncDisplayKit",
         "//submodules/CheckNode",
         "//submodules/Display",

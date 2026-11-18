@@ -1,5 +1,4 @@
 import Foundation
-import LottieSettings
 import UIKit
 import AsyncDisplayKit
 import Display
@@ -41,6 +40,8 @@ public final class ContextControllerActionsListActionItemNode: HighlightTracking
     private let requestUpdateAction: (AnyHashable, ContextMenuActionItem) -> Void
     private var item: ContextMenuActionItem
     
+    /// Madgram classic design (`ClassicDesign.isEnabled`): Telegram 12.0's full-width highlight of the row itself. The
+    /// glass menu draws one inset capsule for the whole list instead (`highlightedItemBackgroundView`).
     private let classicHighlightBackgroundNode: ASDisplayNode?
     private let titleLabelNode: ImmediateTextNodeWithEntities
     private let balancedTitleLabel = ComponentView<Empty>()
@@ -103,7 +104,7 @@ public final class ContextControllerActionsListActionItemNode: HighlightTracking
         
         self.isAccessibilityElement = true
         self.accessibilityLabel = item.text
-        self.accessibilityTraits = [.button]
+        self.accessibilityTraits = item.accessibilityIsSelected ? [.button, .selected] : [.button]
 
         if let classicHighlightBackgroundNode = self.classicHighlightBackgroundNode {
             self.addSubnode(classicHighlightBackgroundNode)
@@ -225,9 +226,12 @@ public final class ContextControllerActionsListActionItemNode: HighlightTracking
     public func setItem(item: ContextMenuActionItem) {
         self.item = item
         self.accessibilityLabel = item.text
+        self.accessibilityTraits = item.accessibilityIsSelected ? [.button, .selected] : [.button]
     }
     
     public func update(presentationData: PresentationData, constrainedSize: CGSize) -> (minSize: CGSize, apply: (_ size: CGSize, _ transition: ContainedViewLayoutTransition) -> Void) {
+        // Madgram classic design: Telegram 12.0's row, its text 16pt from the edge and its icon on the right (or on the
+        // left with `iconPosition == .left`) 12pt from the edge, instead of the glass menu's leading icon column.
         let isClassic = ClassicDesign.isEnabled
         let sideInset: CGFloat = isClassic ? 16.0 : 18.0
         let verticalInset: CGFloat = 11.0
@@ -303,6 +307,8 @@ public final class ContextControllerActionsListActionItemNode: HighlightTracking
             self.titleLabelNode.maximumNumberOfLines = 0
             self.titleLabelNode.lineSpacing = 0.1
         }
+        // VoiceOver: the second line ("1 Person" under "Who Can See") is the item's value.
+        self.accessibilityValue = subtitle?.string
         
         let titleColor: UIColor
         let linkColor = presentationData.theme.list.itemAccentColor
@@ -441,8 +447,7 @@ public final class ContextControllerActionsListActionItemNode: HighlightTracking
                     content: LottieComponent.AppBundleContent(name: iconAnimation.name),
                     color: titleColor,
                     startingPosition: iconAnimation.loop ? .begin : .end,
-                    loop: iconAnimation.loop,
-                    lottieSettings: self.context?.lottieRenderingSettings ?? .noAccountFallback
+                    loop: iconAnimation.loop
                 )),
                 environment: {},
                 containerSize: animatedIconSize
@@ -730,11 +735,14 @@ private final class ContextControllerActionsListSeparatorItemNode: ASDisplayNode
         
         super.init()
         
+        // A divider between groups of items, not content.
+        self.separatorView.accessibilityElementsHidden = true
         self.view.addSubview(self.separatorView)
     }
     
     func update(presentationData: PresentationData, constrainedSize: CGSize) -> (minSize: CGSize, apply: (_ size: CGSize, _ transition: ContainedViewLayoutTransition) -> Void) {
         if ClassicDesign.isEnabled {
+            // Madgram classic design: Telegram 12.0's section separator, a 7pt band across the whole menu.
             return (minSize: CGSize(width: 0.0, height: 7.0), apply: { _, _ in
                 self.separatorView.isHidden = true
                 self.backgroundColor = presentationData.theme.contextMenu.sectionSeparatorColor
@@ -853,6 +861,7 @@ public final class ContextControllerActionsListStackItem: ContextControllerActio
         
         private final class Item {
             let node: ContextControllerActionsListItemNode
+            /// Madgram classic design: Telegram 12.0's hairline below an action or custom row.
             let classicSeparatorNode: ASDisplayNode?
             
             init(node: ContextControllerActionsListItemNode) {
@@ -1060,6 +1069,8 @@ public final class ContextControllerActionsListStackItem: ContextControllerActio
             
             var highlightedItemFrame: CGRect?
             
+            // Madgram classic design: Telegram 12.0's rows run edge to edge, with no padding above the first or below
+            // the last.
             let verticalInset: CGFloat = ClassicDesign.isEnabled ? 0.0 : 10.0
             
             var itemNodeLayouts: [(minSize: CGSize, apply: (_ size: CGSize, _ transition: ContainedViewLayoutTransition) -> Void)] = []
@@ -1118,6 +1129,8 @@ public final class ContextControllerActionsListStackItem: ContextControllerActio
                     classicSeparatorNode.backgroundColor = presentationData.theme.contextMenu.itemSeparatorColor
                     itemTransition.updateFrame(node: classicSeparatorNode, frame: CGRect(origin: CGPoint(x: itemFrame.minX, y: itemFrame.maxY), size: CGSize(width: itemFrame.width, height: UIScreenPixel)), beginWithCurrentState: true)
                     
+                    // As 12.0: no hairline above a section separator, below the last row, or below a custom row that
+                    // asks for none.
                     var separatorHidden = false
                     if i != self.itemNodes.count - 1 {
                         if case .separator = self.items[i + 1] {
@@ -1137,6 +1150,8 @@ public final class ContextControllerActionsListStackItem: ContextControllerActio
                 }
             }
             
+            // Madgram classic design: the tip is 12.0's separate rounded rect below the menu (`ItemContainer.updateTip`),
+            // not a section inside it.
             if let tip = self.tip, !ClassicDesign.isEnabled {
                 let tipNode: InnerTextSelectionTipContainerNode
                 var tipTransition = transition
@@ -1200,6 +1215,7 @@ public final class ContextControllerActionsListStackItem: ContextControllerActio
             }
             
             if ClassicDesign.isEnabled {
+                // Madgram classic design: each row draws its own 12.0 highlight (`updateIsHighlighted`).
             } else if let highlightedItemFrame {
                 self.highlightedItemBackgroundView.backgroundColor = presentationData.theme.overallDarkAppearance ? UIColor.white : UIColor.black
                 self.highlightedItemBackgroundView.setMonochromaticEffect(tintColor: self.highlightedItemBackgroundView.backgroundColor)
@@ -1561,14 +1577,19 @@ private final class ItemSelectionRecognizer: UIGestureRecognizer {
 public final class ContextControllerActionsStackNodeImpl: ASDisplayNode, ContextControllerActionsStackNode {
     public var usesClearGlass: Bool = false
     public var glassBlurRadius: CGFloat?
+    public var minimumListWidth: CGFloat?
 
     final class NavigationContainer: ASDisplayNode, ASGestureRecognizerDelegate {
         let backgroundContainer: GlassBackgroundContainerView
         let contentContainer: LensTransitionContainer
         
+        /// Madgram classic design (`ClassicDesign.isEnabled`): Telegram 12.0's menu, a 14pt rounded rect of the theme's
+        /// context menu color (blurred unless modal) with the item containers directly inside it, and a soft shadow
+        /// around it. The glass container and the morphing lens are then left out of the hierarchy.
         private let classicBackgroundNode: NavigationBackgroundNode?
         let classicShadowNode: ASImageNode?
         
+        /// Places an item container: in the lens, or (classic) directly above the background, as 12.0 did.
         func addItemContainer(_ itemContainer: ASDisplayNode) {
             if self.classicBackgroundNode != nil {
                 self.addSubnode(itemContainer)
@@ -1917,6 +1938,14 @@ public final class ContextControllerActionsStackNodeImpl: ASDisplayNode, Context
         return self.itemContainers.last?.storedScrollingState
     }
     
+    /// The submenu on top, when one has been pushed onto the root menu.
+    public var topPushedItemId: ObjectIdentifier? {
+        guard self.itemContainers.count > 1, let itemContainer = self.itemContainers.last else {
+            return nil
+        }
+        return ObjectIdentifier(itemContainer)
+    }
+    
     public init(
         context: AccountContext?,
         getController: @escaping () -> ContextControllerProtocol?,
@@ -2182,7 +2211,7 @@ public final class ContextControllerActionsStackNodeImpl: ASDisplayNode, Context
                 }
             } else {
                 itemContainerConstrainedSize = CGSize(width: constrainedSize.width, height: itemConstrainedHeight)
-                standardMinWidth = 220.0
+                standardMinWidth = self.minimumListWidth ?? 220.0
                 standardMaxWidth = 240.0
                 additionalBottomInset = 0.0
             }
@@ -2367,6 +2396,8 @@ public final class ContextControllerActionsStackNodeImpl: ASDisplayNode, Context
     
     static var supportsLiquidMorph: Bool {
         if ClassicDesign.isEnabled {
+            // Madgram classic design: the menu opens with 12.0's scale-and-slide spring instead of morphing out of its
+            // source (the classic menu has no lens to morph).
             return false
         }
         return LensTransitionContainer.isMorphSupported

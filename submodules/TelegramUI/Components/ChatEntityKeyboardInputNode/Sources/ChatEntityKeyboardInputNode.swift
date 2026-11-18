@@ -430,6 +430,7 @@ public final class ChatEntityKeyboardInputNode: ChatInputNode {
     private var backgroundView: BlurredBackgroundView?
     private var backgroundTintView: UIImageView?
     private var backgroundChromeView: UIImageView?
+    /// Madgram classic design: 12.0's hairline on top of the flat keyboard.
     private var classicSeparatorView: UIView?
     private var backgroundTintMaskView: UIView?
     private var backgroundTintMaskContentView: UIView?
@@ -500,6 +501,7 @@ public final class ChatEntityKeyboardInputNode: ChatInputNode {
 
         self.clippingView = SparseContainerView()
         self.clippingView.clipsToBounds = true
+        // Madgram classic design: 12.0's keyboard sits flat under the input bar.
         self.clippingView.layer.cornerRadius = ClassicDesign.isEnabled ? 0.0 : keyboardCornerRadius
 
         self.entityKeyboardView = ComponentView()
@@ -859,28 +861,19 @@ public final class ChatEntityKeyboardInputNode: ChatInputNode {
                     }
                 })
             },
-            clearGroup: { [weak interaction] groupId in
+            clearGroup: { [weak interaction] groupId, sourceView, sourceRect in
                 guard let interaction else {
                     return
                 }
                 if groupId == AnyHashable("recent") {
-                    interaction.dismissTextInput()
                     var presentationData = context.sharedContext.currentPresentationData.with { $0 }
                     if let forceTheme = interaction.forceTheme {
                         presentationData = presentationData.withUpdated(theme: forceTheme)
                     }
-                    let actionSheet = ActionSheetController(theme: ActionSheetControllerTheme(presentationTheme: presentationData.theme, fontSize: presentationData.listsFontSize))
-                    var items: [ActionSheetItem] = []
-                    items.append(ActionSheetButtonItem(title: presentationData.strings.Emoji_ClearRecent, color: .destructive, action: { [weak actionSheet] in
-                        actionSheet?.dismissAnimated()
+                    let contextController = makeEmojiClearGroupContextController(presentationData: presentationData, title: presentationData.strings.Emoji_ClearRecent, sourceView: sourceView, sourceRect: sourceRect, action: {
                         let _ = context.engine.stickers.clearRecentlyUsedEmoji().start()
-                    }))
-                    actionSheet.setItemGroups([ActionSheetItemGroup(items: items), ActionSheetItemGroup(items: [
-                        ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak actionSheet] in
-                            actionSheet?.dismissAnimated()
-                        })
-                    ])])
-                    interaction.presentController(actionSheet, nil)
+                    })
+                    interaction.presentGlobalOverlayController(contextController, nil)
                 } else if groupId == AnyHashable("featuredTop") {
                     let _ = (context.engine.data.get(TelegramEngine.EngineData.Item.Collections.FeaturedEmojiPacks())
                     |> deliverOnMainQueue).start(next: { featuredEmojiPacks in
@@ -1383,28 +1376,19 @@ public final class ChatEntityKeyboardInputNode: ChatInputNode {
                     }
                 })
             },
-            clearGroup: { [weak interaction] groupId in
+            clearGroup: { [weak interaction] groupId, sourceView, sourceRect in
                 guard let interaction else {
                     return
                 }
                 if groupId == AnyHashable("recent") {
-                    interaction.dismissTextInput()
                     var presentationData = context.sharedContext.currentPresentationData.with { $0 }
                     if let forceTheme = interaction.forceTheme {
                         presentationData = presentationData.withUpdated(theme: forceTheme)
                     }
-                    let actionSheet = ActionSheetController(theme: ActionSheetControllerTheme(presentationTheme: presentationData.theme, fontSize: presentationData.listsFontSize))
-                    var items: [ActionSheetItem] = []
-                    items.append(ActionSheetButtonItem(title: presentationData.strings.Stickers_ClearRecent, color: .destructive, action: { [weak actionSheet] in
-                        actionSheet?.dismissAnimated()
+                    let contextController = makeEmojiClearGroupContextController(presentationData: presentationData, title: presentationData.strings.Stickers_ClearRecent, sourceView: sourceView, sourceRect: sourceRect, action: {
                         let _ = context.engine.stickers.clearRecentlyUsedStickers().start()
-                    }))
-                    actionSheet.setItemGroups([ActionSheetItemGroup(items: items), ActionSheetItemGroup(items: [
-                        ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak actionSheet] in
-                            actionSheet?.dismissAnimated()
-                        })
-                    ])])
-                    interaction.presentController(actionSheet, nil)
+                    })
+                    interaction.presentGlobalOverlayController(contextController, nil)
                 } else if groupId == AnyHashable("featuredTop") {
                     let _ = (context.engine.data.get(TelegramEngine.EngineData.Item.Collections.FeaturedStickerPacks())
                     |> deliverOnMainQueue).start(next: { featuredStickerPacks in
@@ -2051,6 +2035,8 @@ public final class ChatEntityKeyboardInputNode: ChatInputNode {
             backgroundFrame.size.height += 32.0
 
             if ClassicDesign.isEnabled {
+                // Madgram classic design: 12.0's keyboard is its flat color edge to edge, with square corners, no glass
+                // chrome and a hairline on top. The tint keeps its mask, through which the search panel cuts its field out.
                 backgroundTintView.image = nil
                 backgroundTintView.backgroundColor = interfaceState.theme.chat.inputMediaPanel.backgroundColor
             } else {
@@ -2553,25 +2539,16 @@ public final class EntityInputView: UIInputView, LegacyMessageInputPanelInputVie
             },
             addGroupAction: { _, _, _ in
             },
-            clearGroup: { [weak self] groupId in
+            clearGroup: { [weak self] groupId, sourceView, sourceRect in
                 guard let strongSelf = self else {
                     return
                 }
                 if groupId == AnyHashable("recent") {
-                    strongSelf.window?.endEditing(true)
                     let presentationData = context.sharedContext.currentPresentationData.with { $0 }
-                    let actionSheet = ActionSheetController(theme: ActionSheetControllerTheme(presentationTheme: presentationData.theme, fontSize: presentationData.listsFontSize))
-                    var items: [ActionSheetItem] = []
-                    items.append(ActionSheetButtonItem(title: presentationData.strings.Emoji_ClearRecent, color: .destructive, action: { [weak actionSheet] in
-                        actionSheet?.dismissAnimated()
+                    let contextController = makeEmojiClearGroupContextController(presentationData: presentationData, title: presentationData.strings.Emoji_ClearRecent, sourceView: sourceView, sourceRect: sourceRect, action: {
                         let _ = context.engine.stickers.clearRecentlyUsedEmoji().start()
-                    }))
-                    actionSheet.setItemGroups([ActionSheetItemGroup(items: items), ActionSheetItemGroup(items: [
-                        ActionSheetButtonItem(title: presentationData.strings.Common_Cancel, color: .accent, font: .bold, action: { [weak actionSheet] in
-                            actionSheet?.dismissAnimated()
-                        })
-                    ])])
-                    strongSelf.presentController?(actionSheet)
+                    })
+                    strongSelf.presentController?(contextController)
                 }
             },
             editAction: { _ in },
@@ -2966,6 +2943,12 @@ public final class EmojiContentPeekBehaviorImpl: EmojiContentPeekBehavior {
                                     return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Copy"), color: theme.actionSheet.primaryTextColor)
                                 }, action: { _, f in
                                     copyEmoji(file)
+                                    f(.default)
+                                })))
+                                menuItems.append(.action(ContextMenuActionItem(text: presentationData.strings.localFeatures.extras.copyEmojiId, icon: { theme in
+                                    return generateTintedImage(image: UIImage(bundleImageName: "Chat/Context Menu/Copy"), color: theme.actionSheet.primaryTextColor)
+                                }, action: { _, f in
+                                    UIPasteboard.general.string = "\(file.fileId.id)"
                                     f(.default)
                                 })))
                             }

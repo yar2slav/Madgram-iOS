@@ -1,5 +1,5 @@
 import Foundation
-import LottieSettings
+import MadLockUI
 import UIKit
 import AsyncDisplayKit
 import TelegramPresentationData
@@ -285,8 +285,7 @@ private final class BadgeComponent: Component {
                     size: badgeShapeSize,
                     renderingScale: UIScreenScale,
                     loop: false,
-                    playOnce: nil,
-                    lottieSettings: .noAccountFallback
+                    playOnce: nil
                 )),
                 environment: {},
                 containerSize: badgeShapeSize
@@ -1514,6 +1513,9 @@ private final class GiftAuctionBidScreenComponent: Component {
         
         private var isLoading = false
         private func commitBid(value: Int64) {
+            if let context = self.component?.context, MadLock.gate(.spendGifts, strings: context.sharedContext.currentPresentationData.with { $0 }.strings, retry: { [weak self] in self?.commitBid(value: value) }) {
+                return
+            }
             guard let component = self.component, let environment = self.environment, let controller = self.environment?.controller(), let balance = self.balance, case let .generic(gift) = component.gift else {
                 return
             }
@@ -1847,7 +1849,7 @@ private final class GiftAuctionBidScreenComponent: Component {
                 self?.share()
             })))
 
-            let contextController = makeContextController(presentationData: presentationData, source: .reference(GiftViewContextReferenceContentSource(controller: controller, sourceView: view)), items: .single(ContextController.Items(content: .list(items))), gesture: gesture)
+            let contextController = makeContextController(presentationData: presentationData, source: .reference(GiftViewContextReferenceContentSource(controller: controller, sourceView: (view as? GlassBarButtonComponent.View)?.menuSourceView ?? view)), items: .single(ContextController.Items(content: .list(items))), gesture: gesture)
             controller.presentInGlobalOverlay(contextController)
         }
         
@@ -2754,8 +2756,7 @@ private final class GiftAuctionBidScreenComponent: Component {
                             ),
                             color: environment.theme.chat.inputPanel.panelControlColor,
                             size: CGSize(width: 34.0, height: 34.0),
-                            playOnce: self.moreButtonPlayOnce,
-                            lottieSettings: component.context.lottieRenderingSettings
+                            playOnce: self.moreButtonPlayOnce
                         )
                     )),
                     action: { [weak self] view in

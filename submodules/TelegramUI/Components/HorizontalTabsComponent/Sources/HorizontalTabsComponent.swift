@@ -150,6 +150,9 @@ private final class ReorderingGestureRecognizer: UIGestureRecognizer, UIGestureR
 /// lens may be inset by it again.
 private let lensInset: CGFloat = 3.0
 
+/// Madgram classic design (`ClassicDesign.isEnabled`): 12.0's tab strip (`ChatListFilterTabContainerNode` at
+/// release-12.0): titles in the secondary text color 26 pt apart on the bar itself, the selected one in the accent with
+/// a 3 pt accent line under it, and no glass lens.
 private let classicTabSpacing: CGFloat = 26.0
 private let classicLineHeight: CGFloat = 3.0
 
@@ -248,14 +251,26 @@ public final class HorizontalTabsComponent: Component {
         public let action: () -> Void
         public let contextAction: ((ContextExtractedContentContainingView, ContextGesture?) -> Void)?
         public let deleteAction: (() -> Void)?
+        /// What VoiceOver says for the tab: the title's text unless given (`.custom` content has no text), and the
+        /// badge's title unless given (the badge shows "267", VoiceOver can say "267 unread messages").
+        public let accessibilityLabel: String?
+        public let accessibilityValue: String?
+        /// The name of the VoiceOver custom action that does what the delete badge (`deleteAction`) does.
+        public let deleteAccessibilityLabel: String?
+        /// The name of the VoiceOver custom action that opens the long-press menu (`contextAction`).
+        public let contextAccessibilityLabel: String?
         
-        public init(id: AnyHashable, content: Content, badge: Badge?, action: @escaping () -> Void, contextAction: ((ContextExtractedContentContainingView, ContextGesture?) -> Void)? = nil, deleteAction: (() -> Void)? = nil) {
+        public init(id: AnyHashable, content: Content, badge: Badge?, action: @escaping () -> Void, contextAction: ((ContextExtractedContentContainingView, ContextGesture?) -> Void)? = nil, deleteAction: (() -> Void)? = nil, accessibilityLabel: String? = nil, accessibilityValue: String? = nil, deleteAccessibilityLabel: String? = nil, contextAccessibilityLabel: String? = nil) {
             self.id = id
             self.content = content
             self.badge = badge
             self.action = action
             self.contextAction = contextAction
             self.deleteAction = deleteAction
+            self.accessibilityLabel = accessibilityLabel
+            self.accessibilityValue = accessibilityValue
+            self.deleteAccessibilityLabel = deleteAccessibilityLabel
+            self.contextAccessibilityLabel = contextAccessibilityLabel
         }
         
         public static func ==(lhs: Tab, rhs: Tab) -> Bool {
@@ -272,6 +287,12 @@ public final class HorizontalTabsComponent: Component {
                 return false
             }
             if (lhs.deleteAction == nil) != (rhs.deleteAction == nil) {
+                return false
+            }
+            if lhs.accessibilityLabel != rhs.accessibilityLabel || lhs.accessibilityValue != rhs.accessibilityValue {
+                return false
+            }
+            if lhs.deleteAccessibilityLabel != rhs.deleteAccessibilityLabel || lhs.contextAccessibilityLabel != rhs.contextAccessibilityLabel {
                 return false
             }
             return true
@@ -344,14 +365,18 @@ public final class HorizontalTabsComponent: Component {
     private struct LayoutData {
         var size: CGSize
         var selectedItemFrame: CGRect
+        /// No tab is selected (`selectedTab` is nil or not among the tabs): the pill is hidden, and `selectedItemFrame`
+        /// is where it last was.
+        var isSelectionHidden: Bool
         
         var lensSize: CGSize {
             return CGSize(width: self.size.width - lensInset * 2.0, height: self.size.height - lensInset * 2.0)
         }
         
-        init(size: CGSize, selectedItemFrame: CGRect) {
+        init(size: CGSize, selectedItemFrame: CGRect, isSelectionHidden: Bool) {
             self.size = size
             self.selectedItemFrame = selectedItemFrame
+            self.isSelectionHidden = isSelectionHidden
         }
     }
     
@@ -365,10 +390,29 @@ public final class HorizontalTabsComponent: Component {
         }
     }
     
+    /// One tab as VoiceOver sees it. Activating it is a tap on the tab.
+    private final class TabAccessibilityElement: UIAccessibilityElement {
+        var activate: (() -> Void)?
+        /// Scrolls the strip so the tab is on screen: the strip scrolls sideways and lists every tab, also those
+        /// scrolled out of view, so swiping reaches them.
+        var didBecomeFocused: (() -> Void)?
+        
+        override func accessibilityActivate() -> Bool {
+            self.activate?()
+            return self.activate != nil
+        }
+        
+        override func accessibilityElementDidBecomeFocused() {
+            super.accessibilityElementDidBecomeFocused()
+            self.didBecomeFocused?()
+        }
+    }
+    
     public final class View: UIView, UIScrollViewDelegate, HeaderPanelContainerChildView {
         private let lensView: LiquidLensView
         private let scrollView: ScrollView
         private let selectedScrollView: UIView
+        /// Madgram classic design: the selected tab's line (`classicTabSpacing`).
         private let classicLineView: UIImageView?
         private var classicLineTheme: PresentationTheme?
         private var itemViews: [Tab.Id: ItemView] = [:]
@@ -390,6 +434,7 @@ public final class HorizontalTabsComponent: Component {
         public private(set) var reorderedItemIds: [AnyHashable]?
         
         private var layoutData: LayoutData?
+        private var accessibilityTabElements: [Tab.Id: TabAccessibilityElement] = [:]
         
         private var component: HorizontalTabsComponent?
         private weak var state: EmptyComponentState?
@@ -431,7 +476,12 @@ public final class HorizontalTabsComponent: Component {
                 return self.scrollView.contentOffset.x > .ulpOfOne
             }
             
+            self.isAccessibilityElement = false
+            self.accessibilityTraits = .tabBar
+            
             if let classicLineView = self.classicLineView {
+                // Both the regular and the selected titles scroll on the bar itself; the selected ones fade in over the
+                // regular ones, as 12.0's active titles did.
                 self.addSubview(self.scrollView)
                 self.scrollView.addSubview(classicLineView)
             } else {
@@ -616,6 +666,7 @@ public final class HorizontalTabsComponent: Component {
         
         public func setOverlayContainerView(overlayContainerView: UIView) {
             if ClassicDesign.isEnabled {
+                // The classic strip has no lens to lift.
                 return
             }
             self.lensView.setLiftedContainer(view: overlayContainerView)
@@ -631,6 +682,7 @@ public final class HorizontalTabsComponent: Component {
         // The border around the lens belongs to the nearest tab.
         private func pointInLens(_ point: CGPoint) -> CGPoint {
             if ClassicDesign.isEnabled {
+                // No lens: the strip is the whole view.
                 return point
             }
             let lensFrame = self.lensView.frame
@@ -665,15 +717,88 @@ public final class HorizontalTabsComponent: Component {
                 return
             }
             if case .ended = recognizer.state, let id = self.tabId(at: recognizer.location(in: self)), let tab = component.tabs.first(where: { $0.id == id }) {
-                self.didTapOnAnItem = true
-                self.didTapOnAnItemTimer?.invalidate()
-                self.didTapOnAnItemTimer = Foundation.Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false, block: { [weak self] _ in
-                    guard let self else {
-                        return
+                self.select(tab: tab)
+            }
+        }
+        
+        private func select(tab: Tab) {
+            self.didTapOnAnItem = true
+            self.didTapOnAnItemTimer?.invalidate()
+            self.didTapOnAnItemTimer = Foundation.Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false, block: { [weak self] _ in
+                guard let self else {
+                    return
+                }
+                self.didTapOnAnItem = false
+            })
+            tab.action()
+        }
+        
+        override public var accessibilityElements: [Any]? {
+            get {
+                guard let component = self.component else {
+                    return []
+                }
+                var elements: [Any] = []
+                var validIds: [Tab.Id] = []
+                for tab in component.tabs {
+                    guard let itemView = self.itemViews[tab.id], let regularView = itemView.regularView.view, regularView.superview != nil else {
+                        continue
                     }
-                    self.didTapOnAnItem = false
-                })
-                tab.action()
+                    validIds.append(tab.id)
+                    let element: TabAccessibilityElement
+                    if let current = self.accessibilityTabElements[tab.id] {
+                        element = current
+                    } else {
+                        element = TabAccessibilityElement(accessibilityContainer: self)
+                        self.accessibilityTabElements[tab.id] = element
+                    }
+                    let label: String?
+                    if let accessibilityLabel = tab.accessibilityLabel {
+                        label = accessibilityLabel
+                    } else if case let .title(title) = tab.content {
+                        label = title.text
+                    } else {
+                        label = nil
+                    }
+                    element.accessibilityLabel = label
+                    element.accessibilityValue = tab.accessibilityValue ?? tab.badge?.title
+                    element.accessibilityTraits = tab.id == component.selectedTab ? [.button, .selected] : [.button]
+                    element.accessibilityFrameInContainerSpace = regularView.convert(regularView.bounds, to: self)
+                    element.activate = { [weak self] in
+                        self?.select(tab: tab)
+                    }
+                    element.didBecomeFocused = { [weak self, weak regularView] in
+                        guard let self, let regularView, regularView.isDescendant(of: self.scrollView) else {
+                            return
+                        }
+                        self.scrollView.scrollRectToVisible(regularView.convert(regularView.bounds, to: self.scrollView).insetBy(dx: -16.0, dy: 0.0), animated: true)
+                    }
+                    var customActions: [UIAccessibilityCustomAction] = []
+                    if let deleteAction = tab.deleteAction, let deleteAccessibilityLabel = tab.deleteAccessibilityLabel {
+                        customActions.append(UIAccessibilityCustomAction(name: deleteAccessibilityLabel, actionHandler: { _ in
+                            deleteAction()
+                            return true
+                        }))
+                    }
+                    if let contextAction = tab.contextAction, let contextAccessibilityLabel = tab.contextAccessibilityLabel, let itemComponentView = regularView as? ItemComponent.View {
+                        // The long-press menu, opened without a gesture as other menus are from VoiceOver.
+                        customActions.append(UIAccessibilityCustomAction(name: contextAccessibilityLabel, actionHandler: { [weak itemComponentView] _ in
+                            guard let itemComponentView else {
+                                return false
+                            }
+                            contextAction(itemComponentView.extractedContainerView, nil)
+                            return true
+                        }))
+                    }
+                    element.accessibilityCustomActions = customActions.isEmpty ? nil : customActions
+                    elements.append(element)
+                }
+                for id in Array(self.accessibilityTabElements.keys) where !validIds.contains(id) {
+                    self.accessibilityTabElements.removeValue(forKey: id)
+                }
+                return elements
+            }
+            set {
             }
         }
         
@@ -713,10 +838,11 @@ public final class HorizontalTabsComponent: Component {
                 return
             }
             if ClassicDesign.isEnabled {
+                // The classic line scrolls with the titles; there is no lens to move.
                 return
             }
             var isLifted = self.temporaryLiftTimer != nil
-            if !component.liftWhileSwitching {
+            if !component.liftWhileSwitching || layoutData.isSelectionHidden {
                 isLifted = false
             }
             if #available(iOS 26.0, *) {
@@ -724,12 +850,14 @@ public final class HorizontalTabsComponent: Component {
                 isLifted = false
             }
             let lensSize = layoutData.lensSize
-            self.lensView.update(size: lensSize, selectionOrigin: CGPoint(x:  -self.scrollView.contentOffset.x + layoutData.selectedItemFrame.minX, y: 0.0), selectionSize: CGSize(width: layoutData.selectedItemFrame.width, height: lensSize.height), inset: 0.0, liftedInset: 6.0, isDark: component.theme.overallDarkAppearance, isLifted: isLifted, transition: transition)
+            self.lensView.update(size: lensSize, selectionOrigin: CGPoint(x:  -self.scrollView.contentOffset.x + layoutData.selectedItemFrame.minX, y: 0.0), selectionSize: CGSize(width: layoutData.selectedItemFrame.width, height: lensSize.height), inset: 0.0, liftedInset: 6.0, isDark: component.theme.overallDarkAppearance, isLifted: isLifted, isCollapsed: layoutData.isSelectionHidden, transition: transition)
             
             transition.setPosition(view: self.selectedScrollView, position: CGRect(origin: CGPoint(), size: lensSize).center)
             transition.setBounds(view: self.selectedScrollView, bounds: CGRect(origin: CGPoint(x: self.scrollView.contentOffset.x, y: 0.0), size: lensSize))
         }
         
+        /// Madgram classic design: fades each tab's accent title in by how selected it is (the selected tab, shared with
+        /// the next or previous one while the list is being swiped) and moves the accent line under it.
         private func updateClassicSelection(component: HorizontalTabsComponent, orderedTabs: [Tab], size: CGSize, transition: ComponentTransition) {
             guard let classicLineView = self.classicLineView else {
                 return
@@ -747,9 +875,11 @@ public final class HorizontalTabsComponent: Component {
                 })?.resizableImage(withCapInsets: UIEdgeInsets(top: 3.0, left: 3.0, bottom: 0.0, right: 3.0), resizingMode: .stretch)
             }
             
+            // The title's own extent: the tab without the half spacing on each side.
             func titleFrame(_ itemView: ItemView) -> CGRect {
                 var frame = itemView.frame
                 if itemView.regularView.view?.superview !== self.scrollView, let superview = itemView.regularView.view?.superview {
+                    // Dragged: in this view's coordinates.
                     frame = superview.convert(frame, to: self.scrollView)
                 }
                 let inset = min(classicTabSpacing * 0.5, frame.width * 0.5)
@@ -855,7 +985,9 @@ public final class HorizontalTabsComponent: Component {
             let sizeHeight: CGFloat = availableSize.height
             
             let isClassic = ClassicDesign.isEnabled
+            // The classic strip has no lens border to keep clear of.
             let contentInset: CGFloat = isClassic ? 0.0 : lensInset
+            // 12.0: the first title 16 pt in, half the spacing being each tab's own.
             let sideInset: CGFloat = isClassic ? (16.0 - classicTabSpacing * 0.5) : 0.0
             
             var validIds: [Tab.Id] = []
@@ -1001,6 +1133,7 @@ public final class HorizontalTabsComponent: Component {
                         itemTransition.setSublayerTransform(view: itemSelectedView, transform: CATransform3DIdentity)
                         itemTransition.setAlpha(view: itemRegularView, alpha: 1.0)
                         if !isClassic {
+                            // The classic strip fades the selected titles by selection (`updateClassicSelection`).
                             itemTransition.setAlpha(view: itemSelectedView, alpha: 1.0)
                         }
                     }
@@ -1074,9 +1207,12 @@ public final class HorizontalTabsComponent: Component {
             
             let size = CGSize(width: sizeWidth, height: sizeHeight)
             
+            // Without a selected tab the pill fades out where it was, rather than shrinking into the leading edge: a
+            // zero-sized lens still draws a sliver of its resting background there.
             let layoutData = LayoutData(
                 size: size,
-                selectedItemFrame: selectedItemFrame ?? CGRect()
+                selectedItemFrame: selectedItemFrame ?? self.layoutData?.selectedItemFrame ?? CGRect(),
+                isSelectionHidden: selectedItemFrame == nil
             )
             self.layoutData = layoutData
             let lensSize = isClassic ? size : layoutData.lensSize
@@ -1312,6 +1448,7 @@ private final class ItemComponent: Component {
             self.containerView.isGestureEnabled = component.editing == nil
             self.tapRecognizer?.isEnabled = component.editing == nil
             
+            // Madgram classic design: 12.0's tabs keep half their 26 pt spacing on each side.
             let sideInset: CGFloat = ClassicDesign.isEnabled ? (classicTabSpacing * 0.5) : 16.0
             let badgeSpacing: CGFloat = 5.0
             
@@ -1328,6 +1465,7 @@ private final class ItemComponent: Component {
                 }
                 
                 let font = ClassicDesign.isEnabled ? Font.medium(14.0) : Font.medium(15.0)
+                // Madgram classic design: 12.0's secondary titles, the selected one in the accent.
                 let titleColor: UIColor
                 if ClassicDesign.isEnabled {
                     titleColor = component.isSelected ? component.theme.list.itemAccentColor : component.theme.list.itemSecondaryTextColor

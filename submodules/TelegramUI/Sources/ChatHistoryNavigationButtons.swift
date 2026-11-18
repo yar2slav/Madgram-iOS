@@ -212,6 +212,7 @@ final class ChatHistoryNavigationButtons: ASDisplayNode {
         let buttonSize: CGSize
         let completeSize: CGSize
         if ClassicDesign.isEnabled {
+            // Madgram classic design: Telegram 12.0's 38pt buttons, 12pt apart.
             buttonSize = CGSize(width: 38.0, height: 38.0)
             completeSize = CGSize(width: buttonSize.width, height: buttonSize.height * 2.0 + 12.0)
         } else {

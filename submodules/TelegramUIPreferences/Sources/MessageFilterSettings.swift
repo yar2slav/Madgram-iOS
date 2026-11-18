@@ -1,9 +1,15 @@
 import Foundation
 import SwiftSignalKit
 
+/// Local, presentation-only message filtering. Filtered messages stay in the database and on the
+/// server; they are simply not rendered.
 public struct MessageFilterSettings: Codable, Equatable {
+    /// Hide messages authored by peers the account has blocked.
     public var hideBlockedUsersMessages: Bool
+    /// "Shadow ban": peers whose messages are hidden without blocking them.
     public var shadowBannedPeerIds: Set<Int64>
+    /// Mirror of the server-side blocked list, refreshed by the app. Only consulted when
+    /// `hideBlockedUsersMessages` is enabled.
     public var blockedPeerIdsCache: Set<Int64>
 
     public static let defaultSettings = MessageFilterSettings(
@@ -22,6 +28,7 @@ public struct MessageFilterSettings: Codable, Equatable {
         return !self.shadowBannedPeerIds.isEmpty || (self.hideBlockedUsersMessages && !self.blockedPeerIdsCache.isEmpty)
     }
 
+    /// The single decision point for "should messages from this author be hidden".
     public func hidesMessages(fromAuthorId authorId: Int64) -> Bool {
         if self.shadowBannedPeerIds.contains(authorId) {
             return true
@@ -36,6 +43,9 @@ public struct MessageFilterSettings: Codable, Equatable {
         return self.shadowBannedPeerIds.contains(authorId)
     }
 
+    /// The messages of one in-app notification that may still be shown. A message is dropped
+    /// when any of its author ids is hidden; an empty result means the notification must not be
+    /// presented, played or vibrated at all.
     public func visibleNotificationMessages<Item>(_ messages: [Item], authorIds: (Item) -> [Int64]) -> [Item] {
         if !self.isActive {
             return messages

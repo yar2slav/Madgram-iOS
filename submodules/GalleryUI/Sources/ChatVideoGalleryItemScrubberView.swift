@@ -14,6 +14,7 @@ import ComponentDisplayAdapters
 import GlassBackgroundComponent
 
 private let glassTextFont = Font.with(size: 13.0, design: .regular, weight: .medium, traits: [.monospacedNumbers])
+/// Madgram classic: 12.0's info text.
 private let classicTextFont = Font.with(size: 13.0, design: .regular, weight: .regular, traits: [.monospacedNumbers])
 private var textFont: UIFont {
     return ClassicDesign.isEnabled ? classicTextFont : glassTextFont
@@ -28,7 +29,9 @@ final class ChatVideoGalleryItemScrubberView: UIView {
     
     private let backgroundContainer: GlassBackgroundContainerView
     private let backgroundView: GlassBackgroundView
+    /// Madgram classic: 12.0's scrubber has no capsule; the timestamps and the info line sit in this plain view.
     private let classicContentView: UIView?
+    /// What the glass capsule is in the default design: what the timestamps live in, and what is shown and hidden.
     private var chromeView: UIView {
         return self.classicContentView ?? self.backgroundContainer
     }
@@ -88,6 +91,67 @@ final class ChatVideoGalleryItemScrubberView: UIView {
     var updateScrubbingHandlePosition: (CGFloat) -> Void = { _ in }
     var seek: (Double) -> Void = { _ in }
     
+    /// VoiceOver: the scrubber is one adjustable element ("Playback position" = "0:30 of 1:05"); swiping up/down seeks
+    /// 15 seconds, as the gallery's seek buttons do. Only while it shows a duration.
+    var accessibilityTitle: String?
+    var accessibilityValueFormat: ((String, String) -> String)?
+    
+    private static func accessibilityTime(_ value: Double) -> String {
+        let seconds = max(0, Int(value.rounded(.down)))
+        if seconds >= 3600 {
+            return String(format: "%d:%02d:%02d", seconds / 3600, (seconds / 60) % 60, seconds % 60)
+        }
+        return String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+    
+    override var isAccessibilityElement: Bool {
+        get {
+            guard self.accessibilityTitle != nil, let status = self.playbackStatus, !status.duration.isZero, !self.scrubberNode.isHidden else {
+                return false
+            }
+            return true
+        } set(value) {
+        }
+    }
+    
+    override var accessibilityLabel: String? {
+        get {
+            return self.accessibilityTitle
+        } set(value) {
+        }
+    }
+    
+    override var accessibilityValue: String? {
+        get {
+            guard let status = self.playbackStatus else {
+                return nil
+            }
+            let position = ChatVideoGalleryItemScrubberView.accessibilityTime(status.timestamp)
+            let duration = ChatVideoGalleryItemScrubberView.accessibilityTime(status.duration)
+            return self.accessibilityValueFormat?(position, duration) ?? "\(position) / \(duration)"
+        } set(value) {
+        }
+    }
+    
+    override var accessibilityTraits: UIAccessibilityTraits {
+        get {
+            return .adjustable
+        } set(value) {
+        }
+    }
+    
+    override func accessibilityIncrement() {
+        if let status = self.playbackStatus {
+            self.seek(min(status.duration, status.timestamp + 15.0))
+        }
+    }
+    
+    override func accessibilityDecrement() {
+        if let status = self.playbackStatus {
+            self.seek(max(0.0, status.timestamp - 15.0))
+        }
+    }
+    
     var onRequestLayout: ((ContainedViewLayoutTransition) -> Void)?
     
     init(chapters: [MediaPlayerScrubbingChapter]) {
@@ -106,6 +170,7 @@ final class ChatVideoGalleryItemScrubberView: UIView {
         
         self.chapters = chapters
         if ClassicDesign.isEnabled {
+            // 12.0: a thin line with a round handle.
             self.scrubberNode = MediaPlayerScrubbingNode(content: .standard(lineHeight: 5.0, lineCap: .round, scrubberHandle: .circle, backgroundColor: scrubberBackgroundColor, foregroundColor: scrubberForegroundColor, bufferingColor: scrubberBufferingColor, chapters: chapters))
         } else {
             self.scrubberNode = MediaPlayerScrubbingNode(content: .standard(lineHeight: 8.0, lineCap: .round, scrubberHandle: .none, backgroundColor: scrubberBackgroundColor, foregroundColor: scrubberForegroundColor, bufferingColor: scrubberBufferingColor, chapters: chapters))
@@ -401,6 +466,8 @@ final class ChatVideoGalleryItemScrubberView: UIView {
         
         var scrubberFrame: CGRect
         if ClassicDesign.isEnabled && !isCollapsed {
+            // 12.0: the line across the bar (13pt from each side), the elapsed and remaining times under its ends and
+            // the info (file size, chapter) between them.
             let classicTopOffset: CGFloat = 8.0
             let classicScrubberInset: CGFloat = 13.0
             let classicTimestampOffset: CGFloat = classicTopOffset + 22.0

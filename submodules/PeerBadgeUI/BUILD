@@ -11,6 +11,8 @@ swift_library(
     ],
     deps = [
         "//submodules/AccountContext:AccountContext",
+        "//submodules/AsyncDisplayKit:AsyncDisplayKit",
+        "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
         "//submodules/ComponentFlow:ComponentFlow",
         "//submodules/Display:Display",
         "//submodules/PresentationDataUtils:PresentationDataUtils",

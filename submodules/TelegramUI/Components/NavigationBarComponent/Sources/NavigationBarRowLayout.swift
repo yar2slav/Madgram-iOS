@@ -15,8 +15,11 @@ struct NavigationBarRightPillMetrics: Equatable {
     var extent: CGFloat
 }
 
+/// Madgram classic design (`ClassicDesign.isEnabled`): 12.0's flat bar laid every button out 8 pt from its neighbour
+/// (`ChatListHeaderComponent.ContentView.buttonSpacing` at release-12.0), with no pill around any of them.
 let navigationBarClassicButtonSpacing: CGFloat = 8.0
 
+/// The gap between two right pills: UIKit's, or 12.0's button spacing in the classic design.
 private var navigationBarEffectiveInterSectionSpacing: CGFloat {
     return ClassicDesign.isEnabled ? navigationBarClassicButtonSpacing : navigationBarInterSectionSpacing
 }
@@ -179,6 +182,14 @@ func navigationBarCapsuleTint(_ buttons: [NavigationBarComponent.Button]) -> Nav
     return buttons.allSatisfy({ $0.tint == first.tint }) ? first.tint : .generic
 }
 
+/// A pill's own corner radius: its button's, when it is alone in the pill; nil for a circle or capsule.
+func navigationBarCapsuleCornerRadius(_ buttons: [NavigationBarComponent.Button]) -> CGFloat? {
+    guard buttons.count == 1 else {
+        return nil
+    }
+    return buttons[0].glassCornerRadius
+}
+
 /// The glass of a capsule or circle with `tint`, as the old glass bar drew it: a generic one takes the theme's glass
 /// tint when it has one.
 func navigationBarGlassTintColor(_ tint: NavigationBarComponent.Button.Tint, theme: NavigationBarTheme) -> GlassBackgroundView.TintColor {
@@ -195,10 +206,16 @@ func navigationBarGlassTintColor(_ tint: NavigationBarComponent.Button.Tint, the
     }
 }
 
+/// Madgram classic design: whether a capsule's or circle's glass is drawn. 12.0's flat bar drew its buttons on the bar
+/// itself, so every capsule keeps its layout, hosting and context-menu role but shows no surface.
 func navigationBarCapsuleIsVisible(_ isVisible: Bool) -> Bool {
     return ClassicDesign.isEnabled ? false : isVisible
 }
 
+/// Madgram classic design: the color 12.0's flat bar drew its buttons in. A theme built by
+/// `NavigationBarTheme(rootControllerTheme:)` carries the glass icon grey as its button color (its disabled color is
+/// that grey at half alpha), which the flat bar never used: such a bar draws in the theme's accent. A bar with colors of
+/// its own (media, a mini app) keeps them.
 func navigationBarClassicButtonColor(theme: NavigationBarTheme, isEnabled: Bool) -> UIColor {
     if theme.disabledButtonColor.argb == theme.buttonColor.withMultipliedAlpha(0.5).argb {
         return isEnabled ? theme.accentButtonColor : theme.accentButtonColor.withMultipliedAlpha(0.5)
@@ -210,6 +227,7 @@ func navigationBarClassicButtonColor(theme: NavigationBarTheme, isEnabled: Bool)
 /// text button takes the disabled color while images keep theirs, as the old bar drew them.
 func navigationButtonContentColor(theme: NavigationBarTheme, tint: NavigationBarComponent.Button.Tint, isEnabled: Bool, isText: Bool) -> UIColor {
     if ClassicDesign.isEnabled {
+        // No capsule to stand on: an accent button is drawn in the accent itself (12.0's compose icon).
         switch tint {
         case .generic:
             return navigationBarClassicButtonColor(theme: theme, isEnabled: !isText || isEnabled)

@@ -336,6 +336,8 @@ public let defaultDarkWallpaperGradientColors: [UIColor] = [
 ]
 
 public func makeDefaultDarkPresentationTheme(extendingThemeReference: PresentationThemeReference? = nil, preview: Bool) -> PresentationTheme {
+    // Madgram classic design: where the glass redesign retuned a colour of this theme, the classic design keeps
+    // Telegram 12.0's value. Read once per theme; the flag is fixed for the process.
     let classic = ClassicDesign.isEnabled
     
     let rootNavigationBar = PresentationThemeRootNavigationBar(

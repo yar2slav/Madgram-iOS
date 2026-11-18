@@ -1,4 +1,6 @@
 import Foundation
+import TelegramUIPreferences
+import MadLockUI
 import UIKit
 import Display
 import SwiftSignalKit
@@ -22,6 +24,15 @@ import ChatMessageNotificationItem
 import FaceScanScreen
 
 public func navigateToChatControllerImpl(_ params: NavigateToChatControllerParams) {
+    if case let .peer(peer) = params.chatLocation, MadChatLockSession.shared.isLocked(peerId: peer.id.toInt64()) {
+        let strings = params.context.sharedContext.currentPresentationData.with { $0 }.strings
+        MadLock.unlockChat(peerId: peer.id.toInt64(), strings: strings, completion: { success in
+            if success {
+                navigateToChatControllerImpl(params)
+            }
+        })
+        return
+    }
     if case let .peer(peer) = params.chatLocation {
         let _ = params.context.engine.peers.ensurePeerIsLocallyAvailable(peer: peer).startStandalone()
     }
@@ -135,7 +146,9 @@ public func navigateToChatControllerImpl(_ params: NavigateToChatControllerParam
             return
         }
         
-        if !params.forceOpenChat, !viewForumAsMessages, params.subject == nil, case let .peer(peer) = params.chatLocation, peer.id == params.context.account.peerId {
+        // With the chat side list, Saved Messages opens its own chat and lists its sub-chats in the side list.
+        let opensSavedMessagesAsChat = params.context.usesChatSideList && params.navigationController.traitCollection.horizontalSizeClass != .regular
+        if !params.forceOpenChat, !viewForumAsMessages, !opensSavedMessagesAsChat, params.subject == nil, case let .peer(peer) = params.chatLocation, peer.id == params.context.account.peerId {
             if let controller = params.context.sharedContext.makePeerInfoController(context: params.context, updatedPresentationData: nil, peer: peer, mode: .generic, avatarInitiallyExpanded: false, fromChat: false, requestsContext: nil) {
                 params.navigationController.pushViewController(controller, animated: params.animated, completion: {
                 })
@@ -453,6 +466,7 @@ public func isOverlayControllerForChatNotificationOverlayPresentation(_ controll
 }
 
 public func navigateToForumThreadImpl(context: AccountContext, peerId: EnginePeer.Id, threadId: Int64, messageId: EngineMessage.Id?, navigationController: NavigationController, activateInput: ChatControllerActivateInput?, scrollToEndIfExists: Bool, keepStack: NavigateToChatKeepStack, animated: Bool) -> Signal<Never, NoError> {
+    Logger.shared.log("ReplyThreadOpen", "forum open start peer=\(peerId.id._internalGetInt64Value()) thread=\(threadId) message=\(String(describing: messageId))")
     return fetchAndPreloadReplyThreadInfo(context: context, subject: .groupMessage(EngineMessage.Id(peerId: peerId, namespace: Namespaces.Message.Cloud, id: Int32(clamping: threadId))), atMessageId: messageId, preload: false)
     |> deliverOnMainQueue
     |> beforeNext { [weak context, weak navigationController] result in
@@ -465,6 +479,7 @@ public func navigateToForumThreadImpl(context: AccountContext, peerId: EnginePee
             actualActivateInput = activateInput
         }
         
+        Logger.shared.log("ReplyThreadOpen", "forum push thread=\(threadId)")
         context.sharedContext.navigateToChatController(
             NavigateToChatControllerParams(
                 navigationController: navigationController,

@@ -50,6 +50,8 @@ class LocationPickerInteraction {
     }
 }
 
+let locationPickerVenuesEnabled = false
+
 public final class LocationPickerController: ViewController, AttachmentContainable {
     public enum Source: Equatable {
         public enum PollMode: Equatable {
@@ -112,6 +114,7 @@ public final class LocationPickerController: ViewController, AttachmentContainab
         initialLocation: CLLocationCoordinate2D? = nil,
         completion: @escaping (TelegramMediaMap, Int64?, String?, String?, String?) -> Void
     ) {
+        // Madgram: the classic design is 12.0's picker — an opaque bar with a title, Cancel and Search.
         let style: Style = ClassicDesign.isEnabled ? .legacy : style
         
         self.context = context

@@ -329,6 +329,7 @@ private final class InnerActionsContainerNode: ASDisplayNode {
 final class InnerTextSelectionTipContainerNode: ASDisplayNode {
     private let presentationData: PresentationData
     private var background: (container: GlassBackgroundContainerView, background: GlassBackgroundView)?
+    /// Madgram classic design (`ClassicDesign.isEnabled`): Telegram 12.0's soft shadow around the separate tip box.
     private let classicShadowNode: ASImageNode?
     private let textNode: TextNodeWithEntities
     private var textSelectionNode: TextSelectionNode?
@@ -539,6 +540,8 @@ final class InnerTextSelectionTipContainerNode: ASDisplayNode {
     }
     
     func updateLayout(widthClass: ContainerViewLayoutSizeClass, presentation: ContextControllerActionsStackNode.Presentation, width: CGFloat, transition: ContainedViewLayoutTransition) -> CGSize {
+        // Madgram classic design: Telegram 12.0's tip metrics (10pt vertical and 16pt horizontal insets, 14pt text, the
+        // icon on the right 12pt from the edge).
         let isClassic = ClassicDesign.isEnabled
         let topInset: CGFloat = isClassic ? 10.0 : (self.background != nil ? 16.0 : 9.0)
         let bottomInset: CGFloat = isClassic ? 10.0 : (self.background != nil ? 16.0 : 9.0)
@@ -649,6 +652,7 @@ final class InnerTextSelectionTipContainerNode: ASDisplayNode {
             transition.setFrame(view: background.container, frame: CGRect(origin: CGPoint(), size: size))
             
             if ClassicDesign.isEnabled {
+                // Madgram classic design: Telegram 12.0's tip, a 14pt rounded rect of the context menu color.
                 background.background.update(size: size, cornerRadius: 14.0, isDark: self.presentationData.theme.overallDarkAppearance, tintColor: .init(kind: .custom(style: .default, color: self.presentationData.theme.contextMenu.backgroundColor)), transition: transition)
             } else {
                 background.background.update(size: size, cornerRadius: min(30.0, size.height * 0.5), isDark: self.presentationData.theme.overallDarkAppearance, tintColor: .init(kind: .panel), transition: transition)

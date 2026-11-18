@@ -5,6 +5,7 @@ import AppBundle
 
 private let gradientImage = UIImage(bundleImageName: "Item List/Icons/Gradient")
 private let backdropImage = UIImage(bundleImageName: "Item List/Icons/Backdrop")
+// Madgram classic design: Telegram 12.0's rounded-rect path for the 29pt settings icon.
 private func addClassicRoundedRectPath(context: CGContext, rect: CGRect, radius: CGFloat) {
     context.saveGState()
     context.translateBy(x: rect.minX, y: rect.minY)
@@ -20,6 +21,8 @@ private func addClassicRoundedRectPath(context: CGContext, rect: CGRect, radius:
     context.restoreGState()
 }
 
+// Madgram classic design: Telegram 12.0's `renderIcon` — a 29pt icon clipped to a 7pt rounded rect, a plain
+// gradient and a white glyph, without the glass redesign's Gradient/Backdrop overlays and 8pt outer cut-out.
 private func renderClassicSettingsIcon(name: String, scaleFactor: CGFloat, backgroundColors: [UIColor]?) -> UIImage? {
     return generateImage(CGSize(width: 29.0, height: 29.0), contextGenerator: { size, context in
         let bounds = CGRect(origin: CGPoint(), size: size)
@@ -174,6 +177,7 @@ public struct PresentationResourcesSettings {
     public static let proxy = renderSettingsIcon(name: "Item List/Icons/Proxy", backgroundColors: [colorGreen])
     public static let savedMessages = renderSettingsIcon(name: "Item List/Icons/SavedMessages", backgroundColors: [colorBlue])
     public static let recentCalls = renderSettingsIcon(name: "Item List/Icons/Phone", backgroundColors: [colorGreen])
+    public static let contacts = renderSettingsIcon(name: "Item List/Icons/Members", backgroundColors: [colorViolet])
     public static let devices = renderSettingsIcon(name: "Item List/Icons/Devices", backgroundColors: [colorOrange])
     public static let chatFolders = renderSettingsIcon(name: "Item List/Icons/Folder", backgroundColors: [colorLightBlue])
     public static let stickers = renderSettingsIcon(name: "Item List/Icons/Sticker", backgroundColors: [colorOrange])
@@ -275,9 +279,13 @@ public struct PresentationResourcesSettings {
     
     public static let money = UIImage(bundleImageName: "Settings/Gram")
 
+    /// The fork's own icon: already a finished rounded-square artwork, so it is drawn as-is instead
+    /// of being tinted and placed on a generated background like the stock settings icons.
     public static let madgram = generateImage(CGSize(width: 30.0, height: 30.0), contextGenerator: { size, context in
         let bounds = CGRect(origin: CGPoint(), size: size)
         context.clear(bounds)
+        // generateImage hands over a bottom-left origin CGContext, so the CGImage is drawn directly
+        // (like every other icon here); UIImage.draw would come out mirrored vertically.
         if let image = UIImage(bundleImageName: "Item List/Icons/Madgram"), let cgImage = image.cgImage {
             context.draw(cgImage, in: bounds)
         }

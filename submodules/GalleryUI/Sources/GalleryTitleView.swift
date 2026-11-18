@@ -1,4 +1,5 @@
 import Foundation
+import TelegramUIPreferences
 import UIKit
 import AsyncDisplayKit
 import Display
@@ -13,6 +14,7 @@ import MultilineTextComponent
 
 private let titleFont = Font.semibold(17.0)
 private let dateFont = Font.regular(12.0)
+/// Madgram classic: 12.0's author and date lines (`GalleryTitleView`, release-12.0).
 private let classicTitleFont = Font.medium(15.0)
 private let classicDateFont = Font.regular(14.0)
 
@@ -72,6 +74,8 @@ public final class GalleryTitleView: UIView, NavigationBarTitleView {
     private let titleBackground: GlassBackgroundView
     private let title = ComponentView<Empty>()
     
+    /// Madgram classic: the author and date are plain text on the bar (12.0) rather than in a glass capsule, and the
+    /// position pill shown while swiping is a flat dark rounded rect. Nil in the default design.
     private let classicTitleBackground: UIView?
     private var isClassic: Bool {
         return self.classicTitleBackground != nil
@@ -165,7 +169,30 @@ public final class GalleryTitleView: UIView, NavigationBarTitleView {
         if let content {
             if let message = content.message {
                 authorNameText = stringForFullAuthorName(message: message, strings: self.presentationData.strings, nameDisplayOrder: self.presentationData.nameDisplayOrder, accountPeerId: self.context.account.peerId).first ?? ""
-                dateText = humanReadableStringForTimestamp(strings: self.presentationData.strings, dateTimeFormat: self.presentationData.dateTimeFormat, timestamp: message.timestamp).string
+                var text = humanReadableStringForTimestamp(strings: self.presentationData.strings, dateTimeFormat: self.presentationData.dateTimeFormat, timestamp: message.timestamp).string
+                if InterfaceTuningSettingsStore.shared.cached.showMediaInfoInViewer {
+                    for media in message.media {
+                        var datacenterId: Int?
+                        var mediaId: EngineMedia.Id?
+                        if let image = media as? TelegramMediaImage {
+                            datacenterId = (image.representations.last?.resource as? TelegramMultipartFetchableResource)?.datacenterId
+                            mediaId = image.imageId
+                        } else if let file = media as? TelegramMediaFile {
+                            datacenterId = (file.resource as? TelegramMultipartFetchableResource)?.datacenterId
+                            mediaId = file.fileId
+                        } else {
+                            continue
+                        }
+                        if let datacenterId {
+                            text += " · DC\(datacenterId)"
+                        }
+                        if let mediaId, let uploadDate = MadMediaUploadDates.shared.date(for: mediaId), abs(uploadDate - message.timestamp) > 60 {
+                            text += " · " + self.presentationData.strings.localFeatures.more.mediaUploaded + " " + humanReadableStringForTimestamp(strings: self.presentationData.strings, dateTimeFormat: self.presentationData.dateTimeFormat, timestamp: uploadDate).string
+                        }
+                        break
+                    }
+                }
+                dateText = text
             } else {
                 authorNameText = content.authorTitle
                 dateText = content.dateTitle
@@ -188,6 +215,12 @@ public final class GalleryTitleView: UIView, NavigationBarTitleView {
         }
 
         self.backgroundContainer.isHidden = (authorNameText?.isEmpty ?? true) && (dateText?.isEmpty ?? true)
+        
+        // VoiceOver: the title is one heading, "author, date", as shown.
+        let accessibilityTitle = [authorNameText, dateText].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
+        self.isAccessibilityElement = !accessibilityTitle.isEmpty
+        self.accessibilityLabel = accessibilityTitle.isEmpty ? nil : accessibilityTitle
+        self.accessibilityTraits = .header
 
         self.titleString = content?.title
 
@@ -267,6 +300,7 @@ public final class GalleryTitleView: UIView, NavigationBarTitleView {
         return availableSize
     }
     
+    /// 12.0: the author over the date, centred on the bar, no background; the position pill under the bar.
     private func updateClassicLayout(availableSize size: CGSize, titleBackground: UIView, transition: ContainedViewLayoutTransition) -> CGSize {
         let authorNameSize = self.authorNameNode.measure(CGSize(width: max(1.0, size.width - 8.0 * 2.0), height: CGFloat.greatestFiniteMagnitude))
         let dateSize = self.dateNode.measure(CGSize(width: max(1.0, size.width - 8.0 * 2.0), height: CGFloat.greatestFiniteMagnitude))
@@ -289,6 +323,7 @@ public final class GalleryTitleView: UIView, NavigationBarTitleView {
         )
         let titleInset: CGFloat = 12.0
         let titleBackgroundSize = CGSize(width: titleInset * 2.0 + titleSize.width, height: 24.0)
+        // Under the bar: the view's height is the bar's below the status bar, and the bar's bottom edge is 3pt below.
         let titleBackgroundFrame = CGRect(origin: CGPoint(x: floorToScreenPixels((size.width - titleBackgroundSize.width) * 0.5), y: size.height + 3.0 + 8.0), size: titleBackgroundSize)
         if let titleView = self.title.view {
             if titleView.superview == nil {

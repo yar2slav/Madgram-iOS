@@ -55,6 +55,7 @@ public final class AuthorizationSequencePhoneEntryController: ViewController, MF
         }
     }
     public var loginWithNumber: ((String, Bool) -> Void)?
+    public var loginWithBotToken: ((String) -> Void)?
     public var loginWithPasskey: ((AuthorizationPasskeyData, Bool) -> Void)?
     var accountUpdated: ((UnauthorizedAccount) -> Void)?
     
@@ -111,6 +112,24 @@ public final class AuthorizationSequencePhoneEntryController: ViewController, MF
         self.back()
     }
     
+    private func madPresentBotTokenPrompt() {
+        let more = self.presentationData.strings.localFeatures.more
+        let alert = UIAlertController(title: more.botTokenTitle, message: more.botTokenText, preferredStyle: .alert)
+        alert.addTextField { textField in
+            textField.placeholder = more.botTokenPlaceholder
+            textField.autocapitalizationType = .none
+            textField.autocorrectionType = .no
+        }
+        alert.addAction(UIAlertAction(title: self.presentationData.strings.Common_Cancel, style: .cancel))
+        alert.addAction(UIAlertAction(title: self.presentationData.strings.Common_Next, style: .default, handler: { [weak self, weak alert] _ in
+            let token = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !token.isEmpty {
+                self?.loginWithBotToken?(token)
+            }
+        }))
+        self.view.window?.rootViewController?.present(alert, animated: true)
+    }
+    
     func updateNavigationItems() {
         guard let layout = self.validLayout, layout.size.width < 360.0 else {
             return
@@ -162,6 +181,9 @@ public final class AuthorizationSequencePhoneEntryController: ViewController, MF
                 return
             }
             self.loadAndPresentPasskey(force: true)
+        }
+        self.controllerNode.loginAsBot = { [weak self] in
+            self?.madPresentBotTokenPrompt()
         }
         
         if let (code, name, number) = self.currentData {

@@ -87,4 +87,58 @@ final class PeerBadgeTests: XCTestCase {
         let data = try JSONEncoder().encode(assignment)
         XCTAssertEqual(try JSONDecoder().decode(PeerBadgeAssignment.self, from: data), assignment)
     }
+
+    private func signedEnvelope(payloadJson: String, key: Curve25519.Signing.PrivateKey) throws -> Data {
+        let payload = Data(payloadJson.utf8)
+        let signature = try key.signature(for: payload)
+        let envelope: [String: Any] = [
+            "schemaVersion": 1,
+            "keyId": "test",
+            "payload": payload.base64EncodedString(),
+            "signature": signature.base64EncodedString()
+        ]
+        return try JSONSerialization.data(withJSONObject: envelope, options: [.sortedKeys])
+    }
+
+    func testNameStylesDecodeFromLiveShape() throws {
+        let key = Curve25519.Signing.PrivateKey()
+        let json = """
+        {"revision":83,"generatedAt":1,"badges":[],"assignments":[],"names":[{"peerType":"user","peerId":182259550,"colors":["#64d8f4","#23C0EF","#006ea2"],"effect":"shimmer","expiresAt":null},{"peerType":"channel","peerId":5,"colors":["#ff0000"]}]}
+        """
+        let registry = try XCTUnwrap(PeerBadgeRegistryVerifier.decode(data: try self.signedEnvelope(payloadJson: json, key: key), keyId: "test", publicKeyData: key.publicKey.rawRepresentation))
+        XCTAssertEqual(registry.names.count, 2)
+        XCTAssertEqual(registry.names[0].rgbColors, [0x64d8f4, 0x23c0ef, 0x006ea2])
+        XCTAssertEqual(registry.names[0].parsedEffect, .shimmer)
+        XCTAssertNil(registry.names[1].parsedEffect)
+    }
+
+    func testRegistryWithoutNamesStillDecodes() throws {
+        let key = Curve25519.Signing.PrivateKey()
+        let json = """
+        {"revision":1,"generatedAt":1,"badges":[],"assignments":[]}
+        """
+        let registry = try XCTUnwrap(PeerBadgeRegistryVerifier.decode(data: try self.signedEnvelope(payloadJson: json, key: key), keyId: "test", publicKeyData: key.publicKey.rawRepresentation))
+        XCTAssertTrue(registry.names.isEmpty)
+    }
+
+    func testInvalidNamesRejectTheRegistry() throws {
+        let key = Curve25519.Signing.PrivateKey()
+        let invalid = [
+            "{\"peerType\":\"user\",\"peerId\":1,\"colors\":[]}",
+            "{\"peerType\":\"user\",\"peerId\":1,\"colors\":[\"#1\",\"#2\",\"#3\",\"#4\",\"#5\"]}",
+            "{\"peerType\":\"user\",\"peerId\":1,\"colors\":[\"red\"]}",
+            "{\"peerType\":\"user\",\"peerId\":0,\"colors\":[\"#ffffff\"]}",
+            "{\"peerType\":\"user\",\"peerId\":1,\"colors\":[\"#ffffff\"],\"expiresAt\":-1}",
+            "{\"peerType\":\"user\",\"peerId\":1,\"colors\":[\"#ffffff\"]},{\"peerType\":\"user\",\"peerId\":1,\"colors\":[\"#000000\"]}"
+        ]
+        for names in invalid {
+            let json = "{\"revision\":1,\"generatedAt\":1,\"badges\":[],\"assignments\":[],\"names\":[\(names)]}"
+            XCTAssertNil(PeerBadgeRegistryVerifier.decode(data: try self.signedEnvelope(payloadJson: json, key: key), keyId: "test", publicKeyData: key.publicKey.rawRepresentation), names)
+        }
+    }
+
+    func testUnknownEffectFallsBackToStatic() {
+        let style = PeerNameStyle(peerType: .user, peerId: 1, colors: ["#ffffff"], effect: "sparkles", expiresAt: nil)
+        XCTAssertNil(style.parsedEffect)
+    }
 }

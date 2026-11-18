@@ -6,6 +6,9 @@ import TelegramUIPreferences
 
 public extension EnginePeer {
     var compactDisplayTitle: String {
+        if let alias = MadStores.alias(peerId: self.id.toInt64()) {
+            return alias
+        }
         switch self {
         case let .user(user):
             if let firstName = user.firstName, !firstName.isEmpty {
@@ -29,6 +32,9 @@ public extension EnginePeer {
     }
 
     func displayTitle(strings: PresentationStrings, displayOrder: PresentationPersonNameOrder) -> String {
+        if let alias = MadStores.alias(peerId: self.id.toInt64()) {
+            return alias
+        }
         switch self {
         case let .user(user):
             if user.id.isReplies {

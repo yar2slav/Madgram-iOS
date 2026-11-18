@@ -15,6 +15,18 @@ private let typeHintIsValidated: Int32 = 8
 private let typeNoPremium: Int32 = 9
 private let typeCustomEmoji: Int32 = 10
 
+private let waveAudioMimeTypes: Set<String> = ["audio/wav", "audio/x-wav", "audio/wave", "audio/vnd.wave", "audio/x-pn-wav"]
+
+public func isWaveAudioDocument(mimeType: String, fileName: String?) -> Bool {
+    if waveAudioMimeTypes.contains(mimeType.lowercased()) {
+        return true
+    }
+    if let fileName, fileName.lowercased().hasSuffix(".wav") {
+        return true
+    }
+    return false
+}
+
 public enum StickerPackReference: PostboxCoding, Hashable, Equatable, Codable {
     case id(id: Int64, accessHash: Int64)
     case name(String)
@@ -1218,7 +1230,19 @@ public final class TelegramMediaFile: Media, Equatable, Codable {
                 hasVideo = true
             }
         }
-        return hasNonVoiceAudio && !hasVideo
+        return (hasNonVoiceAudio && !hasVideo) || self.isWaveAudio
+    }
+
+    public var isWaveAudio: Bool {
+        for attribute in self.attributes {
+            switch attribute {
+            case .Audio, .Video, .Sticker, .Animated:
+                return false
+            default:
+                break
+            }
+        }
+        return isWaveAudioDocument(mimeType: self.mimeType, fileName: self.fileName)
     }
     
     public var isVoice: Bool {
@@ -1760,11 +1784,13 @@ public extension TelegramMediaFile.Accessor {
         }
         
         var hasNonVoiceAudio = false
+        var hasAudio = false
         var hasVideo = false
         
         for i in 0 ..< self._wrapped!.attributesCount {
             let attribute = self._wrapped!.attributes(at: i)!
             if attribute.valueType == .telegrammediafileattributeAudio {
+                hasAudio = true
                 if let value = attribute.value(type: TelegramCore_TelegramMediaFileAttribute_Audio.self) {
                     if !value.isVoice {
                         hasNonVoiceAudio = true
@@ -1773,6 +1799,9 @@ public extension TelegramMediaFile.Accessor {
             } else if attribute.valueType == .telegrammediafileattributeVideo {
                 hasVideo = true
             }
+        }
+        if !hasAudio && !hasVideo && isWaveAudioDocument(mimeType: self._wrapped!.mimeType, fileName: self.fileName) {
+            return true
         }
         return hasNonVoiceAudio && !hasVideo
     }

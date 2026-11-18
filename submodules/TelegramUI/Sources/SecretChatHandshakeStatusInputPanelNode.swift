@@ -86,6 +86,7 @@ final class SecretChatHandshakeStatusInputPanelNode: ChatInputPanelNode {
         let backgroundFrame = CGRect(origin: CGPoint(x: leftInset + floor((width - leftInset - rightInset - backgroundSize.width) * 0.5), y: floor((panelHeight - backgroundSize.height) / 2.0)), size: backgroundSize)
         transition.updateFrame(node: self.button, frame: backgroundFrame)
         transition.updateFrame(view: self.titleBackground, frame: CGRect(origin: CGPoint(), size: backgroundFrame.size))
+        // Madgram classic design: 12.0 set the status in the bar itself, with no capsule of its own.
         self.titleBackground.update(size: backgroundFrame.size, cornerRadius: backgroundFrame.height * 0.5, isDark: interfaceState.theme.overallDarkAppearance, tintColor: .init(kind: .panel), isVisible: !ClassicDesign.isEnabled, transition: .immediate)
         let titleFrame = CGRect(origin: CGPoint(x: floor((backgroundFrame.width - titleSize.width) * 0.5), y: floor((backgroundFrame.height - titleSize.height) * 0.5)), size: titleSize)
         if let titleView = self.title.view {

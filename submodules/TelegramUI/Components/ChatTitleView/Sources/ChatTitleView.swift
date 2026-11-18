@@ -189,6 +189,10 @@ public final class ChatTitleView: UIView, NavigationBarTitleView {
     
     private let context: AccountContext
     
+    /// An agent bot's chat shows its model under the title, and follows the composer's model chip.
+    private var agentSelectionPeerId: EnginePeer.Id?
+    private let agentSelectionDisposable = MetaDisposable()
+    
     private var theme: PresentationTheme
     private var strings: PresentationStrings
     private var dateTimeFormat: PresentationDateTimeFormat
@@ -296,7 +300,7 @@ public final class ChatTitleView: UIView, NavigationBarTitleView {
                                 } else if peerView.peerId.isAnonymousSavedMessages {
                                     segments = [.text(0, NSAttributedString(string: self.strings.ChatList_AuthorHidden, font: titleFont, textColor: titleTheme.rootController.navigationBar.primaryTextColor))]
                                 } else {
-                                    if !peerView.isContact, let user = peer as? TelegramUser, !user.flags.contains(.isSupport), user.botInfo == nil, let phone = user.phone, !phone.isEmpty {
+                                    if !peerView.isContact, !InterfaceTuningSettingsStore.shared.cached.showNameInsteadOfPhone, !InterfaceTuningSettingsStore.shared.cached.hidePhoneEverywhere, let user = peer as? TelegramUser, !user.flags.contains(.isSupport), user.botInfo == nil, let phone = user.phone, !phone.isEmpty {
                                         segments = [.text(0, NSAttributedString(string: formatPhoneNumber(context: self.context, number: phone), font: titleFont, textColor: titleTheme.rootController.navigationBar.primaryTextColor))]
                                     } else {
                                         segments = [.text(0, NSAttributedString(string: EnginePeer(peer).displayTitle(strings: self.strings, displayOrder: self.nameDisplayOrder), font: titleFont, textColor: titleTheme.rootController.navigationBar.primaryTextColor))]
@@ -615,7 +619,10 @@ public final class ChatTitleView: UIView, NavigationBarTitleView {
                                 state = .info(string, .generic)
                             } else if let peer = peerView.peer {
                                 let servicePeer = isServicePeer(peer)
-                                if peer.id == self.context.account.peerId || isScheduledMessages || peer.id.isRepliesOrVerificationCodes {
+                                if peer.id.isMadLocalChat {
+                                    let string = NSAttributedString(string: self.strings.localFeatures.more.changelogStatus, font: subtitleFont, textColor: titleTheme.rootController.navigationBar.secondaryTextColor)
+                                    state = .info(string, .generic)
+                                } else if peer.id == self.context.account.peerId || isScheduledMessages || peer.id.isRepliesOrVerificationCodes {
                                     let string = NSAttributedString(string: "", font: subtitleFont, textColor: titleTheme.rootController.navigationBar.secondaryTextColor)
                                     state = .info(string, .generic)
                                 } else if let user = peer as? TelegramUser {
@@ -627,6 +634,11 @@ public final class ChatTitleView: UIView, NavigationBarTitleView {
                                     } else if user.flags.contains(.isSupport) {
                                         let statusText = self.strings.Bot_GenericSupportStatus
                                         
+                                        let string = NSAttributedString(string: statusText, font: subtitleFont, textColor: titleTheme.rootController.navigationBar.secondaryTextColor)
+                                        state = .info(string, .generic)
+                                    } else if let _ = user.botInfo, isAgentBotPeer(appConfiguration: self.context.currentAppConfiguration.with({ $0 }), peerId: user.id) {
+                                        self.observeAgentSelection(peerId: user.id)
+                                        let statusText = AgentChatPlaceholderOptions.shared.selection(peerId: user.id).model.fullTitle
                                         let string = NSAttributedString(string: statusText, font: subtitleFont, textColor: titleTheme.rootController.navigationBar.secondaryTextColor)
                                         state = .info(string, .generic)
                                     } else if let _ = user.botInfo {
@@ -648,7 +660,11 @@ public final class ChatTitleView: UIView, NavigationBarTitleView {
                                         } else {
                                             userPresence = TelegramUserPresence(status: .none, lastActivity: 0)
                                         }
-                                        let (string, activity) = stringAndActivityForUserPresence(strings: self.strings, dateTimeFormat: self.dateTimeFormat, presence: EnginePeer.Presence(userPresence), relativeTo: Int32(timestamp))
+                                        let (presenceString, activity) = stringAndActivityForUserPresence(strings: self.strings, dateTimeFormat: self.dateTimeFormat, presence: EnginePeer.Presence(userPresence), relativeTo: Int32(timestamp))
+                                        var string = presenceString
+                                        if InterfaceTuningSettingsStore.shared.cached.showMutualContactInHeader, let user = peer as? TelegramUser, user.flags.contains(.mutualContact) {
+                                            string += " · " + self.strings.localFeatures.more.mutualContactShort
+                                        }
                                         let attributedString = NSAttributedString(string: string, font: subtitleFont, textColor: activity ? titleTheme.rootController.navigationBar.accentTextColor : titleTheme.rootController.navigationBar.secondaryTextColor)
                                         state = .info(attributedString, activity ? .online : .lastSeenTime)
                                     } else {
@@ -695,7 +711,7 @@ public final class ChatTitleView: UIView, NavigationBarTitleView {
                                             }
                                             state = .info(string, .generic)
                                         } else {
-                                            if case .group = channel.info, let onlineMemberCount = onlineMemberCount.recent, onlineMemberCount > 1 {
+                                            if case .group = channel.info, let onlineMemberCount = onlineMemberCount.recent, onlineMemberCount > (InterfaceTuningSettingsStore.shared.cached.showOnlineCountAlways ? 0 : 1) {
                                                 let string = NSMutableAttributedString()
                                                 
                                                 string.append(NSAttributedString(string: "\(strings.Conversation_StatusMembers(Int32(memberCount))), ", font: subtitleFont, textColor: titleTheme.rootController.navigationBar.secondaryTextColor))
@@ -759,6 +775,27 @@ public final class ChatTitleView: UIView, NavigationBarTitleView {
         }
     }
     
+    deinit {
+        self.agentSelectionDisposable.dispose()
+    }
+    
+    private func observeAgentSelection(peerId: EnginePeer.Id) {
+        if self.agentSelectionPeerId == peerId {
+            return
+        }
+        self.agentSelectionPeerId = peerId
+        // The signal delivers the current value at once, inside the status update that subscribes; skip it.
+        var isFirst = true
+        self.agentSelectionDisposable.set((AgentChatPlaceholderOptions.shared.selectionSignal(peerId: peerId)
+        |> deliverOnMainQueue).startStrict(next: { [weak self] _ in
+            if isFirst {
+                isFirst = false
+                return
+            }
+            let _ = self?.updateStatus()
+        }))
+    }
+    
     public init(context: AccountContext, theme: PresentationTheme, strings: PresentationStrings, dateTimeFormat: PresentationDateTimeFormat, nameDisplayOrder: PresentationPersonNameOrder, animationCache: AnimationCache, animationRenderer: MultiAnimationRenderer) {
         self.context = context
         self.theme = theme
@@ -804,6 +841,7 @@ public final class ChatTitleView: UIView, NavigationBarTitleView {
         
         self.addSubnode(self.contentContainer)
         self.contentContainer.view.addSubview(self.backgroundView)
+        // Classic (12.0): the title sits in the bar itself, with no glass pill.
         self.backgroundView.isHidden = ClassicDesign.isEnabled
         self.titleContainerView.addSubnode(self.titleTextNode)
         self.contentContainer.view.addSubview(self.titleContainerView)

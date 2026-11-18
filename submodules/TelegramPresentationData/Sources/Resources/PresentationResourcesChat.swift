@@ -238,6 +238,7 @@ public struct PresentationResourcesChat {
     
     public static func chatInputPanelEncircledCloseIconImage(_ theme: PresentationTheme) -> UIImage? {
         return theme.image(PresentationResourceKey.chatInputPanelEncircledCloseIconImage.rawValue, { theme in
+            // Madgram classic design: Telegram 12.0 drew it in the panel's accent.
             return generateTintedImage(image: UIImage(bundleImageName: "Chat/Input/Accessory Panels/EncircledCloseButton"), color: ClassicDesign.isEnabled ? theme.chat.inputPanel.panelControlAccentColor : theme.chat.inputPanel.panelControlColor)
         })
     }

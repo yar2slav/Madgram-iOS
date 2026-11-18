@@ -1,6 +1,6 @@
-# Madgram deep links
+# Madgram Deep Links
 
-Madgram registers the `mad` URL scheme for navigation to feature settings:
+The app registers the `mad` URL scheme. Canonical feature links are:
 
 - `mad://settings` — Madgram feature hub
 - `mad://ghost` — Ghost Mode
@@ -12,4 +12,7 @@ Madgram registers the `mad` URL scheme for navigation to feature settings:
 - `mad://message-shot` — Madgram feature hub; Message Shot itself requires selected messages
 - `mad://forward-without-author` — Madgram feature hub; forwarding requires selected messages
 
-The parser accepts `mad://settings/<feature>` as an alias for direct routes. Extra path components are ignored after the first recognized feature, so links such as `mad://settings/interface/disable-camera` and `mad://settings/ghost/suppress-read-receipts` remain valid as individual feature links.
+Links may use the `settings` namespace and append a feature-specific path. The current
+implementation opens the owning settings screen and intentionally ignores the trailing path, so
+links such as `mad://settings/interface/disable-camera` and
+`mad://settings/ghost/suppress-read-receipts` remain valid as individual feature links.

@@ -212,6 +212,8 @@ final class HashtagSearchNavigationContentNode: NavigationBarContentNode {
             self.tabsBackgroundContainer.update(size: tabSelectorFrame.size, isDark: self.theme.overallDarkAppearance, transition: ComponentTransition(transition))
             
             transition.updateFrame(view: self.tabsBackgroundView, frame: CGRect(origin: CGPoint(), size: tabSelectorFrame.size))
+            // Madgram classic design: the tabs draw 12.0's flat strip with its underline on the bar, with no capsule
+            // behind it.
             self.tabsBackgroundView.update(size: tabSelectorFrame.size, cornerRadius: tabSelectorFrame.height * 0.5, isDark: self.theme.overallDarkAppearance, tintColor: .init(kind: .panel), isVisible: !ClassicDesign.isEnabled, transition: ComponentTransition(transition))
             
             if let tabSelectorView = self.tabSelector.view as? HorizontalTabsComponent.View {

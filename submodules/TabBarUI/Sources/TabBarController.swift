@@ -283,6 +283,7 @@ open class TabBarControllerImpl: ViewController, TabBarController {
     }
     
     public func updateBackgroundAlpha(_ alpha: CGFloat, transition: ContainedViewLayoutTransition) {
+        // Only the classic bar has a background to fade (Settings scrolled to its end, as in 12.0).
         if ClassicDesign.isEnabled, self.isNodeLoaded {
             self.tabBarControllerNode.updateClassicBackgroundAlpha(alpha, transition: transition)
         }
@@ -375,6 +376,15 @@ open class TabBarControllerImpl: ViewController, TabBarController {
         if let layout = self.validLayout {
             self.containerLayoutUpdated(layout, transition: transition)
         }
+    }
+    
+    // Along the bottom unless its layout places it at a side. A bar hidden for a moment (search, selection) still counts,
+    // so that what lines up with it does not move meanwhile.
+    override open var showsBottomTabBar: Bool {
+        guard let layout = self.validLayout else {
+            return false
+        }
+        return self.tabBarControllerNode.sidePlacement(for: layout) == nil
     }
     
     override open func containerLayoutUpdated(_ layout: ContainerViewLayout, transition: ContainedViewLayoutTransition) {

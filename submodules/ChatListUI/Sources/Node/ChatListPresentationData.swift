@@ -11,6 +11,8 @@ public final class ChatListPresentationData {
     public let nameSortOrder: PresentationPersonNameOrder
     public let nameDisplayOrder: PresentationPersonNameOrder
     public let disableAnimations: Bool
+    /// Locally hidden senders; a change produces a new instance, which is what makes the chat list
+    /// rebuild its items (ChatListNodeState compares this object by identity).
     public let messageFilterSettings: MessageFilterSettings
     
     public init(theme: PresentationTheme, fontSize: PresentationFontSize, strings: PresentationStrings, dateTimeFormat: PresentationDateTimeFormat, nameSortOrder: PresentationPersonNameOrder, nameDisplayOrder: PresentationPersonNameOrder, disableAnimations: Bool, messageFilterSettings: MessageFilterSettings = MessageFilterSettingsStore.shared.current) {

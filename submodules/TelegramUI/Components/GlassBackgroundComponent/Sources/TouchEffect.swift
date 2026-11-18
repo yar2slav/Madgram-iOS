@@ -52,6 +52,7 @@ public final class GlassHighlightGestureRecognizer: UIGestureRecognizer, UIGestu
     
     override public func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
         if ClassicDesign.isEnabled {
+            // Madgram classic design: no liquid press (stretch, squish, radial highlight) on classic surfaces.
             return
         }
         if let view = self.touchEffectView ?? self.view, let touch = touches.first {

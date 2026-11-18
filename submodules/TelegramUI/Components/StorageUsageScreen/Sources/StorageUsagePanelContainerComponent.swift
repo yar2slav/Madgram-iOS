@@ -184,6 +184,19 @@ final class StorageUsagePanelContainerComponent: Component {
             return panel.view
         }
         
+        // VoiceOver: the tabs, then the current panel only; the neighbouring panels kept beside it for paging are not
+        // read.
+        override var accessibilityElements: [Any]? {
+            get {
+                var elements: [Any] = [self.tabsBackgroundContainer]
+                if let currentPanelView = self.currentPanelView {
+                    elements.append(currentPanelView)
+                }
+                return elements
+            } set(value) {
+            }
+        }
+        
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
             return false
         }
@@ -382,6 +395,7 @@ final class StorageUsagePanelContainerComponent: Component {
             self.tabsBackgroundContainer.update(size: tabContainerFrame.size, isDark: component.theme.overallDarkAppearance, transition: transition)
 
             transition.setFrame(view: self.tabsBackgroundView, frame: CGRect(origin: CGPoint(), size: tabContainerFrame.size))
+            // Madgram classic design: the tabs draw 12.0's flat strip with its underline, with no capsule behind it.
             self.tabsBackgroundView.update(size: tabContainerFrame.size, cornerRadius: tabContainerFrame.height * 0.5, isDark: component.theme.overallDarkAppearance, tintColor: .init(kind: .panel), isVisible: !ClassicDesign.isEnabled, transition: transition)
 
             if let tabsContainerView = self.tabsContainer.view as? HorizontalTabsComponent.View {

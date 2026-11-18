@@ -213,6 +213,7 @@ final class ChatRestrictedInputPanelNode: ChatInputPanelNode {
         self.tintSubtitleNode.frame = self.subtitleNode.frame
         
         self.backgroundView.frame = combinedFrame
+        // Madgram classic design: 12.0 set the notice in the bar itself, with no capsule of its own.
         self.backgroundView.update(size: combinedFrame.size, cornerRadius: combinedFrame.height * 0.5, isDark: interfaceState.theme.overallDarkAppearance, tintColor: .init(kind: .panel), isVisible: !ClassicDesign.isEnabled, transition: ComponentTransition(transition))
         
         self.buttonNode.frame = combinedFrame

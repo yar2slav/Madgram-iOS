@@ -196,6 +196,7 @@ func telegramMediaFileFromApiDocument(_ document: Api.Document, altDocuments: [A
     switch document {
         case let .document(documentData):
             let (id, accessHash, fileReference, mimeType, size, thumbs, videoThumbs, dcId, attributes) = (documentData.id, documentData.accessHash, documentData.fileReference, documentData.mimeType, documentData.size, documentData.thumbs, documentData.videoThumbs, documentData.dcId, documentData.attributes)
+            MadMediaUploadDates.shared.set(MediaId(namespace: Namespaces.Media.CloudFile, id: id), date: documentData.date)
             var parsedAttributes = telegramMediaFileAttributesFromApiAttributes(attributes)
             var isSticker = false
             var isAnimated = false

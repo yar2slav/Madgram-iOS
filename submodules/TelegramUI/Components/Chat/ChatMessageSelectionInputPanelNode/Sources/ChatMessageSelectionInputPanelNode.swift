@@ -123,8 +123,14 @@ private final class GlassButtonView: UIView {
         }
     }
     
+    /// The source for a context menu this button opens: its glass, which morphs into the menu.
+    var menuSourceView: UIView {
+        return self.backgroundView
+    }
+    
     override init(frame: CGRect) {
         self.backgroundView = GlassBackgroundView()
+        self.backgroundView.morphsIntoContextMenu = true
         
         self.iconView = GlassBackgroundView.ContentImageView()
         self.backgroundView.contentView.addSubview(self.iconView)
@@ -144,6 +150,7 @@ private final class GlassButtonView: UIView {
     func update(theme: PresentationTheme, preferClearGlass: Bool, size: CGSize, transition: ComponentTransition) {
         let params = Params(theme: theme, preferClearGlass: preferClearGlass, size: size)
         if self.params != params {
+            // Madgram classic design: 12.0's selection bar had bare accent icons.
             self.iconView.tintColor = ClassicDesign.isEnabled ? params.theme.chat.inputPanel.panelControlAccentColor : params.theme.chat.inputPanel.panelControlColor
             self.params = params
             self.updateImpl(params: params, transition: transition)
@@ -305,7 +312,7 @@ public final class ChatMessageSelectionInputPanelNode: ChatInputPanelNode {
     }
     
     @objc private func deleteButtonPressed() {
-        self.interfaceInteraction?.deleteSelectedMessages(self.deleteButton)
+        self.interfaceInteraction?.deleteSelectedMessages(self.deleteButton.menuSourceView)
     }
     
     @objc private func reportButtonPressed() {

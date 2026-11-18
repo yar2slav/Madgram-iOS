@@ -5,6 +5,9 @@ import Display
 import TelegramPresentationData
 import SegmentedControlNode
 
+/// Madgram: the map-mode strip of Telegram 12.0 (`LocationOptionsNode`, removed upstream with Liquid Glass): a
+/// Map / Satellite / Hybrid segmented control on a bar-coloured strip that slides out from under the navigation
+/// bar. Used by the location picker only while `ClassicDesign.isEnabled`.
 final class ClassicLocationOptionsNode: ASDisplayNode {
     private var presentationData: PresentationData
 

@@ -127,7 +127,7 @@ final class TooltipControllerNode: ASDisplayNode {
         
         let verticalOrigin: CGFloat
         var arrowOnBottom = true
-        if sourceRect.minY - 54.0 > insets.top {
+        if sourceRect.minY - max(54.0, contentSize.height) > insets.top {
             verticalOrigin = sourceRect.minY - contentSize.height
         } else {
             verticalOrigin = min(layout.size.height - insets.bottom - contentSize.height, sourceRect.maxY)

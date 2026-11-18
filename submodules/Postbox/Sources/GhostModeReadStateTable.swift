@@ -180,6 +180,8 @@ final class GhostModeReadStateTable: Table {
     }
 
     func remove(peerId: PeerId, threadId: Int64?, namespace: MessageId.Namespace) {
+        // `updatedMarkers[key] = nil` would drop the entry instead of recording a deletion, and
+        // `beforeCommit` only writes what the dictionary holds — the marker would survive forever.
         self.updatedMarkers.updateValue(nil, forKey: self.key(peerId: peerId, threadId: threadId, namespace: namespace))
     }
 

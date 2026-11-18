@@ -34,6 +34,7 @@ public struct PeerInfoSideInsets: Equatable {
 }
 
 public func peerInfoSideInsets(layout: ContainerViewLayout) -> PeerInfoSideInsets {
+    // Madgram: the classic design keeps Telegram 12.0's threshold (edge-to-edge sections below 375 pt).
     let base: CGFloat = layout.size.width >= (ClassicDesign.isEnabled ? 375.0 : 320.0) ? max(16.0, floor((layout.size.width - 674.0) / 2.0)) : 0.0
     let stripLeft: CGFloat = layout.sideStrip(edge: .left) != nil ? layout.safeInsets.left : 0.0
     let stripRight: CGFloat = layout.sideStrip(edge: .right) != nil ? layout.safeInsets.right : 0.0

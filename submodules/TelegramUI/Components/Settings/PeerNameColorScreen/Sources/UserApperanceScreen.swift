@@ -36,6 +36,7 @@ import TextFormat
 import TelegramStringFormatting
 import GiftViewScreen
 import BalanceNeededScreen
+import MadLockUI
 
 private let giftListTag = GenericComponentViewTag()
 private let addIconsTag = GenericComponentViewTag()
@@ -493,6 +494,9 @@ final class UserAppearanceScreenComponent: Component {
         
         private func commitBuy(acceptedPrice: CurrencyAmount? = nil, skipConfirmation: Bool = false) {
             guard let component = self.component, let environment = self.environment, let controller = environment.controller() else {
+                return
+            }
+            if MadLock.gate(.spendGifts, strings: component.context.sharedContext.currentPresentationData.with { $0 }.strings, retry: { [weak self] in self?.commitBuy(acceptedPrice: acceptedPrice, skipConfirmation: skipConfirmation) }) {
                 return
             }
             
@@ -1339,7 +1343,8 @@ final class UserAppearanceScreenComponent: Component {
                                         }
                                         self.state?.updated(transition: .spring(duration: 0.4))
                                     },
-                                    sectionId: 0
+                                    sectionId: 0,
+                                    strings: environment.strings
                                 ),
                                 params: listItemParams
                             ))),
@@ -1675,7 +1680,8 @@ final class UserAppearanceScreenComponent: Component {
                                         self.selectedNameGift = nil
                                         self.state?.updated(transition: .spring(duration: 0.4))
                                     },
-                                    sectionId: 0
+                                    sectionId: 0,
+                                    strings: environment.strings
                                 ),
                                 params: listItemParams
                             ))),

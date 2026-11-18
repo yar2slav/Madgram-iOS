@@ -119,6 +119,9 @@ private enum MessageFilterEntry: ItemListNodeEntry {
         case let .hiddenPeersHeader(text):
             return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
         case let .hiddenPeer(_, peer, revealed):
+            // The only way back to someone's messages is this screen (their messages are hidden
+            // everywhere else), so every affordance un-hides: tapping the row, the switch and the
+            // swipe action.
             let revealOptions = ItemListPeerItemRevealOptions(options: [ItemListPeerItemRevealOption(type: .destructive, title: strings.show, action: {
                 arguments.removePeer(peer.id)
             })])

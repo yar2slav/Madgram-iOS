@@ -1,4 +1,5 @@
 import Foundation
+import MadgramText
 import Display
 import TelegramCore
 import SwiftSignalKit
@@ -358,6 +359,7 @@ private func makeTelegramUrl(_ path: String, queryItems: [URLQueryItem] = []) ->
 }
 
 func openExternalUrlImpl(context: AccountContext, urlContext: OpenURLContext, url: String, forceExternal: Bool, presentationData: PresentationData, navigationController: NavigationController?, dismissInput: @escaping () -> Void) {
+    let url = InterfaceTuningSettingsStore.shared.cached.cleanOpenedLinks ? MadLinkCleaner.cleanLoose(url) : url
     if let parsedUrl = URL(string: url), let controller = madgramControllerForDeepLink(context: context, url: parsedUrl), let navigationController {
         navigationController.pushViewController(controller)
         return

@@ -363,6 +363,7 @@ public struct PresentationResourcesItemList {
         if !top && !bottom {
             return nil
         }
+        // Madgram: the classic design keeps the pre-glass 11pt corners, also where a call site asks for glass.
         let glass = glass && !ClassicDesign.isEnabled
         let key: PresentationResourceKey
         if top && bottom {

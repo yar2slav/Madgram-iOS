@@ -23,6 +23,7 @@ import MultilineTextComponent
 import ContextUI
 import NewsFeedSupport
 import NewsChannelIsland
+import ChatOverscrollIsland
 
 private enum SubscriberAction: Equatable, Hashable {
     case join
@@ -240,6 +241,8 @@ public final class ChatChannelSubscriberInputPanelNode: ChatInputPanelNode {
     /// A menu item is applying itself; a second tap on the menu is ignored until the menu is dismissed.
     private var isApplyingMenuItem = false
     private var islandView: NewsChannelIslandView?
+    // Bubble-free mode only: the "next channel" island growing out of the bar, while the channel is pulled up.
+    private var overscrollIsland: ChatOverscrollIslandHost?
     /// Remove from Chats waiting for its toast (spec §1.4).
     private var pendingRemoval: NewsDeferredAction?
     private weak var barToast: UndoOverlayController?
@@ -267,6 +270,8 @@ public final class ChatChannelSubscriberInputPanelNode: ChatInputPanelNode {
     
     private var layoutData: (CGFloat, CGFloat, CGFloat, CGFloat, UIEdgeInsets, CGFloat, CGFloat, Bool, LayoutMetrics, DeviceMetrics)?
     
+    /// Madgram classic design (`ClassicDesign.isEnabled`): 12.0's flat bar contents, a full-width title button in the
+    /// action's color with bare accent icons beside it, drawn in place of the glass control panel.
     private var classicButton: HighlightableButtonNode?
     private var classicIconButtons: [String: HighlightableButtonNode] = [:]
     private weak var classicTheme: PresentationTheme?
@@ -1086,13 +1091,74 @@ public final class ChatChannelSubscriberInputPanelNode: ChatInputPanelNode {
             islandView.removeFromSuperview()
         }
         
+        if let overscrollIsland = self.overscrollIsland, overscrollIsland.isActive {
+            if let (container, anchorFrame) = self.overscrollIslandAnchor() {
+                overscrollIsland.updateAnchor(container: container, anchorFrame: anchorFrame)
+            } else {
+                overscrollIsland.dismiss(anchorFrame: nil, animated: false)
+            }
+        }
+        
         return panelHeight
+    }
+    
+    /// The panel's glass container, and the control there the island grows from: the News island's capsule when the
+    /// bar shows it, otherwise the middle button, or a side group. The News island's glass is not in the container, so
+    /// the island rises from behind it rather than merging with it.
+    private func overscrollIslandAnchor() -> (container: UIView, anchorFrame: CGRect)? {
+        guard let panelView = self.panel.view as? GlassControlPanelComponent.View else {
+            return nil
+        }
+        let container = panelView.glassContentView
+        let anchorView: UIView
+        if let islandView = self.islandView {
+            anchorView = islandView.capsuleView
+        } else if let itemView = panelView.centerItemView ?? panelView.leftItemView ?? panelView.rightItemView {
+            anchorView = itemView
+        } else {
+            return nil
+        }
+        return (container, anchorView.convert(anchorView.bounds, to: container))
+    }
+    
+    override public func overscrollIslandHandOver() -> ((UIView) -> Void)? {
+        guard let overscrollIsland = self.overscrollIsland, overscrollIsland.isActive, let (container, anchorFrame) = self.overscrollIslandAnchor() else {
+            return nil
+        }
+        let panelView = self.view
+        return { snapshotView in
+            overscrollIsland.handOver(to: snapshotView, panelView: panelView, container: container, anchorFrame: anchorFrame)
+        }
+    }
+    
+    override public func updateOverscrollIsland(_ island: ChatInputPanelOverscrollIsland?, animated: Bool) -> Bool {
+        let anchor = self.overscrollIslandAnchor()
+        guard let island else {
+            self.overscrollIsland?.dismiss(anchorFrame: anchor?.anchorFrame, animated: animated)
+            return true
+        }
+        guard let (container, anchorFrame) = anchor, let interfaceState = self.presentationInterfaceState else {
+            self.overscrollIsland?.dismiss(anchorFrame: nil, animated: false)
+            return false
+        }
+        let overscrollIsland: ChatOverscrollIslandHost
+        if let current = self.overscrollIsland {
+            overscrollIsland = current
+        } else {
+            overscrollIsland = ChatOverscrollIslandHost()
+            self.overscrollIsland = overscrollIsland
+        }
+        overscrollIsland.update(context: island.context, content: ChatOverscrollIslandContent(peer: island.peer, title: island.title, unreadCount: island.unreadCount), progress: island.progress, theme: interfaceState.theme, preferClearGlass: interfaceState.preferredGlassType == .clear, container: container, anchorFrame: anchorFrame)
+        return true
     }
     
     override public func minimalHeight(interfaceState: ChatPresentationInterfaceState, metrics: LayoutMetrics) -> CGFloat {
         return defaultHeight(metrics: metrics)
     }
     
+    /// Madgram classic design: 12.0's layout of this panel. The title (Join, Mute, Unmute, …) is a plain 17pt button in
+    /// its action's color, as wide as its text for Mute and Unmute (so the side icons stay tappable) and across the bar
+    /// otherwise; the suggested-post icon sits on the left, the search, gift and help icons on the right.
     private func updateClassicLayout(width: CGFloat, leftInset: CGFloat, rightInset: CGFloat, panelHeight: CGFloat, interfaceState: ChatPresentationInterfaceState, hasAction: Bool, leftIcons: [String], rightIcons: [String], transition: ContainedViewLayoutTransition) {
         self.panelContainer.isHidden = true
         
@@ -1109,6 +1175,7 @@ public final class ChatChannelSubscriberInputPanelNode: ChatInputPanelNode {
             self.classicButton = button
             self.addSubnode(button)
         }
+        // `self.action` keeps its last value when the peer has none any more; `hasAction` is this layout's answer.
         if hasAction, let action = self.action {
             let (title, color) = titleAndColorForAction(action, theme: theme, strings: interfaceState.strings)
             button.setTitle(title, with: Font.regular(17.0), with: color, for: [])

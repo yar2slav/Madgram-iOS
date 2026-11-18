@@ -10,6 +10,8 @@ swift_library(
         "-warnings-as-errors",
     ],
     deps = [
+        "//submodules/TelegramUI/Components/StaticGlassBackground",
+        "//submodules/TelegramUI/Components/GlassBackgroundComponent",
         "//submodules/AsyncDisplayKit",
         "//submodules/Display",
         "//submodules/SSignalKit/SwiftSignalKit",
@@ -36,6 +38,8 @@ swift_library(
         "//submodules/AvatarVideoNode",
         "//submodules/ComponentFlow",
         "//submodules/TelegramUI/Components/EmojiStatusComponent",
+        "//submodules/PeerOnlineMarkerNode",
+        "//submodules/TelegramStringFormatting",
     ],
     visibility = [
         "//visibility:public",

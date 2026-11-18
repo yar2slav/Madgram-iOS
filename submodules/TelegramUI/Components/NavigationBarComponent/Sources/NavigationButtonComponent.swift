@@ -63,6 +63,17 @@ final class NavigationButtonComponent: Component {
         private var iconSource: IconSource?
 
         private var hostedNode: ASDisplayNode?
+        
+        override var accessibilityLabel: String? {
+            get {
+                if let hostedNode = self.hostedNode, hostedNode is NavigationButtonLiveAccessibilityLabel, let label = hostedNode.accessibilityLabel, !label.isEmpty {
+                    return label
+                }
+                return super.accessibilityLabel
+            } set(value) {
+                super.accessibilityLabel = value
+            }
+        }
         /// Where the hosted node goes in this button, kept for when a loan of it ends.
         private var hostedNodeFrame = CGRect()
 
@@ -109,6 +120,8 @@ final class NavigationButtonComponent: Component {
 
         override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
             if ClassicDesign.isEnabled {
+                // A classic button is only as wide as its content: keep 12.0's touch area around it
+                // (`ClassicNavigationButtonNode.hitTestSlop`).
                 return self.bounds.insetBy(dx: -10.0, dy: -16.0).contains(point)
             }
             return super.point(inside: point, with: event)
@@ -233,6 +246,7 @@ final class NavigationButtonComponent: Component {
                     iconSource = .bundle("Navigation/Done")
                 } else {
                     if ClassicDesign.isEnabled {
+                        // 12.0's flat bar: regular weight, bold for a confirming button.
                         textString = NSAttributedString(string: title, font: isBold ? Font.bold(17.0) : Font.regular(17.0), textColor: color)
                     } else {
                         textString = NSAttributedString(string: title, font: isBold ? Font.bold(17.0) : Font.medium(17.0), textColor: color)
@@ -266,6 +280,7 @@ final class NavigationButtonComponent: Component {
                 textView.attributedText = textString
                 let textSize = textView.updateLayout(availableSize)
                 if ClassicDesign.isEnabled {
+                    // 12.0: a text button is as wide as its text; the bar spaces it from its neighbours.
                     size.width = textSize.width
                 } else {
                     let textInset: CGFloat = 12.0
@@ -301,6 +316,7 @@ final class NavigationButtonComponent: Component {
                 }
 
                 if let iconSize = iconView.image?.size {
+                    // 12.0: an icon button is as wide as its icon.
                     size.width = ClassicDesign.isEnabled ? iconSize.width : max(44.0, iconSize.width)
 
                     iconView.frame = CGRect(origin: CGPoint(x: floor((size.width - iconSize.width) / 2.0), y: floor((availableSize.height - iconSize.height) / 2.0)), size: iconSize)

@@ -34,6 +34,7 @@ private enum InterfaceTuningKey: Int32 {
     case startRoundVideoWithRearCamera
     case hideGalleryCamera
     case hideBusinessBotPanel
+    case showOnlineInGroups
 }
 
 private final class InterfaceTuningArguments {
@@ -83,6 +84,7 @@ private enum InterfaceTuningEntry: ItemListNodeEntry {
             case .allowStoryRepost: return 24
             case .showCallbackData: return 31
             case .hideBusinessBotPanel: return 32
+            case .showOnlineInGroups: return 30
             case .startRoundVideoWithRearCamera: return 41
             case .hideGalleryCamera: return 42
             }
@@ -183,6 +185,8 @@ private func updatedInterfaceTuningSettings(
         current.hideGalleryCamera = value
     case .hideBusinessBotPanel:
         current.hideBusinessBotPanel = value
+    case .showOnlineInGroups:
+        current.showOnlineInGroups = value
     }
     return current
 }
@@ -231,7 +235,8 @@ public func interfaceTuningSettingsController(context: AccountContext) -> ViewCo
             .toggle(.confirmStoryOpen, .stories, strings.confirmStoryOpen, strings.confirmStoryOpenInfo, settings.confirmStoryOpen, true),
             .toggle(.allowStoryRepost, .stories, strings.allowStoryRepost, strings.allowStoryRepostInfo, settings.allowStoryRepost, true),
 
-            .header(30, .chats, strings.chatsSection),
+            .header(29, .chats, strings.chatsSection),
+            .toggle(.showOnlineInGroups, .chats, presentationData.strings.localFeatures.extras.showOnlineInGroups, presentationData.strings.localFeatures.extras.showOnlineInGroupsInfo, settings.showOnlineInGroups, true),
             .toggle(.showCallbackData, .chats, strings.showCallbackData, strings.showCallbackDataInfo, settings.showCallbackData, true),
             .toggle(.hideBusinessBotPanel, .chats, strings.hideBusinessBotPanel, strings.hideBusinessBotPanelInfo, settings.hideBusinessBotPanel, true),
             .disclosure(33, .chats, strings.businessBotPanelExceptions, settings.businessBotPanelVisibilityOverrides.isEmpty ? "" : "\(settings.businessBotPanelVisibilityOverrides.count)"),

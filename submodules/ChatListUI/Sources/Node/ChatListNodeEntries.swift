@@ -4,9 +4,11 @@ import TelegramCore
 import TelegramPresentationData
 import MergeLists
 import AccountContext
+import TelegramUIPreferences
 
 enum ChatListNodeEntryId: Hashable {
     case Header
+    case SideListAllThreads
     case Hole(Int64)
     case PeerId(Int64)
     case ThreadId(Int64)
@@ -184,8 +186,14 @@ enum ChatListNodeEntry: Comparable, Identifiable {
             self.displayAsTopicList = displayAsTopicList
         }
         
+        /// The chat side list's "All Messages" row (`ChatListItemContent.PeerData.isSideListAllThreadsItem`).
+        var isSideListAllThreadsItem: Bool = false
+        
         static func ==(lhs: PeerEntryData, rhs: PeerEntryData) -> Bool {
             if lhs.index != rhs.index {
+                return false
+            }
+            if lhs.isSideListAllThreadsItem != rhs.isSideListAllThreadsItem {
                 return false
             }
             if lhs.presentationData !== rhs.presentationData {
@@ -457,6 +465,9 @@ enum ChatListNodeEntry: Comparable, Identifiable {
         case .HeaderEntry:
             return .Header
         case let .PeerEntry(peerEntry):
+            if peerEntry.isSideListAllThreadsItem {
+                return .SideListAllThreads
+            }
             switch peerEntry.index {
             case let .chatList(index):
                 return .PeerId(index.messageIndex.id.peerId.toInt64())
@@ -650,7 +661,11 @@ func chatListNodeEntriesForView(view: EngineChatList, state: ChatListNodeState, 
         pinnedIndexOffset += UInt16(groupEntryCount)
     }
     
+    let hideProxySponsor = InterfaceTuningSettingsStore.shared.cached.hideProxySponsor
     let filteredAdditionalItemEntries = view.additionalItems.filter { item -> Bool in
+        if hideProxySponsor, case .proxy = item.promoInfo.content {
+            return false
+        }
         return item.item.renderedPeer.peerId != state.hiddenPsaPeerId
     }
     
@@ -994,4 +1009,38 @@ func chatListNodeEntriesForView(view: EngineChatList, state: ChatListNodeState, 
         return ([.HeaderEntry], true)
     }
     return (result, view.isLoading)
+}
+
+/// The chat side list's "All Messages" row for a Saved Messages list: the parent's own chat, previewing the latest
+/// message of any of its sub-chats, placed first (just below the header entry).
+func chatListSideListAllThreadsEntry(entries: [ChatListNodeEntry], parentPeer: EngineRenderedPeer) -> ChatListNodeEntry? {
+    var latest: ChatListNodeEntry.PeerEntryData?
+    for entry in entries {
+        guard case let .PeerEntry(peerEntry) = entry, let message = peerEntry.messages.last else {
+            continue
+        }
+        if let current = latest, let currentMessage = current.messages.last, currentMessage.index >= message.index {
+            continue
+        }
+        latest = peerEntry
+    }
+    guard var data = latest else {
+        return nil
+    }
+    data.index = .chatList(EngineChatList.Item.Index.ChatList.absoluteUpperBound.predecessor)
+    data.peer = parentPeer
+    data.avatarPeer = nil
+    data.readState = nil
+    data.hasUnseenMentions = false
+    data.hasUnseenReactions = false
+    data.hasUnseenPollVotes = false
+    data.draftState = nil
+    data.mediaDraftContentType = nil
+    data.inputActivities = nil
+    data.editing = false
+    data.hasActiveRevealControls = false
+    data.selected = false
+    data.storyState = nil
+    data.isSideListAllThreadsItem = true
+    return .PeerEntry(data)
 }

@@ -26,6 +26,7 @@ import LegacyChatHeaderPanelComponent
 import UIKitRuntimeUtils
 import ShimmerEffect
 
+/// Classic (12.0): the pinned bar's title, stripe and spinner are drawn in the panel's accent colour.
 private func pinnedPanelAccentColor(_ theme: PresentationTheme) -> UIColor {
     return ClassicDesign.isEnabled ? theme.chat.inputPanel.panelControlAccentColor : theme.chat.inputPanel.panelControlColor
 }
@@ -268,6 +269,7 @@ final class ChatPinnedMessageTitlePanelNode: ChatTitleAccessoryPanelNode {
             themeUpdated = true
             self.theme = interfaceState.theme
             if ClassicDesign.isEnabled {
+                // Classic (12.0): the input panel's own close and list icons.
                 self.closeButton.setImage(PresentationResourcesChat.chatInputPanelCloseIconImage(interfaceState.theme), for: [])
                 self.listButton.setImage(PresentationResourcesChat.chatInputPanelPinnedListIconImage(interfaceState.theme), for: [])
             } else {

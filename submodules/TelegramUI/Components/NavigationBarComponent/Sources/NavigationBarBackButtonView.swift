@@ -17,6 +17,7 @@ final class NavigationBarBackButtonView: ContextControllerSourceView {
     private let button: HighlightableButton
     let arrowView: UIImageView
     private var badgeNode: NavigationBarBadgeNode?
+    /// Madgram classic design: 12.0's back title beside the arrow.
     private var classicTitleView: ImmediateTextView?
 
     private var currentColor: UIColor?
@@ -142,6 +143,8 @@ final class NavigationBarBackButtonView: ContextControllerSourceView {
         return size
     }
 
+    /// Madgram classic design: 12.0's flat back button (`ChatListHeaderComponent.BackButtonView` at release-12.0): the
+    /// filled chevron and a "Back" title in the button color, no circle; a modal's close X stays an icon.
     private func updateClassic(kind: Kind, badge: String?, theme: NavigationBarTheme, strings: NavigationBarStrings, availableSize: CGSize, transition: ComponentTransition) -> CGSize {
         let color = navigationBarClassicButtonColor(theme: theme, isEnabled: true)
         if self.currentColor != color || self.currentKind != kind {
@@ -172,6 +175,8 @@ final class NavigationBarBackButtonView: ContextControllerSourceView {
             titleView.attributedText = NSAttributedString(string: strings.back, font: Font.regular(17.0), textColor: color)
             let titleSize = titleView.updateLayout(CGSize(width: 100.0, height: availableSize.height))
 
+            // As 12.0 measured it: the arrow 7 pt left of the button's origin (8 pt from the bar's inset edge), the title
+            // 8 pt after it.
             let iconSpacing: CGFloat = 8.0
             let iconOffset: CGFloat = -7.0
             let arrowFrame = CGRect(origin: CGPoint(x: iconOffset - 1.0, y: floor((availableSize.height - arrowSize.height) / 2.0)), size: arrowSize)

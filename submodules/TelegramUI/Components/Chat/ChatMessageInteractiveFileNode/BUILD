@@ -10,6 +10,8 @@ swift_library(
         "-warnings-as-errors",
     ],
     deps = [
+        "//submodules/TelegramUIPreferences",
+        "//submodules/MadTranscription",
         "//submodules/AsyncDisplayKit",
         "//submodules/SSignalKit/SwiftSignalKit",
         "//submodules/Display",
@@ -30,7 +32,6 @@ swift_library(
         "//submodules/TelegramUI/Components/AudioTranscriptionButtonComponent",
         "//submodules/TelegramUI/Components/AudioWaveformComponent",
         "//submodules/ShimmerEffect",
-        "//submodules/Media/ConvertOpusToAAC",
         "//submodules/Media/LocalAudioTranscription",
         "//submodules/TextSelectionNode",
         "//submodules/TelegramUI/Components/AudioTranscriptionPendingIndicatorComponent",
@@ -44,6 +45,7 @@ swift_library(
         "//submodules/AnimatedCountLabelNode",
         "//submodules/AudioWaveform",
         "//submodules/DeviceProximity",
+        "//submodules/TelegramUI/Components/StaticGlassBackground",
     ],
     visibility = [
         "//visibility:public",

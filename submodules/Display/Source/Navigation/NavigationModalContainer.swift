@@ -411,6 +411,7 @@ final class NavigationModalContainer: ASDisplayNode, ASScrollViewDelegate, ASGes
                 self.container.cornerRadius = 0.0
             } else {
                 var cornerRadius: CGFloat = 10.0
+                // Madgram classic design: Telegram 12.0's sheet keeps its 10pt corners, also for a glass-styled screen.
                 if let controller = controllers.first, controller._hasGlassStyle, !ClassicDesign.isEnabled {
                     cornerRadius = 38.0
                 }
@@ -448,7 +449,7 @@ final class NavigationModalContainer: ASDisplayNode, ASScrollViewDelegate, ASGes
                     effectiveStatusBarHeight = nil
                 }
                 
-                containerLayout = ContainerViewLayout(size: CGSize(width: layout.size.width, height: layout.size.height - topInset), metrics: layout.metrics, deviceMetrics: layout.deviceMetrics, intrinsicInsets: UIEdgeInsets(top: 0.0, left: layout.intrinsicInsets.left, bottom: layout.intrinsicInsets.bottom, right: layout.intrinsicInsets.right), safeInsets: UIEdgeInsets(top: 0.0, left: layout.safeInsets.left, bottom: layout.safeInsets.bottom, right: layout.safeInsets.right), reservedCorners: layout.reservedCorners.offsettingTop(by: topInset), division: nil, additionalInsets: layout.additionalInsets, statusBarHeight: effectiveStatusBarHeight, inputHeight: layout.inputHeight, inputHeightIsInteractivellyChanging: layout.inputHeightIsInteractivellyChanging, inVoiceOver: layout.inVoiceOver, presentedInFormSheet: false)
+                containerLayout = ContainerViewLayout(size: CGSize(width: layout.size.width, height: layout.size.height - topInset), metrics: layout.metrics, deviceMetrics: layout.deviceMetrics, intrinsicInsets: UIEdgeInsets(top: 0.0, left: layout.intrinsicInsets.left, bottom: layout.intrinsicInsets.bottom, right: layout.intrinsicInsets.right), safeInsets: UIEdgeInsets(top: 0.0, left: layout.safeInsets.left, bottom: layout.safeInsets.bottom, right: layout.safeInsets.right), reservedCorners: layout.reservedCorners.offsettingTop(by: topInset), division: layout.division.map { $0.offsetBy(dx: 0.0, dy: -topInset) }, additionalInsets: layout.additionalInsets, statusBarHeight: effectiveStatusBarHeight, inputHeight: layout.inputHeight, inputHeightIsInteractivellyChanging: layout.inputHeightIsInteractivellyChanging, inVoiceOver: layout.inVoiceOver, presentedInFormSheet: false)
                 // Beside a status island (iPhone Duo, unfolded portrait) a modal covered by another one stays where it
                 // is rather than sliding back.
                 let coveredByModalTransition: CGFloat = layout.topBarStatusIsland != nil ? 0.0 : coveredByModalTransition
@@ -477,6 +478,7 @@ final class NavigationModalContainer: ASDisplayNode, ASScrollViewDelegate, ASGes
             } else {
                 self.dim.backgroundColor = UIColor(white: 0.0, alpha: 0.4)
                 self.container.clipsToBounds = true
+                // Madgram classic design: Telegram 12.0's form sheet had 10pt corners.
                 self.container.cornerRadius = ClassicDesign.isEnabled ? 10.0 : 38.0
                 if #available(iOS 11.0, *) {
                     self.container.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
