@@ -111,4 +111,27 @@ final class MadLocalChatTests: XCTestCase {
             return
         }
     }
+
+    func testReadingTheChatQueuesASyncThatOnlyConfirmationCanEnd() throws {
+        let mediaBox = postbox.mediaBox
+        let peerId = MadLocalChat.peerId
+        let _ = try value(postbox.transaction { transaction -> Void in
+            _internal_madLocalChatPrepare(transaction: transaction, mediaBox: mediaBox, name: "mad", avatarJpeg: nil, avatarSide: 640)
+            let _ = _internal_madLocalChatPost(transaction: transaction, mediaBox: mediaBox, richTexts: [self.richText("one")], replacing: true)
+            if let index = transaction.getTopPeerMessageIndex(peerId: peerId) {
+                let _ = transaction.applyInteractiveReadMaxIndex(index)
+            }
+        })
+        let hasInputPeer = try value(postbox.transaction { transaction -> Bool in
+            return transaction.getPeer(peerId).flatMap(apiInputPeer) != nil
+        })
+        XCTAssertFalse(hasInputPeer)
+        let queued = try value(postbox.synchronizePeerReadStatesView() |> map { $0.operations[peerId] != nil })
+        XCTAssertTrue(queued)
+        let _ = try value(postbox.transaction { transaction -> Void in
+            transaction.confirmSynchronizedIncomingReadState(peerId)
+        })
+        let stillQueued = try value(postbox.synchronizePeerReadStatesView() |> map { $0.operations[peerId] != nil })
+        XCTAssertFalse(stillQueued)
+    }
 }

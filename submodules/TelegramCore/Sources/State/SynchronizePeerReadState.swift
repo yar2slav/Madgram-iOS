@@ -430,6 +430,10 @@ func synchronizePeerReadState(network: Network, postbox: Postbox, stateManager: 
     // is confirmed so the manager does not pick it up again. This also covers paths that queue one
     // without going through the interactive read (a support account's send, the chat list's
     // read toggle, operations persisted by earlier builds).
+    if peerId.isMadLocalChat {
+        return confirmSynchronized(postbox: postbox, peerId: peerId)
+        |> ignoreValues
+    }
     let keepsReadState = postbox.transaction { transaction -> Bool in
         return peerKeepsReadState(transaction.getPeer(peerId))
     }
