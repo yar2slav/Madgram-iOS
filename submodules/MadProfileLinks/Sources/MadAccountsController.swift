@@ -275,38 +275,15 @@ final class MadAccountDetailController: MadLinksTableController {
 
     private func makeHeader() -> UIView {
         let theme = self.presentationData.theme
-        let width = max(320.0, self.tableView.bounds.width)
-        let view = UIView(frame: CGRect(x: 0.0, y: 0.0, width: width, height: 168.0))
-        view.autoresizingMask = [.flexibleWidth]
-        let icon = UIImageView()
-        MadLinksUI.setIcon(for: self.account, apply: { [weak icon] image in
-            icon?.image = image
+        let view = MadAccountHeaderView(frame: CGRect(x: 0.0, y: 0.0, width: max(320.0, self.tableView.bounds.width), height: 168.0))
+        MadLinksUI.setIcon(for: self.account, apply: { [weak view] image in
+            view?.icon.image = image
         })
-        icon.contentMode = .scaleAspectFit
-        icon.frame = CGRect(x: (width - 66.0) / 2.0, y: 16.0, width: 66.0, height: 66.0)
-        icon.autoresizingMask = [.flexibleLeftMargin, .flexibleRightMargin]
-        view.addSubview(icon)
-
-        let title = UILabel()
-        title.font = UIFont.systemFont(ofSize: 22.0, weight: .bold)
-        title.textColor = theme.list.itemPrimaryTextColor
-        title.textAlignment = .center
-        title.text = self.account.title
-        title.frame = CGRect(x: 16.0, y: 92.0, width: width - 32.0, height: 28.0)
-        title.autoresizingMask = [.flexibleWidth]
-        view.addSubview(title)
-
-        let platform = UILabel()
-        platform.font = UIFont.systemFont(ofSize: 13.0)
-        platform.textColor = theme.list.itemSecondaryTextColor
-        platform.textAlignment = .center
-        platform.text = MadLinksPlatformInfo.name(self.account.platform)
-        platform.frame = CGRect(x: 16.0, y: 120.0, width: width - 32.0, height: 18.0)
-        platform.autoresizingMask = [.flexibleWidth]
-        view.addSubview(platform)
-
+        view.title.textColor = theme.list.itemPrimaryTextColor
+        view.title.text = self.account.title
+        view.platform.textColor = theme.list.itemSecondaryTextColor
+        view.platform.text = MadLinksPlatformInfo.name(self.account.platform)
         if self.account.verified {
-            let verified = UILabel()
             let text = NSMutableAttributedString()
             if let image = MadLinksUI.verifiedImage(color: theme.list.itemCheckColors.fillColor, size: 11.0) {
                 let attachment = NSTextAttachment(image: image)
@@ -315,11 +292,9 @@ final class MadAccountDetailController: MadLinksTableController {
                 text.append(NSAttributedString(string: " "))
             }
             text.append(NSAttributedString(string: self.strings.verified, attributes: [.font: UIFont.systemFont(ofSize: 13.0), .foregroundColor: theme.list.itemSecondaryTextColor]))
-            verified.attributedText = text
-            verified.textAlignment = .center
-            verified.frame = CGRect(x: 16.0, y: 142.0, width: width - 32.0, height: 18.0)
-            verified.autoresizingMask = [.flexibleWidth]
-            view.addSubview(verified)
+            view.verified.attributedText = text
+        } else {
+            view.verified.isHidden = true
         }
         return view
     }
@@ -549,5 +524,38 @@ final class MadProfileAccountsListController: MadLinksTableController {
             })
         }
         return [MadLinksTableSection(header: nil, footer: nil, rows: rows)]
+    }
+}
+
+private final class MadAccountHeaderView: UIView {
+    let icon = UIImageView()
+    let title = UILabel()
+    let platform = UILabel()
+    let verified = UILabel()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        self.icon.contentMode = .scaleAspectFit
+        self.title.font = UIFont.systemFont(ofSize: 22.0, weight: .bold)
+        self.title.textAlignment = .center
+        self.platform.font = UIFont.systemFont(ofSize: 13.0)
+        self.platform.textAlignment = .center
+        self.verified.textAlignment = .center
+        for subview in [self.icon, self.title, self.platform, self.verified] as [UIView] {
+            self.addSubview(subview)
+        }
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let width = self.bounds.width
+        self.icon.frame = CGRect(x: floor((width - 66.0) / 2.0), y: 16.0, width: 66.0, height: 66.0)
+        self.title.frame = CGRect(x: 16.0, y: 92.0, width: max(0.0, width - 32.0), height: 28.0)
+        self.platform.frame = CGRect(x: 16.0, y: 120.0, width: max(0.0, width - 32.0), height: 18.0)
+        self.verified.frame = CGRect(x: 16.0, y: 142.0, width: max(0.0, width - 32.0), height: 18.0)
     }
 }

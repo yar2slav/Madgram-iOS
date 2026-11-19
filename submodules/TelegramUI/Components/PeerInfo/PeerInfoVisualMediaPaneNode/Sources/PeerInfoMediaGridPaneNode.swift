@@ -330,10 +330,12 @@ public final class PeerInfoMediaGridPaneNode: ASDisplayNode, PeerInfoVisualMedia
             let _ = updateVisualMediaStoredState(engine: self.context.engine, peerId: self.peerId, messageTag: self.stateTag, state: VisualMediaStoredState(zoomLevel: Int32(level.columns))).start()
         }
         self.gridView.onVisibleRangeChanged = { [weak self] _ in
+            self?.stalledHoleRequest = nil
             self?.updateHoleToLoad()
         }
         self.gridView.onWillBeginDragging = { [weak self] in
             self?.contextGestureContainerNode.cancelGesture()
+            self?.paneDidScroll?()
         }
         self.gridView.onDidEndDragging = { [weak self] in
             guard let self, !self.gridView.isUserScrolling else {
@@ -552,6 +554,8 @@ public final class PeerInfoMediaGridPaneNode: ASDisplayNode, PeerInfoVisualMedia
         self.applyState(state)
     }
 
+    private var stalledHoleRequest: (anchor: EngineMessage.Id, firstEmpty: Int)?
+
     private func updateHoleToLoad() {
         guard !self.isLoadingHole, !self.gridView.isZooming, self.didReceiveState, !self.dataSource.isPlaceholderCount, let visible = self.gridView.visibleIndexRange, !visible.isEmpty else {
             return
@@ -559,14 +563,23 @@ public final class PeerInfoMediaGridPaneNode: ASDisplayNode, PeerInfoVisualMedia
         guard let firstEmpty = self.dataSource.firstUnloadedIndex(in: visible), let hole = mediaGridPaneHoleNearest(to: firstEmpty, sortedHoles: self.dataSource.holes()), let messageId = self.dataSource.holeAnchorMessageId(at: hole.anchorIndex) else {
             return
         }
+        if let stalled = self.stalledHoleRequest, stalled.anchor == messageId, stalled.firstEmpty == firstEmpty {
+            return
+        }
         self.isLoadingHole = true
         let generation = self.listGeneration
-        self.listSource.loadHole(anchor: messageId, direction: .later, completion: { [weak self] in
+        let direction: SparseMessageList.LoadHoleDirection = firstEmpty > hole.anchorIndex ? .earlier : .later
+        self.listSource.loadHole(anchor: messageId, direction: direction, completion: { [weak self] in
             Queue.mainQueue().async {
                 guard let self, self.listGeneration == generation else {
                     return
                 }
                 self.isLoadingHole = false
+                if let visible = self.gridView.visibleIndexRange, self.dataSource.firstUnloadedIndex(in: visible) == firstEmpty {
+                    self.stalledHoleRequest = (messageId, firstEmpty)
+                } else {
+                    self.stalledHoleRequest = nil
+                }
                 self.updateHoleToLoad()
             }
         })
@@ -609,7 +622,6 @@ public final class PeerInfoMediaGridPaneNode: ASDisplayNode, PeerInfoVisualMedia
     }
 
     private func gridDidScroll(offset: CGFloat) {
-        self.paneDidScroll?()
         if let params = self.currentParams {
             let delta = offset - self.previousScrollOffset
             let topInset = params.topInset

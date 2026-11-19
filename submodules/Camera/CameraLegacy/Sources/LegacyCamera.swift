@@ -74,7 +74,7 @@ final class CameraDeviceContext {
                 
         self.device.configure(for: session, position: position, dual: !self.exclusive || self.additional, switchAudio: switchAudio)
         cameraVideoModeMaxDimensionsOverride = MadFlags.cameraMaxDimensions.map { CameraFormatDescriptor.Dimensions(width: $0.width, height: $0.height) }
-        self.device.configureDeviceFormat(maxDimensions: self.maxDimensions(additional: self.additional, preferWide: preferWide), maxFramerate: self.preferredMaxFrameRate(useLower: preferLowerFramerate), captureMode: captureMode)
+        self.device.configureDeviceFormat(maxDimensions: self.maxDimensions(additional: self.additional, preferWide: preferWide, allowsCustom: captureMode == .video), maxFramerate: self.preferredMaxFrameRate(useLower: preferLowerFramerate || captureMode != .video), captureMode: captureMode)
         self.input.configure(for: session, device: self.device, audio: audio && switchAudio)
         self.output.configure(for: session, device: self.device, input: self.input, previewView: previewView, audio: audio && switchAudio, photo: photo, metadata: metadata, captureMode: captureMode)
         
@@ -91,13 +91,13 @@ final class CameraDeviceContext {
         self.input.invalidate(for: session, switchAudio: switchAudio)
     }
     
-    private func maxDimensions(additional: Bool, preferWide: Bool) -> CMVideoDimensions {
+    private func maxDimensions(additional: Bool, preferWide: Bool, allowsCustom: Bool) -> CMVideoDimensions {
         if self.isRoundVideo && self.exclusive {
             return CMVideoDimensions(width: 640, height: 480)
         } else {
             if additional || preferWide {
                 return CMVideoDimensions(width: 1920, height: 1440)
-            } else if let custom = MadFlags.cameraMaxDimensions {
+            } else if allowsCustom, let custom = MadFlags.cameraMaxDimensions {
                 return CMVideoDimensions(width: custom.width, height: custom.height)
             } else {
                 return CMVideoDimensions(width: 1920, height: 1080)
@@ -196,6 +196,18 @@ private final class CameraContext {
             self,
             selector: #selector(self.sessionRuntimeError),
             name: .AVCaptureSessionRuntimeError,
+            object: self.session.session
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(self.sessionWasInterrupted),
+            name: .AVCaptureSessionWasInterrupted,
+            object: self.session.session
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(self.sessionInterruptionEnded),
+            name: .AVCaptureSessionInterruptionEnded,
             object: self.session.session
         )
     }
@@ -807,7 +819,19 @@ private final class CameraContext {
         return .single(self.mainDeviceContext?.output.transitionImage)
     }
     
+    @objc private func sessionWasInterrupted(notification: NSNotification) {
+        let reason = (notification.userInfo?[AVCaptureSessionInterruptionReasonKey] as? NSNumber)?.intValue ?? -1
+        Logger.shared.log("Camera", "Session was interrupted, reason: \(reason)")
+    }
+
     @objc private func sessionInterruptionEnded(notification: NSNotification) {
+        Logger.shared.log("Camera", "Session interruption ended")
+        self.queue.async {
+            if self.isSessionRunning && !self.session.session.isRunning {
+                self.session.session.startRunning()
+                self.isSessionRunning = self.session.session.isRunning
+            }
+        }
     }
     
     @objc private func sessionRuntimeError(notification: NSNotification) {

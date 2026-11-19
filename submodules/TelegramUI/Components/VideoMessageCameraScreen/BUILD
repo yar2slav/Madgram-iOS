@@ -31,6 +31,7 @@ swift_library(
         "//submodules/Camera",
         "//submodules/Camera/CameraLegacy",
         "//submodules/Camera/CameraNeo",
+        "//submodules/MadFlags",
         "//submodules/Components/MultilineTextComponent",
         "//submodules/Components/BlurredBackgroundComponent",
         "//submodules/Components/BundleIconComponent:BundleIconComponent",

@@ -662,7 +662,7 @@ final class CameraNeo: NSObject, CameraProtocol {
             return false
         }
         self.session.addInput(videoInput)
-        self.configureFrameRate(roundVideoCaptureFrameRate, device: device, input: videoInput)
+        self.configureFrameRate(self.roundFrameRate, device: device, input: videoInput)
 
         if addOutput {
             guard let output = self.makeVideoOutput(), self.session.canAddOutput(output) else {
@@ -706,8 +706,8 @@ final class CameraNeo: NSObject, CameraProtocol {
 
         multiCamSession.addInputWithNoConnections(backInput)
         multiCamSession.addInputWithNoConnections(frontInput)
-        self.configureFrameRate(roundVideoCaptureFrameRate, device: backDevice, input: backInput)
-        self.configureFrameRate(roundVideoCaptureFrameRate, device: frontDevice, input: frontInput)
+        self.configureFrameRate(self.roundFrameRate, device: backDevice, input: backInput)
+        self.configureFrameRate(self.roundFrameRate, device: frontDevice, input: frontInput)
         multiCamSession.addOutputWithNoConnections(backOutput)
         multiCamSession.addOutputWithNoConnections(frontOutput)
 
@@ -827,7 +827,31 @@ final class CameraNeo: NSObject, CameraProtocol {
         return output
     }
 
+    private var roundFrameRate: Double = max(roundVideoCaptureFrameRate, NeoRoundVideoSettings.preferredFrameRate)
+
+    private func ultraWideBackDevice() -> AVCaptureDevice? {
+        guard NeoRoundVideoSettings.prefersUltraWide, let device = AVCaptureDevice.default(.builtInUltraWideCamera, for: .video, position: .back) else {
+            return nil
+        }
+        if self.useMultiCam {
+            guard #available(iOS 13.0, *), let front = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front) ?? AVCaptureDevice.default(.builtInTrueDepthCamera, for: .video, position: .front) else {
+                return nil
+            }
+            let sets = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInUltraWideCamera, .builtInWideAngleCamera, .builtInTrueDepthCamera], mediaType: .video, position: .unspecified).supportedMultiCamDeviceSets
+            guard sets.contains(where: { $0.contains(device) && $0.contains(front) }) else {
+                return nil
+            }
+        }
+        guard roundVideoCaptureFormat(for: device, requiresMultiCam: self.useMultiCam, mode: self.roundVideoMode, frameRate: roundVideoCaptureFrameRate) != nil else {
+            return nil
+        }
+        return device
+    }
+
     private func makeVideoDevice(position: Camera.Position) -> AVCaptureDevice? {
+        if position == .back, let device = self.ultraWideBackDevice() {
+            return device
+        }
         if let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position) {
             return device
         }
@@ -839,7 +863,12 @@ final class CameraNeo: NSObject, CameraProtocol {
     }
 
     private func configureCaptureFormat(device: AVCaptureDevice) -> Bool {
-        guard let selectedFormat = roundVideoCaptureFormat(for: device, requiresMultiCam: self.useMultiCam, mode: self.roundVideoMode) else {
+        var selected = roundVideoCaptureFormat(for: device, requiresMultiCam: self.useMultiCam, mode: self.roundVideoMode, frameRate: self.roundFrameRate)
+        if selected == nil, self.roundFrameRate > roundVideoCaptureFrameRate {
+            self.roundFrameRate = roundVideoCaptureFrameRate
+            selected = roundVideoCaptureFormat(for: device, requiresMultiCam: self.useMultiCam, mode: self.roundVideoMode, frameRate: self.roundFrameRate)
+        }
+        guard let selectedFormat = selected else {
             return false
         }
         return self.applyCaptureFormat(selectedFormat, device: device)
@@ -871,17 +900,20 @@ final class CameraNeo: NSObject, CameraProtocol {
         }
 
         let initialProfile: RoundVideoCaptureProfile = self.roundVideoMode == .vga ? .vga : .high
+        let frameRates: [Double] = self.roundFrameRate > roundVideoCaptureFrameRate ? [self.roundFrameRate, roundVideoCaptureFrameRate] : [roundVideoCaptureFrameRate]
+        for frameRate in frameRates {
         for maximumProfile in RoundVideoCaptureProfile.allCases where maximumProfile.rawValue >= initialProfile.rawValue {
-            if maximumProfile != initialProfile {
-                guard let backFormat = roundVideoCaptureFormat(for: backDevice, requiresMultiCam: true, mode: self.roundVideoMode, maximumProfile: maximumProfile),
-                      let frontFormat = roundVideoCaptureFormat(for: frontDevice, requiresMultiCam: true, mode: self.roundVideoMode, maximumProfile: maximumProfile) else {
+            if maximumProfile != initialProfile || frameRate != frameRates[0] {
+                guard let backFormat = roundVideoCaptureFormat(for: backDevice, requiresMultiCam: true, mode: self.roundVideoMode, maximumProfile: maximumProfile, frameRate: frameRate),
+                      let frontFormat = roundVideoCaptureFormat(for: frontDevice, requiresMultiCam: true, mode: self.roundVideoMode, maximumProfile: maximumProfile, frameRate: frameRate) else {
                     continue
                 }
+                self.roundFrameRate = frameRate
                 session.beginConfiguration()
                 let backConfigured = self.applyCaptureFormat(backFormat, device: backDevice)
                 let frontConfigured = self.applyCaptureFormat(frontFormat, device: frontDevice)
-                self.configureFrameRate(roundVideoCaptureFrameRate, device: backDevice, input: backInput)
-                self.configureFrameRate(roundVideoCaptureFrameRate, device: frontDevice, input: frontInput)
+                self.configureFrameRate(self.roundFrameRate, device: backDevice, input: backInput)
+                self.configureFrameRate(self.roundFrameRate, device: frontDevice, input: frontInput)
                 session.commitConfiguration()
                 guard backConfigured && frontConfigured else {
                     return false
@@ -892,6 +924,7 @@ final class CameraNeo: NSObject, CameraProtocol {
             if roundVideoCaptureCostsAreSupported(hardwareCost: session.hardwareCost, systemPressureCost: session.systemPressureCost) {
                 return true
             }
+        }
         }
         return false
     }

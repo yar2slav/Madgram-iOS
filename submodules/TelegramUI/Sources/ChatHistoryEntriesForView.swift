@@ -63,6 +63,87 @@ func isUndisplayedForumTopicRoot(_ message: Message, location: ChatLocation, add
     return false
 }
 
+private final class MadEntryFilterCache {
+    struct Key: Hashable {
+        let id: MessageId
+        let stableVersion: UInt32
+    }
+
+    struct Strip {
+        let text: String
+        let entities: [MessageTextEntity]
+    }
+
+    static let shared = MadEntryFilterCache()
+
+    private let lock = NSLock()
+    private var settingsKey: String = ""
+    private var promoted: [Key: Bool] = [:]
+    private var hiddenByRules: [Key: Bool] = [:]
+    private var stripped: [Key: Strip?] = [:]
+    private let limit = 6000
+
+    private func reset(ifNeeded key: String) {
+        if self.settingsKey != key || self.promoted.count + self.hiddenByRules.count + self.stripped.count > self.limit {
+            self.settingsKey = key
+            self.promoted.removeAll(keepingCapacity: true)
+            self.hiddenByRules.removeAll(keepingCapacity: true)
+            self.stripped.removeAll(keepingCapacity: true)
+        }
+    }
+
+    func begin(settingsKey: String) {
+        self.lock.lock()
+        self.reset(ifNeeded: settingsKey)
+        self.lock.unlock()
+    }
+
+    func isPromoted(_ message: Message, compute: () -> Bool) -> Bool {
+        let key = Key(id: message.id, stableVersion: message.stableVersion)
+        self.lock.lock()
+        let cached = self.promoted[key]
+        self.lock.unlock()
+        if let cached {
+            return cached
+        }
+        let value = compute()
+        self.lock.lock()
+        self.promoted[key] = value
+        self.lock.unlock()
+        return value
+    }
+
+    func isHiddenByRules(_ message: Message, compute: () -> Bool) -> Bool {
+        let key = Key(id: message.id, stableVersion: message.stableVersion)
+        self.lock.lock()
+        let cached = self.hiddenByRules[key]
+        self.lock.unlock()
+        if let cached {
+            return cached
+        }
+        let value = compute()
+        self.lock.lock()
+        self.hiddenByRules[key] = value
+        self.lock.unlock()
+        return value
+    }
+
+    func strip(_ message: Message, compute: () -> Strip?) -> Strip? {
+        let key = Key(id: message.id, stableVersion: message.stableVersion)
+        self.lock.lock()
+        let cached = self.stripped[key]
+        self.lock.unlock()
+        if let cached {
+            return cached
+        }
+        let value = compute()
+        self.lock.lock()
+        self.stripped[key] = .some(value)
+        self.lock.unlock()
+        return value
+    }
+}
+
 func chatHistoryEntriesForView(
     currentState: ChatHistoryEntriesForViewState,
     context: AccountContext,
@@ -174,6 +255,8 @@ func chatHistoryEntriesForView(
         }
     }
     
+    let madFilterCache = MadEntryFilterCache.shared
+    madFilterCache.begin(settingsKey: "\(contentFilterSettings.promotedPostKeywords.joined(separator: "\u{1}"))\u{2}\(contentFilterSettings.hiddenRulesSource)")
     var promotedMessageIds = Set<MessageId>()
     var promotedGroupingKeys = Set<Int64>()
     if contentFilterSettings.hidePromotedPosts, case .peer = location, let channel = chatPeer as? TelegramChannel, case .broadcast = channel.info {
@@ -182,8 +265,10 @@ func chatHistoryEntriesForView(
             guard message.flags.contains(.Incoming), message.id.namespace == Namespaces.Message.Cloud else {
                 continue
             }
-            let entities = message.textEntitiesAttribute?.entities ?? []
-            if PromotedPostDetector.isPromoted(text: message.text, entities: entities, keywords: contentFilterSettings.promotedPostKeywords) {
+            let isPromoted = madFilterCache.isPromoted(message) {
+                PromotedPostDetector.isPromoted(text: message.text, entities: message.textEntitiesAttribute?.entities ?? [], keywords: contentFilterSettings.promotedPostKeywords)
+            }
+            if isPromoted {
                 promotedMessageIds.insert(message.id)
                 if let groupingKey = message.groupingKey {
                     promotedGroupingKeys.insert(groupingKey)
@@ -205,7 +290,7 @@ func chatHistoryEntriesForView(
                 if message.media.contains(where: { $0 is TelegramMediaAction }) {
                     continue
                 }
-                if rules.matches(message.text) {
+                if madFilterCache.isHiddenByRules(message, compute: { rules.matches(message.text) }) {
                     promotedMessageIds.insert(message.id)
                     if let groupingKey = message.groupingKey {
                         promotedGroupingKeys.insert(groupingKey)
@@ -231,7 +316,9 @@ func chatHistoryEntriesForView(
                 message = message.withUpdatedAttributes(revealedAttributes)
             }
         }
-        if madStripForeignAgents, !message.text.isEmpty, let stripped = MadForeignAgentStripper.strip(text: message.text, entities: message.textEntitiesAttribute?.entities ?? []) {
+        if madStripForeignAgents, !message.text.isEmpty, let stripped = madFilterCache.strip(message, compute: {
+            MadForeignAgentStripper.strip(text: message.text, entities: message.textEntitiesAttribute?.entities ?? []).map { MadEntryFilterCache.Strip(text: $0.text, entities: $0.entities) }
+        }) {
             var attributes = message.attributes.filter { !($0 is TextEntitiesMessageAttribute) }
             if !stripped.entities.isEmpty {
                 attributes.append(TextEntitiesMessageAttribute(entities: stripped.entities))

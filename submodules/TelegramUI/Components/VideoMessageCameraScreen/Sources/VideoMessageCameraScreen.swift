@@ -14,6 +14,7 @@ import PresentationDataUtils
 import Camera
 import CameraLegacy
 import CameraNeo
+import MadFlags
 import MultilineTextComponent
 import BlurredBackgroundComponent
 import PlainButtonComponent
@@ -989,6 +990,9 @@ public class VideoMessageCameraScreen: ViewController {
             case .hdLanczos:
                 mode = .hdLanczos
             }
+            NeoRoundVideoSettings.preferredFrameRate = MadFlags.cameraFrameRate
+            NeoRoundVideoSettings.prefersUltraWide = MadFlags.roundVideoUltraWide
+            NeoRoundVideoSettings.bitrateMultiplier = MadFlags.roundVideoBitrateMultiplier
             if let mode {
                 self.cameraImpl = NeoCameraImpl(roundVideoMode: mode, log: { message in
                     Logger.shared.log("CameraNeo", message)

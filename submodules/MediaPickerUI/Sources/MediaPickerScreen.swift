@@ -930,7 +930,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
             
             switch cameraCellBranch {
             case .legacyAttachmentCamera:
-                let enableAnimations = self.controller?.context.sharedContext.energyUsageSettings.fullTranslucency ?? true
+                let enableAnimations = true
   
                 let cameraView = TGAttachmentCameraView(forSelfPortrait: false, videoModeByDefault: controller.bannedSendPhotos != nil && controller.bannedSendVideos == nil)!
                 cameraView.clipsToBounds = true
@@ -995,8 +995,7 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                     secondaryPreviewView: nil
                 )
                 self.modernCamera = camera
-                let enableAnimations = controller.context.sharedContext.energyUsageSettings.fullTranslucency
-                self.modernCameraHasLivePreview = enableAnimations
+                self.modernCameraHasLivePreview = true
             case .editorCamera:
                 let cameraImpl = LegacyCameraImpl.shared
                 var cameraPosition: Camera.Position = .back
@@ -1150,9 +1149,8 @@ public final class MediaPickerScreenImpl: ViewController, MediaPickerScreen, Att
                     return
                 }
                 self.dismissInput()
-                if !self.modernCameraHasLivePreview {
-                    camera.startCapture()
-                }
+                self.modernCameraView?.isEnabled = true
+                camera.startCapture()
                 self.isModernCameraHandedOff = true
                 self.chatCameraCaptureState = nil
             }

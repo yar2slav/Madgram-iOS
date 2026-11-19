@@ -244,6 +244,137 @@ public final class SparseMessageList {
             self.resetTopSection()
         }
 
+        private func loadPartialHole(anchor: MessageId, direction: LoadHoleDirection, sparseItems: SparseMessageSkeleton, completion: @escaping () -> Void) -> Bool {
+            guard self.loadingHole == nil, let anchorIndex = sparseItems.items.firstIndex(where: { item in
+                if case let .anchor(id, _, _) = item {
+                    return id == anchor
+                }
+                return false
+            }) else {
+                return false
+            }
+            func gap(at index: Int) -> Int? {
+                guard index >= 0, index < sparseItems.items.count, case let .range(count) = sparseItems.items[index], count > 0 else {
+                    return nil
+                }
+                return count
+            }
+            func boundaryId(from index: Int, step: Int) -> Int32? {
+                var i = index
+                while i >= 0 && i < sparseItems.items.count {
+                    if case let .anchor(id, _, _) = sparseItems.items[i] {
+                        return id.id
+                    }
+                    i += step
+                }
+                return nil
+            }
+            let lowerGap = gap(at: anchorIndex + 1)
+            let upperGap = gap(at: anchorIndex - 1)
+            let loadsOlder: Bool
+            switch direction {
+            case .earlier:
+                loadsOlder = lowerGap != nil || upperGap == nil
+            default:
+                loadsOlder = upperGap == nil && lowerGap != nil
+            }
+            guard (loadsOlder ? lowerGap : upperGap) != nil else {
+                return false
+            }
+            let limitId: Int32 = loadsOlder ? (boundaryId(from: anchorIndex + 2, step: 1) ?? 0) : (boundaryId(from: anchorIndex - 2, step: -1) ?? Int32.max)
+            let mappedDirection: MessageHistoryViewRelativeHoleDirection
+            if loadsOlder {
+                mappedDirection = .range(start: anchor, end: MessageId(peerId: anchor.peerId, namespace: anchor.namespace, id: max(1, limitId)))
+            } else {
+                mappedDirection = .range(start: anchor, end: MessageId(peerId: anchor.peerId, namespace: anchor.namespace, id: min(Int32.max - 1, limitId)))
+            }
+
+            let loadingHole = LoadingHole(anchor: anchor, direction: direction)
+            self.loadingHole = loadingHole
+            self.loadingHoleCompletion = completion
+
+            let account = self.account
+            self.loadHoleDisposable.set((fetchMessageHistoryHole(
+                accountPeerId: self.account.peerId,
+                source: .network(self.account.network),
+                postbox: self.account.postbox,
+                peerInput: .direct(peerId: self.peerId, threadId: nil),
+                namespace: Namespaces.Message.Cloud,
+                direction: mappedDirection,
+                space: .tag(self.messageTag),
+                count: 100
+            )
+            |> mapToSignal { result -> Signal<[Message], NoError> in
+                guard let result = result else {
+                    return .single([])
+                }
+                return account.postbox.transaction { transaction -> [Message] in
+                    return result.ids.sorted(by: { $0 > $1 }).compactMap(transaction.getMessage)
+                }
+            }
+            |> deliverOn(self.queue)).start(next: { [weak self] messages in
+                guard let strongSelf = self else {
+                    completion()
+                    return
+                }
+                if var items = strongSelf.sparseItems?.items, let index = items.firstIndex(where: { item in
+                    if case let .anchor(id, _, _) = item {
+                        return id == anchor
+                    }
+                    return false
+                }) {
+                    let fresh: [Message]
+                    if loadsOlder {
+                        fresh = messages.filter { $0.id.id < anchor.id && $0.id.id > limitId }.sorted(by: { $0.id > $1.id })
+                    } else {
+                        fresh = messages.filter { $0.id.id > anchor.id && $0.id.id < limitId }.sorted(by: { $0.id > $1.id })
+                    }
+                    let gapIndex = loadsOlder ? index + 1 : index - 1
+                    if !fresh.isEmpty, gapIndex >= 0, gapIndex < items.count, case let .range(count) = items[gapIndex] {
+                        let used = min(count, fresh.count)
+                        let inserted = loadsOlder ? Array(fresh.prefix(used)) : Array(fresh.suffix(used))
+                        let remaining = count - used
+                        if remaining > 0 {
+                            items[gapIndex] = .range(count: remaining)
+                        } else {
+                            items.remove(at: gapIndex)
+                        }
+                        let anchors = inserted.map { SparseMessageSkeleton.Item.anchor(id: $0.id, timestamp: $0.timestamp, message: $0) }
+                        if loadsOlder {
+                            items.insert(contentsOf: anchors, at: index + 1)
+                        } else {
+                            let insertAt = remaining > 0 ? index : index - 1
+                            items.insert(contentsOf: anchors, at: max(0, insertAt))
+                        }
+                    }
+                    if let loaded = messages.first(where: { $0.id == anchor }), let anchorPosition = items.firstIndex(where: { item in
+                        if case let .anchor(id, _, nil) = item {
+                            return id == anchor
+                        }
+                        return false
+                    }), case let .anchor(id, timestamp, _) = items[anchorPosition] {
+                        items[anchorPosition] = .anchor(id: id, timestamp: timestamp, message: loaded)
+                    }
+                    let ordered = items.compactMap { item -> MessageId? in
+                        if case let .anchor(id, _, _) = item {
+                            return id
+                        }
+                        return nil
+                    }
+                    if ordered.sorted(by: >) == ordered {
+                        strongSelf.sparseItems?.items = items
+                    }
+                }
+                strongSelf.updateState()
+                if strongSelf.loadingHole == loadingHole {
+                    strongSelf.loadingHole = nil
+                    strongSelf.loadingHoleCompletion = nil
+                }
+                completion()
+            }))
+            return true
+        }
+
         func loadHole(anchor: MessageId, direction: LoadHoleDirection, completion: @escaping () -> Void) {
             guard let sparseItems = self.sparseItems else {
                 completion()
@@ -342,6 +473,10 @@ public final class SparseMessageList {
                 default:
                     break
                 }
+            }
+
+            if loadCount == 1, let range = loadRange, range.lowerBound == anchor.id, range.upperBound == anchor.id, self.loadPartialHole(anchor: anchor, direction: direction, sparseItems: sparseItems, completion: completion) {
+                return
             }
 
             guard let range = loadRange, let expectedCount = loadCount else {

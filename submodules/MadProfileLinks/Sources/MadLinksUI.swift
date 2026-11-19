@@ -401,6 +401,10 @@ class MadLinksTableController: ViewController, UITableViewDataSource, UITableVie
         let navigationHeight = self.navigationLayout(layout: layout).navigationFrame.maxY
         let frame = CGRect(x: layout.safeInsets.left, y: 0.0, width: layout.size.width - layout.safeInsets.left - layout.safeInsets.right, height: layout.size.height)
         transition.updateFrame(view: self.tableView, frame: frame)
+        if let header = self.tableView.tableHeaderView, abs(header.frame.width - frame.width) > 0.5 {
+            header.frame = CGRect(x: 0.0, y: 0.0, width: frame.width, height: header.frame.height)
+            self.tableView.tableHeaderView = header
+        }
         let insets = UIEdgeInsets(top: navigationHeight, left: 0.0, bottom: layout.intrinsicInsets.bottom, right: 0.0)
         if self.tableView.contentInset != insets {
             let wasAtTop = self.tableView.contentOffset.y <= -self.tableView.contentInset.top + 1.0
