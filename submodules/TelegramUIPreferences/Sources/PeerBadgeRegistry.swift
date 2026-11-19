@@ -358,6 +358,30 @@ public final class PeerBadgeRegistryStore {
     private var nameStyleByTarget: [PeerBadgeTarget: PeerNameStyle] = [:]
     private var etag: String?
     private var isStarted = false
+    #if DEBUG
+    private var demoBadgeIds: [PeerBadgeTarget: String] = [:]
+    private var demoNameStyles: [PeerBadgeTarget: PeerNameStyle] = [:]
+
+    public func setDemoOverlay(badgeIds: [EnginePeer.Id: String], nameStyles: [EnginePeer.Id: (colors: [String], effect: String?)]) {
+        self.lock.lock()
+        self.demoBadgeIds = [:]
+        for (peerId, badgeId) in badgeIds {
+            if let target = PeerBadgeTarget(peerId: peerId) {
+                self.demoBadgeIds[target] = badgeId
+            }
+        }
+        self.demoNameStyles = [:]
+        for (peerId, style) in nameStyles {
+            if let target = PeerBadgeTarget(peerId: peerId) {
+                self.demoNameStyles[target] = PeerNameStyle(peerType: target.peerType, peerId: target.peerId, colors: style.colors, effect: style.effect, expiresAt: nil)
+            }
+        }
+        self.lock.unlock()
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
+        }
+    }
+    #endif
     private var refreshTimer: SwiftSignalKit.Timer?
     private var foregroundObserver: NSObjectProtocol?
 
@@ -457,6 +481,13 @@ public final class PeerBadgeRegistryStore {
             return nil
         }
         self.lock.lock()
+        #if DEBUG
+        if let demoBadgeId = self.demoBadgeIds[target] {
+            let demoBadge = self.badgeById[demoBadgeId]
+            self.lock.unlock()
+            return demoBadge
+        }
+        #endif
         let assignment = self.assignmentByTarget[target]
         let badge = assignment.flatMap { self.badgeById[$0.badgeId] }
         self.lock.unlock()
@@ -471,6 +502,12 @@ public final class PeerBadgeRegistryStore {
             return nil
         }
         self.lock.lock()
+        #if DEBUG
+        if let demoStyle = self.demoNameStyles[target] {
+            self.lock.unlock()
+            return demoStyle
+        }
+        #endif
         let style = self.nameStyleByTarget[target]
         self.lock.unlock()
         if let expiresAt = style?.expiresAt, expiresAt <= now {

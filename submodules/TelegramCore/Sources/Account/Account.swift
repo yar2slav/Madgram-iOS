@@ -1288,6 +1288,11 @@ public class Account {
     
     private let networkStateValue = Promise<AccountNetworkState>(.waitingForNetwork)
     public var networkState: Signal<AccountNetworkState, NoError> {
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "MadDemoOffline") {
+            return .single(.online(proxy: nil))
+        }
+        #endif
         return self.networkStateValue.get()
     }
     

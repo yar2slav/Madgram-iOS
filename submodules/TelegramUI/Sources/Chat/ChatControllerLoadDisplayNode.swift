@@ -688,7 +688,7 @@ extension ChatControllerImpl {
         let initTimestamp = self.initTimestamp
         #endif
         
-        self.ready.set(combineLatest(queue: .mainQueue(), [
+        var readySignal = combineLatest(queue: .mainQueue(), [
             self.contentDataReady.get(),
             self.wallpaperReady.get(),
             self.presentationReady.get()
@@ -697,6 +697,12 @@ extension ChatControllerImpl {
             return !values.contains(where: { !$0 })
         }
         |> filter { $0 }
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "MadDemoOffline") {
+            readySignal = readySignal |> timeout(1.0, queue: .mainQueue(), alternate: .single(true))
+        }
+        #endif
+        self.ready.set(readySignal
         |> take(1)
         |> distinctUntilChanged
         |> beforeNext { value in

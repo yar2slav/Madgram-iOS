@@ -109,3 +109,11 @@ enum MadLockCredentialStore {
         return hash(secret, salt: credential.salt) == credential.hash
     }
 }
+
+#if DEBUG
+public enum MadLockDemo {
+    public static func setPin(_ pin: String) {
+        MadLockCredentialStore.store(MadLockCredentialStore.makeCredential(kind: .pin, secret: pin, biometrics: false))
+    }
+}
+#endif

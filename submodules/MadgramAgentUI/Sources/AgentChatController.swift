@@ -670,6 +670,11 @@ final class AgentChatController: ViewController, UITableViewDataSource, UITableV
     }
 
     private func hasApiKey() -> Bool {
+        #if DEBUG
+        if AgentDemoScript.isActive {
+            return true
+        }
+        #endif
         let settings = AgentSettingsStore.shared.current
         return AgentKeychain.apiKey(for: settings.provider) != nil
     }
@@ -770,6 +775,11 @@ final class AgentChatController: ViewController, UITableViewDataSource, UITableV
                 for call in message.toolCalls {
                     let state: AgentToolRowState
                     var title = self.executor.runningTitle(for: call)
+                    #if DEBUG
+                    if let demoTitle = AgentDemoScript.runningTitles[call.id] {
+                        title = demoTitle
+                    }
+                    #endif
                     if let result = results[call.id] {
                         state = result.isError ? .failed : .done
                         if let resultTitle = result.toolTitle {
@@ -870,7 +880,7 @@ final class AgentChatController: ViewController, UITableViewDataSource, UITableV
             return
         }
         self.tableView.layoutIfNeeded()
-        let maxOffset = max(0.0, self.tableView.contentSize.height - self.tableView.bounds.height + self.tableView.contentInset.bottom)
+        let maxOffset = max(-self.tableView.contentInset.top, self.tableView.contentSize.height - self.tableView.bounds.height + self.tableView.contentInset.bottom)
         self.tableView.setContentOffset(CGPoint(x: 0.0, y: maxOffset), animated: animated)
     }
 
@@ -1227,10 +1237,11 @@ final class AgentChatController: ViewController, UITableViewDataSource, UITableV
             topInset = barFrame.maxY
         }
 
-        let tableFrame = CGRect(x: 0.0, y: 0.0, width: size.width, height: size.height)
+        let tableFrame = CGRect(x: 0.0, y: topInset, width: size.width, height: max(0.0, size.height - topInset))
         transition.updateFrame(view: self.tableView, frame: tableFrame)
-        self.tableView.contentInset = UIEdgeInsets(top: topInset + 8.0, left: 0.0, bottom: panelHeight + 8.0, right: 0.0)
-        self.tableView.verticalScrollIndicatorInsets = UIEdgeInsets(top: navigationHeight, left: 0.0, bottom: panelHeight, right: 0.0)
+        self.tableView.clipsToBounds = true
+        self.tableView.contentInset = UIEdgeInsets(top: 8.0, left: 0.0, bottom: panelHeight + 8.0, right: 0.0)
+        self.tableView.verticalScrollIndicatorInsets = UIEdgeInsets(top: 0.0, left: 0.0, bottom: panelHeight, right: 0.0)
         transition.updateFrame(view: self.emptyView, frame: CGRect(x: sideInset, y: navigationHeight, width: size.width - sideInset - layout.safeInsets.right, height: max(0.0, panelFrame.minY - navigationHeight)))
         if wasNearBottom {
             self.scrollToBottom(animated: false)

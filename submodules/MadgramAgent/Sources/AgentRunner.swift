@@ -506,7 +506,47 @@ public final class AgentRunner {
         self.onUpdate?()
     }
 
+    #if DEBUG
+    func demoSetThinking(_ value: Bool) {
+        self.isThinking = value
+        self.onUpdate?()
+    }
+
+    func demoSetActiveToolCall(_ call: AgentToolCall?) {
+        self.activeToolCall = call
+        self.onUpdate?()
+    }
+
+    func demoAppend(_ message: AgentMessage) {
+        self.messages.append(message)
+        self.persist()
+        self.onUpdate?()
+    }
+
+    func demoStream(_ text: String) {
+        self.isThinking = false
+        self.streamingText += text
+        self.onUpdate?()
+    }
+
+    func demoCommitStream() {
+        if !self.streamingText.isEmpty {
+            self.messages.append(AgentMessage(role: .assistant, text: self.streamingText))
+        }
+        self.streamingText = ""
+        self.persist()
+        self.onUpdate?()
+    }
+    #endif
+
     private func runLoop() async {
+        #if DEBUG
+        if AgentDemoScript.isActive, let last = self.messages.last(where: { $0.role == .user }), let steps = AgentDemoScript.script(for: last.text) {
+            let _ = await self.runDemoScript(steps)
+            self.finish(error: nil)
+            return
+        }
+        #endif
         var iterations = 0
         var dropThinking = false
         while true {

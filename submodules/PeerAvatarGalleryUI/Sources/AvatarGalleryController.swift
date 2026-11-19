@@ -254,7 +254,7 @@ public func initialAvatarGalleryEntries(account: Account, engine: TelegramEngine
     var initialEntries: [AvatarGalleryEntry] = []
     if !peer.profileImageRepresentations.isEmpty, let peerReference = PeerReference(peer) {
         initialEntries.append(.topImage(peer.profileImageRepresentations.map({ ImageRepresentationWithReference(representation: $0, reference: MediaResourceReference.avatar(peer: peerReference, resource: $0.resource)) }), [], peer, nil, nil, nil))
-    } else if !peer.profileImageRepresentations.isEmpty, peer.id.isMadLocalChat {
+    } else if !peer.profileImageRepresentations.isEmpty, peer.id.isMadLocalPeer {
         initialEntries.append(.topImage(peer.profileImageRepresentations.map({ ImageRepresentationWithReference(representation: $0, reference: MediaResourceReference.standalone(resource: $0.resource)) }), [], peer, nil, nil, nil))
     }
     

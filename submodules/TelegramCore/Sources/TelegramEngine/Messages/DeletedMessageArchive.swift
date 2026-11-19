@@ -11,6 +11,76 @@ private struct DeletedMessageArchiveKeptResourceKey: Hashable {
 
 private let deletedMessageArchiveMediaKeepDisposables = Atomic<[DeletedMessageArchiveKeptResourceKey: Disposable]>(value: [:])
 private let deletedMessageArchiveSessionInitialized = Atomic<Bool>(value: false)
+private let deletedMessageArchiveRetentionLastRun = Atomic<[String: Double]>(value: [:])
+private let deletedMessageArchiveRetentionInterval: Double = 120.0
+
+private func keepDeletedMessageArchiveResources(mediaBox: MediaBox, ids: [MediaResourceId]) {
+    let keys = ids.map { DeletedMessageArchiveKeptResourceKey(mediaBoxPath: mediaBox.basePath, resourceId: $0) }
+    let missing = deletedMessageArchiveMediaKeepDisposables.with { current in
+        return keys.filter { current[$0] == nil }
+    }
+    guard !missing.isEmpty else {
+        return
+    }
+    var created: [DeletedMessageArchiveKeptResourceKey: Disposable] = [:]
+    for key in Set(missing) {
+        created[key] = mediaBox.keepResource(id: key.resourceId).start()
+    }
+    var duplicates: [Disposable] = []
+    let _ = deletedMessageArchiveMediaKeepDisposables.modify { current in
+        var current = current
+        for (key, disposable) in created {
+            if current[key] == nil {
+                current[key] = disposable
+            } else {
+                duplicates.append(disposable)
+            }
+        }
+        return current
+    }
+    for disposable in duplicates {
+        disposable.dispose()
+    }
+}
+
+private func releaseDeletedMessageArchiveResources(mediaBox: MediaBox, ids: Set<MediaResourceId>) {
+    guard !ids.isEmpty else {
+        return
+    }
+    var removed: [Disposable] = []
+    let _ = deletedMessageArchiveMediaKeepDisposables.modify { current in
+        var current = current
+        for id in ids {
+            if let disposable = current.removeValue(forKey: DeletedMessageArchiveKeptResourceKey(mediaBoxPath: mediaBox.basePath, resourceId: id)) {
+                removed.append(disposable)
+            }
+        }
+        return current
+    }
+    for disposable in removed {
+        disposable.dispose()
+    }
+}
+
+private func requestDeletedMessageArchiveMediaRetention(transaction: Transaction, mediaBox: MediaBox, addedResourceIds: [MediaResourceId]) {
+    guard !addedResourceIds.isEmpty else {
+        return
+    }
+    keepDeletedMessageArchiveResources(mediaBox: mediaBox, ids: addedResourceIds)
+    let now = CFAbsoluteTimeGetCurrent()
+    var shouldRun = false
+    let _ = deletedMessageArchiveRetentionLastRun.modify { current in
+        var current = current
+        if now - (current[mediaBox.basePath] ?? 0.0) >= deletedMessageArchiveRetentionInterval {
+            current[mediaBox.basePath] = now
+            shouldRun = true
+        }
+        return current
+    }
+    if shouldRun {
+        updateDeletedMessageArchiveMediaRetention(transaction: transaction, mediaBox: mediaBox)
+    }
+}
 
 private func archiveTimestamp() -> Int32 {
     return Int32(Date().timeIntervalSince1970)
@@ -214,27 +284,27 @@ private func updateDeletedMessageArchiveMediaRetention(transaction: Transaction,
     if !idsToRemove.isEmpty {
         let _ = mediaBox.removeCachedResources(idsToRemove, force: true).start()
     }
-    var updatedKeepDisposables: [DeletedMessageArchiveKeptResourceKey: Disposable] = [:]
-    for id in retainedIds {
-        updatedKeepDisposables[DeletedMessageArchiveKeptResourceKey(mediaBoxPath: mediaBox.basePath, resourceId: id)] = mediaBox.keepResource(id: id).start()
+    let _ = deletedMessageArchiveRetentionLastRun.modify { current in
+        var current = current
+        current[mediaBox.basePath] = CFAbsoluteTimeGetCurrent()
+        return current
     }
+    let retainedKeys = Set(retainedIds.map { DeletedMessageArchiveKeptResourceKey(mediaBoxPath: mediaBox.basePath, resourceId: $0) })
     var removedKeepDisposables: [Disposable] = []
     let _ = deletedMessageArchiveMediaKeepDisposables.modify { current in
         var current = current
-        let removedKeys = current.keys.filter { $0.mediaBoxPath == mediaBox.basePath }
+        let removedKeys = current.keys.filter { $0.mediaBoxPath == mediaBox.basePath && !retainedKeys.contains($0) }
         for key in removedKeys {
             if let disposable = current.removeValue(forKey: key) {
                 removedKeepDisposables.append(disposable)
             }
-        }
-        for (key, disposable) in updatedKeepDisposables {
-            current[key] = disposable
         }
         return current
     }
     for disposable in removedKeepDisposables {
         disposable.dispose()
     }
+    keepDeletedMessageArchiveResources(mediaBox: mediaBox, ids: retainedIds)
 }
 
 private func archiveAttribute(_ attributes: [MessageAttribute]) -> ArchivedMessageAttribute? {
@@ -496,7 +566,7 @@ func archivePreviousMessageVersionIfNeeded(
         return current
     })
     if let mediaBox {
-        updateDeletedMessageArchiveMediaRetention(transaction: transaction, mediaBox: mediaBox)
+        requestDeletedMessageArchiveMediaRetention(transaction: transaction, mediaBox: mediaBox, addedResourceIds: archivedResourceIds(previous))
     }
 
     var versionIds = previousArchiveAttribute?.versionIds ?? []
@@ -543,10 +613,12 @@ func archiveMessagesBeforeCloudDeletion(
         return []
     }
     var result: [MessageId] = []
+    var addedResourceIds: [MediaResourceId] = []
     for id in archiveIds {
         guard let message = transaction.getMessage(id), !isArchiveIneligible(message) else {
             continue
         }
+        addedResourceIds.append(contentsOf: archivedResourceIds(message))
         let previousArchiveAttribute = archiveAttribute(message.attributes)
         var attributes = attributesWithoutArchiveMetadata(message.attributes)
         attributes.append(ArchivedMessageAttribute(
@@ -573,7 +645,7 @@ func archiveMessagesBeforeCloudDeletion(
             return current
         })
         if let mediaBox {
-            updateDeletedMessageArchiveMediaRetention(transaction: transaction, mediaBox: mediaBox)
+            requestDeletedMessageArchiveMediaRetention(transaction: transaction, mediaBox: mediaBox, addedResourceIds: addedResourceIds)
         }
     }
     return result
@@ -629,7 +701,7 @@ func removeDeletedMessageArchiveForLocalDeletion(transaction: Transaction, media
         return current
     })
     if let mediaBox {
-        updateDeletedMessageArchiveMediaRetention(transaction: transaction, mediaBox: mediaBox)
+        releaseDeletedMessageArchiveResources(mediaBox: mediaBox, ids: resourceIds)
     }
 }
 

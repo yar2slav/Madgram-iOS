@@ -254,6 +254,9 @@ final class AuthorizedApplicationContext {
             context.keyShortcutsController = keyShortcutsController
         }
         
+        #if DEBUG
+        MadDemoMode.prepare(context: context)
+        #endif
         if self.rootController.rootTabController == nil {
             self.rootController.addRootControllers(showCallsTab: self.showCallsTab, showNewsTab: self.showNewsTab)
         }
@@ -305,6 +308,9 @@ final class AuthorizedApplicationContext {
         MadReactionNotifier.attach(context: context)
         MadWhatsNew.markSeen()
         MadChangelogChat.attach(context: context)
+        #if DEBUG
+        MadDemoMode.seed(context: context)
+        #endif
         self.notificationMessagesDisposable.set((context.account.stateManager.notificationMessages
         |> map { messageList in
             // Messages from hidden authors are not shown in the chat, so they must not drop a
@@ -829,7 +835,12 @@ final class AuthorizedApplicationContext {
             }
         })
        
-        let importableContacts = self.context.sharedContext.contactDataManager?.importable() ?? .single([:])
+        var importableContacts = self.context.sharedContext.contactDataManager?.importable() ?? .single([:])
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "MadDemoOffline") {
+            importableContacts = .single([:])
+        }
+        #endif
         let optionalImportableContacts = self.context.engine.data.subscribe(TelegramEngine.EngineData.Item.Configuration.ApplicationSpecificPreference(key: PreferencesKeys.contactsSettings))
         |> mapToSignal { preferences -> Signal<[DeviceContactNormalizedPhoneNumber: ImportableDeviceContactData], NoError> in
             let settings: ContactsSettings = preferences?.get(ContactsSettings.self) ?? .defaultSettings

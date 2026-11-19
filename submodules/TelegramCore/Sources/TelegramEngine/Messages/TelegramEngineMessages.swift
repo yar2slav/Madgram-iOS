@@ -182,7 +182,15 @@ public extension TelegramEngine {
         public func localNotificationMessage(id: EngineMessage.Id) -> Signal<(message: EngineMessage?, notify: Bool, sound: PeerMessageSound, displayContents: Bool, threadData: EngineMessageHistoryThreadData?), NoError> {
             return self.account.postbox.transaction { transaction in
                 let result = messagesForNotification(transaction: transaction, id: id, alwaysReturnMessage: false)
-                return (result.messages.first.map(EngineMessage.init), result.notify, result.sound, result.displayContents, result.threadData)
+                var notify = result.notify
+                if notify, let message = result.messages.first {
+                    if let readState = transaction.getCombinedPeerReadState(message.id.peerId), readState.isIncomingMessageIndexRead(message.index) {
+                        notify = false
+                    } else if let threadData = result.threadData, threadData.maxIncomingReadId >= message.id.id {
+                        notify = false
+                    }
+                }
+                return (result.messages.first.map(EngineMessage.init), notify, result.sound, result.displayContents, result.threadData)
             }
         }
 

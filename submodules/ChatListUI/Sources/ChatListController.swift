@@ -7039,6 +7039,11 @@ private final class ChatListLocationContext {
         
         let hasProxy = context.sharedContext.accountManager.sharedData(keys: [SharedDataKeys.proxySettings])
         |> map { sharedData -> (Bool, Bool) in
+            #if DEBUG
+            if UserDefaults.standard.bool(forKey: "MadDemoOffline") {
+                return (false, false)
+            }
+            #endif
             if let settings = sharedData.entries[SharedDataKeys.proxySettings]?.get(ProxySettings.self) {
                 return (!settings.servers.isEmpty, settings.enabled)
             } else {

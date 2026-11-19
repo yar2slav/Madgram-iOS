@@ -156,6 +156,12 @@ struct DeletedMessageArchiveIndexEntry: Codable, Hashable {
         self.id = id.id
     }
 
+    init(peerId: Int64, namespace: Int32, id: Int32) {
+        self.peerId = peerId
+        self.namespace = namespace
+        self.id = id
+    }
+
     var messageId: MessageId {
         return MessageId(peerId: PeerId(self.peerId), namespace: self.namespace, id: self.id)
     }
@@ -170,6 +176,8 @@ struct DeletedMessageArchiveIndex: Codable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case messageIds
         case liveMessageIds
+        case packedMessageIds = "pm"
+        case packedLiveMessageIds = "pl"
     }
 
     init(messageIds: [DeletedMessageArchiveIndexEntry], liveMessageIds: [DeletedMessageArchiveIndexEntry]) {
@@ -179,8 +187,63 @@ struct DeletedMessageArchiveIndex: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.messageIds = try container.decodeIfPresent([DeletedMessageArchiveIndexEntry].self, forKey: .messageIds) ?? []
-        self.liveMessageIds = try container.decodeIfPresent([DeletedMessageArchiveIndexEntry].self, forKey: .liveMessageIds) ?? []
+        if let packed = try container.decodeIfPresent(Data.self, forKey: .packedMessageIds) {
+            self.messageIds = DeletedMessageArchiveIndex.unpack(packed)
+        } else {
+            self.messageIds = try container.decodeIfPresent([DeletedMessageArchiveIndexEntry].self, forKey: .messageIds) ?? []
+        }
+        if let packed = try container.decodeIfPresent(Data.self, forKey: .packedLiveMessageIds) {
+            self.liveMessageIds = DeletedMessageArchiveIndex.unpack(packed)
+        } else {
+            self.liveMessageIds = try container.decodeIfPresent([DeletedMessageArchiveIndexEntry].self, forKey: .liveMessageIds) ?? []
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(DeletedMessageArchiveIndex.pack(self.messageIds), forKey: .packedMessageIds)
+        try container.encode(DeletedMessageArchiveIndex.pack(self.liveMessageIds), forKey: .packedLiveMessageIds)
+    }
+
+    static func pack(_ entries: [DeletedMessageArchiveIndexEntry]) -> Data {
+        var data = Data(count: entries.count * 16)
+        data.withUnsafeMutableBytes { buffer in
+            guard let base = buffer.baseAddress else {
+                return
+            }
+            for (index, entry) in entries.enumerated() {
+                let offset = index * 16
+                var peerId = entry.peerId.littleEndian
+                var namespace = entry.namespace.littleEndian
+                var id = entry.id.littleEndian
+                memcpy(base + offset, &peerId, 8)
+                memcpy(base + offset + 8, &namespace, 4)
+                memcpy(base + offset + 12, &id, 4)
+            }
+        }
+        return data
+    }
+
+    static func unpack(_ data: Data) -> [DeletedMessageArchiveIndexEntry] {
+        let count = data.count / 16
+        var result: [DeletedMessageArchiveIndexEntry] = []
+        result.reserveCapacity(count)
+        data.withUnsafeBytes { buffer in
+            guard let base = buffer.baseAddress else {
+                return
+            }
+            for index in 0 ..< count {
+                let offset = index * 16
+                var peerId: Int64 = 0
+                var namespace: Int32 = 0
+                var id: Int32 = 0
+                memcpy(&peerId, base + offset, 8)
+                memcpy(&namespace, base + offset + 8, 4)
+                memcpy(&id, base + offset + 12, 4)
+                result.append(DeletedMessageArchiveIndexEntry(peerId: Int64(littleEndian: peerId), namespace: Int32(littleEndian: namespace), id: Int32(littleEndian: id)))
+            }
+        }
+        return result
     }
 }
 

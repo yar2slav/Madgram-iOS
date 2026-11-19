@@ -211,7 +211,13 @@ open class TabBarControllerImpl: ViewController, TabBarController {
                     strongSelf.controllers[index].containerLayoutUpdated(updatedLayout, transition: .immediate)
                 }
                 let startTime = CFAbsoluteTimeGetCurrent()
-                strongSelf.pendingControllerDisposable.set((strongSelf.controllers[index].ready.get()
+                var readySignal = strongSelf.controllers[index].ready.get()
+                #if DEBUG
+                if UserDefaults.standard.bool(forKey: "MadDemoOffline") {
+                    readySignal = readySignal |> timeout(1.0, queue: .mainQueue(), alternate: .single(true))
+                }
+                #endif
+                strongSelf.pendingControllerDisposable.set((readySignal
                 |> deliverOnMainQueue).start(next: { _ in
                     if let strongSelf = self {
                         let readyTime = CFAbsoluteTimeGetCurrent() - startTime

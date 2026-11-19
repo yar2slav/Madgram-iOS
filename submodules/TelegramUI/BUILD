@@ -224,6 +224,8 @@ swift_library(
         "//submodules/MadgramAgent",
         "//submodules/MadgramText",
         "//submodules/MadLockUI",
+        "//submodules/MadProfileLinks:MadProfileLinksCore",
+        "//submodules/MadProfileLinks",
         "//submodules/UrlHandling:UrlHandling",
         "//submodules/HexColor:HexColor",
         "//submodules/QrCode:QrCode",

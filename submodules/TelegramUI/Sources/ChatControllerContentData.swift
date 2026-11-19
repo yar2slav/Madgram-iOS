@@ -2100,7 +2100,7 @@ extension ChatControllerImpl {
             }
             |> map { _ -> Bool in true }
             
-            self.isReady.set(combineLatest(queue: .mainQueue(), [
+            var contentReadySignal = combineLatest(queue: .mainQueue(), [
                 self.isPeerInfoReady.get(),
                 self.isChatLocationInfoReady.get(),
                 self.isCachedDataReady.get(),
@@ -2108,6 +2108,12 @@ extension ChatControllerImpl {
                 initialData |> map { _ -> Bool in true },
                 initialPersistentPeerDataReady
             ])
+            #if DEBUG
+            if UserDefaults.standard.bool(forKey: "MadDemoOffline") {
+                contentReadySignal = contentReadySignal |> timeout(1.0, queue: .mainQueue(), alternate: .single([true]))
+            }
+            #endif
+            self.isReady.set(contentReadySignal
             |> map { values in
                 return !values.contains(where: { !$0 })
             }

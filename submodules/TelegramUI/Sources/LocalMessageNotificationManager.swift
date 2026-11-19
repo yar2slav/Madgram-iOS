@@ -101,6 +101,8 @@ final class LocalMessageNotificationManager {
         return false
     }
 
+    static let readCheckDelay: Double = 4.0
+
     func enqueue(messages: [EngineRawMessage], notify: Bool) {
         guard self.canNotify, notify, let backgroundSince = self.backgroundSince else { return }
         for message in messages {
@@ -108,7 +110,13 @@ final class LocalMessageNotificationManager {
             let key = self.deliveryKey(message)
             guard let token = self.deliveryState.reserve(key, now: ProcessInfo.processInfo.systemUptime) else { continue }
             let session = self.session
-            let _ = (self.context.engine.messages.localNotificationMessage(id: message.id)
+            let engine = self.context.engine
+            let messageId = message.id
+            let _ = (Signal<Void, NoError>.single(Void())
+            |> delay(LocalMessageNotificationManager.readCheckDelay, queue: .mainQueue())
+            |> mapToSignal { _ in
+                return engine.messages.localNotificationMessage(id: messageId)
+            }
             |> deliverOnMainQueue).start(next: { [weak self] result in
                 guard let self, self.canNotify, self.session == session, self.deliveryState.isPending(key, token: token) else { return }
                 guard result.notify, let message = result.message, self.isVisible(message) else {

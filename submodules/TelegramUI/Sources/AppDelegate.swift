@@ -1101,6 +1101,9 @@ private func extractAccountManagerState(records: AccountRecordsView<TelegramAcco
 
         telegramUIDeclareEncodables()
         initializeAccountManagement()
+        #if DEBUG
+        MadDemoMode.prepareOfflineAccount(accountManager: accountManager)
+        #endif
 
         if isUITest,
            let deleteIdx = CommandLine.arguments.firstIndex(of: "--delete-test-account"),

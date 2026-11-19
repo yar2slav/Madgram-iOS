@@ -126,6 +126,17 @@ public final class MadLinksCache {
     private var loading = Set<Key>()
     private let lifetime: Double = 600.0
     private let failureLifetime: Double = 120.0
+    #if DEBUG
+    private var demoPinned = Set<Key>()
+
+    public func storeDemo(accountPeerId: EnginePeer.Id, peerId: EnginePeer.Id, profile: MadLinksProfile) {
+        let key = Key(account: accountPeerId.toInt64(), peer: peerId.toInt64())
+        self.lock.lock()
+        self.demoPinned.insert(key)
+        self.lock.unlock()
+        self.store(accountPeerId: accountPeerId, peerId: peerId, profile: profile)
+    }
+    #endif
 
     public func profile(accountPeerId: EnginePeer.Id, peerId: EnginePeer.Id) -> MadLinksProfile? {
         self.lock.lock()
@@ -156,6 +167,11 @@ public final class MadLinksCache {
         if self.loading.contains(key) {
             return false
         }
+        #if DEBUG
+        if self.demoPinned.contains(key) {
+            return false
+        }
+        #endif
         if let entry = self.entries[key] {
             let age = CFAbsoluteTimeGetCurrent() - entry.timestamp
             if age < (entry.profile == nil ? self.failureLifetime : self.lifetime) {
